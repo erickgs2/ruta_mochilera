@@ -1,0 +1,9 @@
+node_modules/
+dist/
+tmp/
+.nx/
+.env
+.env.local
+storage/
+.DS_Store
+.superpowers/
