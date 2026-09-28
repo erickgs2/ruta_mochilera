@@ -1,0 +1,311 @@
+// Prisma 7 contract: the generator is `prisma-client` (the old `prisma-client-js`
+// provider no longer exists), `output` is mandatory, and the datasource carries no
+// `url` — the connection string lives in `prisma.config.ts` at the workspace root.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum UserType {
+  STAFF
+  CUSTOMER
+}
+
+enum UserStatus {
+  ACTIVE
+  DISABLED
+}
+
+enum Locale {
+  es
+  en
+}
+
+enum AuthProvider {
+  PASSWORD
+  GOOGLE
+  APPLE
+}
+
+enum CustomerOrigin {
+  SELF_SIGNUP
+  BRANCH
+  IMPORT
+}
+
+enum TripStatus {
+  DRAFT
+  PUBLISHED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum MarginMode {
+  PERCENTAGE
+  FIXED_TOTAL
+  FIXED_PER_SEAT
+}
+
+enum PriceMode {
+  AUTO
+  MANUAL
+}
+
+model User {
+  id              String     @id @default(uuid()) @db.Uuid
+  email           String     @unique
+  passwordHash    String?    @map("password_hash")
+  emailVerifiedAt DateTime?  @map("email_verified_at") @db.Timestamptz
+  locale          Locale     @default(es)
+  type            UserType
+  status          UserStatus @default(ACTIVE)
+  createdAt       DateTime   @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt       DateTime   @updatedAt @map("updated_at") @db.Timestamptz
+
+  staffProfile    StaffProfile?
+  customerProfile CustomerProfile?
+  authIdentities  AuthIdentity[]
+  refreshTokens   RefreshToken[]
+  roles           UserRole[]
+  createdTrips    Trip[]           @relation("TripCreatedBy")
+
+  @@map("users")
+}
+
+model StaffProfile {
+  userId       String  @id @map("user_id") @db.Uuid
+  fullName     String  @map("full_name")
+  employeeCode String? @map("employee_code")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("staff_profiles")
+}
+
+model CustomerProfile {
+  userId      String         @id @map("user_id") @db.Uuid
+  fullName    String         @map("full_name")
+  phone       String
+  birthDate   DateTime       @map("birth_date") @db.Date
+  photoKey    String?        @map("photo_key")
+  origin      CustomerOrigin
+  invitedAt   DateTime?      @map("invited_at") @db.Timestamptz
+  activatedAt DateTime?      @map("activated_at") @db.Timestamptz
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([phone])
+  @@map("customer_profiles")
+}
+
+model AuthIdentity {
+  id             String       @id @default(uuid()) @db.Uuid
+  userId         String       @map("user_id") @db.Uuid
+  provider       AuthProvider
+  providerUserId String       @map("provider_user_id")
+  createdAt      DateTime     @default(now()) @map("created_at") @db.Timestamptz
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerUserId])
+  @@map("auth_identities")
+}
+
+model RefreshToken {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  sessionId String    @map("session_id") @db.Uuid
+  tokenHash String    @unique @map("token_hash")
+  deviceId  String?   @map("device_id")
+  userAgent String?   @map("user_agent")
+  expiresAt DateTime  @map("expires_at") @db.Timestamptz
+  revokedAt DateTime? @map("revoked_at") @db.Timestamptz
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([sessionId])
+  @@map("refresh_tokens")
+}
+
+model EmailVerification {
+  id         String    @id @default(uuid()) @db.Uuid
+  userId     String    @map("user_id") @db.Uuid
+  codeHash   String    @map("code_hash")
+  expiresAt  DateTime  @map("expires_at") @db.Timestamptz
+  consumedAt DateTime? @map("consumed_at") @db.Timestamptz
+  attempts   Int       @default(0)
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz
+
+  @@index([userId])
+  @@map("email_verifications")
+}
+
+model PasswordReset {
+  id         String    @id @default(uuid()) @db.Uuid
+  userId     String    @map("user_id") @db.Uuid
+  tokenHash  String    @unique @map("token_hash")
+  expiresAt  DateTime  @map("expires_at") @db.Timestamptz
+  consumedAt DateTime? @map("consumed_at") @db.Timestamptz
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz
+
+  @@index([userId])
+  @@map("password_resets")
+}
+
+model Permission {
+  id          String @id @default(uuid()) @db.Uuid
+  key         String @unique
+  category    String
+  description String
+
+  roles RolePermission[]
+
+  @@map("permissions")
+}
+
+model Role {
+  id          String   @id @default(uuid()) @db.Uuid
+  name        String   @unique
+  description String
+  isSystem    Boolean  @default(false) @map("is_system")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  permissions RolePermission[]
+  users       UserRole[]
+
+  @@map("roles")
+}
+
+model RolePermission {
+  roleId       String @map("role_id") @db.Uuid
+  permissionId String @map("permission_id") @db.Uuid
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+  @@map("role_permissions")
+}
+
+model UserRole {
+  userId String @map("user_id") @db.Uuid
+  roleId String @map("role_id") @db.Uuid
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([userId, roleId])
+  @@map("user_roles")
+}
+
+model Trip {
+  id                  String     @id @default(uuid()) @db.Uuid
+  slug                String     @unique
+  status              TripStatus @default(DRAFT)
+  departureDate       DateTime   @map("departure_date") @db.Date
+  returnDate          DateTime   @map("return_date") @db.Date
+  paymentDeadline     DateTime   @map("payment_deadline") @db.Date
+  totalCapacity       Int        @map("total_capacity")
+  preSoldSeats        Int        @default(0) @map("pre_sold_seats")
+  holdTtlHours        Int        @map("hold_ttl_hours")
+  minimumDepositCents Int        @map("minimum_deposit_cents")
+  budgetTotalCents    Int        @default(0) @map("budget_total_cents")
+  marginMode          MarginMode @default(PERCENTAGE) @map("margin_mode")
+  marginValue         Int        @default(0) @map("margin_value")
+  pricePerSeatCents   Int        @default(0) @map("price_per_seat_cents")
+  priceMode           PriceMode  @default(AUTO) @map("price_mode")
+  publishedAt         DateTime?  @map("published_at") @db.Timestamptz
+  isBackfilled        Boolean    @default(false) @map("is_backfilled")
+  createdById         String     @map("created_by") @db.Uuid
+  createdAt           DateTime   @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt           DateTime   @updatedAt @map("updated_at") @db.Timestamptz
+
+  createdBy    User              @relation("TripCreatedBy", fields: [createdById], references: [id])
+  translations TripTranslation[]
+  images       TripImage[]
+  budgetItems  TripBudgetItem[]
+
+  @@index([status, departureDate])
+  @@map("trips")
+}
+
+model TripTranslation {
+  id          String @id @default(uuid()) @db.Uuid
+  tripId      String @map("trip_id") @db.Uuid
+  locale      Locale
+  name        String
+  description String
+  itinerary   String
+  includes    String
+  excludes    String
+
+  trip Trip @relation(fields: [tripId], references: [id], onDelete: Cascade)
+
+  @@unique([tripId, locale])
+  @@map("trip_translations")
+}
+
+model TripImage {
+  id         String  @id @default(uuid()) @db.Uuid
+  tripId     String  @map("trip_id") @db.Uuid
+  storageKey String  @map("storage_key")
+  position   Int
+  isCover    Boolean @default(false) @map("is_cover")
+  altText    String? @map("alt_text")
+
+  trip Trip @relation(fields: [tripId], references: [id], onDelete: Cascade)
+
+  @@index([tripId, position])
+  @@map("trip_images")
+}
+
+model TripBudgetItem {
+  id              String   @id @default(uuid()) @db.Uuid
+  tripId          String   @map("trip_id") @db.Uuid
+  concept         String
+  supplier        String?
+  quantity        Int      @default(1)
+  unitAmountCents Int      @map("unit_amount_cents")
+  notes           String?
+  createdById     String   @map("created_by") @db.Uuid
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  trip Trip @relation(fields: [tripId], references: [id], onDelete: Cascade)
+
+  @@index([tripId])
+  @@map("trip_budget_items")
+}
+
+model AuditLog {
+  id          String   @id @default(uuid()) @db.Uuid
+  actorUserId String?  @map("actor_user_id") @db.Uuid
+  action      String
+  entityType  String   @map("entity_type")
+  entityId    String   @map("entity_id")
+  before      Json?
+  after       Json?
+  ip          String?
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  @@index([entityType, entityId])
+  @@index([actorUserId, createdAt])
+  @@map("audit_logs")
+}
+
+model SystemSetting {
+  key         String   @id
+  value       Json
+  updatedById String?  @map("updated_by") @db.Uuid
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  @@map("system_settings")
+}

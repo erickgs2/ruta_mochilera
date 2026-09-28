@@ -9,6 +9,7 @@ export default tseslint.config(
       '**/.angular',
       '**/coverage',
       '**/out-tsc',
+      '**/generated/prisma',
     ],
   },
   {

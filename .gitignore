@@ -14,3 +14,6 @@ out
 
 vitest.config.*.timestamp*
 .angular
+
+# Prisma generated client (recreated by `pnpm db:generate`)
+libs/db/src/generated/
