@@ -13,6 +13,9 @@ export default defineConfig(() => ({
     include: [
       '{src,app,pages,specs}/**/*.{test,spec}.{js,mjs,cjs,ts,mts,cts,jsx,tsx}',
     ],
+    // api-only app: no route handlers exist yet (added in tasks 8, 9, 10,
+    // 14, 15, each bringing its own tests), so there is nothing to test yet.
+    passWithNoTests: true,
     reporters: ['default'],
     coverage: {
       reportsDirectory: '../../coverage/apps/api',
