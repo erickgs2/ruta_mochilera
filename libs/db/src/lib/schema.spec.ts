@@ -1,15 +1,25 @@
-import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { resetDatabase, withTestDb } from '../testing/test-db';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import {
+  closeTestDb,
+  prepareTestDb,
+  resetDatabase,
+  uniqueViolationIndex,
+  withTestDb,
+} from '../testing';
 
 const db = withTestDb();
 
 describe('schema', () => {
   beforeAll(async () => {
-    await db.$connect();
+    await prepareTestDb();
   });
 
   beforeEach(async () => {
     await resetDatabase(db);
+  });
+
+  afterAll(async () => {
+    await closeTestDb();
   });
 
   it('stores a staff user with its profile', async () => {
@@ -30,9 +40,15 @@ describe('schema', () => {
 
   it('rejects two users with the same email', async () => {
     await db.user.create({ data: { email: 'dup@agency.test', type: 'STAFF' } });
-    await expect(
-      db.user.create({ data: { email: 'dup@agency.test', type: 'CUSTOMER' } })
-    ).rejects.toThrow();
+
+    const error = await db.user
+      .create({ data: { email: 'dup@agency.test', type: 'CUSTOMER' } })
+      .then(() => undefined)
+      .catch((thrown: unknown) => thrown);
+
+    expect(error).toBeDefined();
+    expect(error).toMatchObject({ code: 'P2002' });
+    expect(uniqueViolationIndex(error)).toBe('users_email_key');
   });
 
   it('rejects two translations for the same trip and locale', async () => {
@@ -59,6 +75,14 @@ describe('schema', () => {
       excludes: 'exc',
     };
     await db.tripTranslation.create({ data: translation });
-    await expect(db.tripTranslation.create({ data: translation })).rejects.toThrow();
+
+    const error = await db.tripTranslation
+      .create({ data: translation })
+      .then(() => undefined)
+      .catch((thrown: unknown) => thrown);
+
+    expect(error).toBeDefined();
+    expect(error).toMatchObject({ code: 'P2002' });
+    expect(uniqueViolationIndex(error)).toBe('trip_translations_trip_id_locale_key');
   });
 });

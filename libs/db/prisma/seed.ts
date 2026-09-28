@@ -3,7 +3,12 @@ import { hash } from '@node-rs/argon2';
 import { createPrismaClient, type Prisma } from '@rm/db';
 import { PERMISSIONS } from '../../domain/rbac/src/lib/permissions';
 
-const db = createPrismaClient(process.env['DATABASE_URL'] as string);
+const databaseUrl = process.env['DATABASE_URL'];
+if (!databaseUrl) {
+  throw new Error('DATABASE_URL is not set. Copy .env.example to .env before running the seed.');
+}
+
+const db = createPrismaClient(databaseUrl);
 
 const DEFAULT_SETTINGS: Record<string, Prisma.InputJsonValue> = {
   'reservation.default_hold_ttl_hours': 72,

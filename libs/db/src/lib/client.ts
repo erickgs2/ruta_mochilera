@@ -8,6 +8,15 @@ import { PrismaClient } from '../generated/prisma/client';
  */
 export type Db = PrismaClient;
 
+export interface CreatePrismaClientOptions {
+  /**
+   * PostgreSQL schema every generated query is qualified with. Defaults to
+   * `public`. The integration test helpers use it to give each Vitest worker
+   * its own isolated copy of the schema inside the same test database.
+   */
+  schema?: string;
+}
+
 /**
  * Builds a Prisma client bound to an explicit connection string.
  *
@@ -15,6 +24,13 @@ export type Db = PrismaClient;
  * required, so the caller owns the connection string and the API app, the
  * seed and the test helpers can each point at a different database.
  */
-export function createPrismaClient(databaseUrl: string): Db {
-  return new PrismaClient({ adapter: new PrismaPg({ connectionString: databaseUrl }) });
+export function createPrismaClient(
+  databaseUrl: string,
+  options: CreatePrismaClientOptions = {}
+): Db {
+  const adapter = new PrismaPg(
+    { connectionString: databaseUrl },
+    options.schema === undefined ? undefined : { schema: options.schema }
+  );
+  return new PrismaClient({ adapter });
 }
