@@ -13,6 +13,17 @@ export interface AccessTokenClaims {
 const ISSUER = 'ruta-mochilera';
 const AUDIENCE = 'ruta-mochilera-clients';
 
+const ACCESS_TOKEN_TYPES: readonly AccessTokenClaims['type'][] = ['STAFF', 'CUSTOMER'];
+const ACCESS_TOKEN_LOCALES: readonly AccessTokenClaims['locale'][] = ['es', 'en'];
+
+function isAccessTokenType(value: unknown): value is AccessTokenClaims['type'] {
+  return (ACCESS_TOKEN_TYPES as readonly unknown[]).includes(value);
+}
+
+function isAccessTokenLocale(value: unknown): value is AccessTokenClaims['locale'] {
+  return (ACCESS_TOKEN_LOCALES as readonly unknown[]).includes(value);
+}
+
 const key = (secret: string) => new TextEncoder().encode(secret);
 
 export async function signAccessToken(
@@ -36,14 +47,31 @@ export async function verifyAccessToken(
   secret: string
 ): Promise<Result<AccessTokenClaims>> {
   try {
-    const { payload } = await jwtVerify(token, key(secret), { issuer: ISSUER, audience: AUDIENCE });
-    if (typeof payload.sub !== 'string' || typeof payload['sid'] !== 'string') {
+    // Pin the allowed algorithm explicitly. Without this, jose's allowlist
+    // check is skipped entirely and any alg with a registered implementation
+    // is accepted; today that is harmless only because the verify key is a
+    // raw Uint8Array, which jose accepts solely for the HS256/384/512
+    // family, so the classic RS256-to-HS256 confusion is already blocked by
+    // key material. Declaring the algorithm here means that protection no
+    // longer depends on that accident and keeps holding if the key type
+    // ever changes.
+    const { payload } = await jwtVerify(token, key(secret), {
+      issuer: ISSUER,
+      audience: AUDIENCE,
+      algorithms: ['HS256'],
+    });
+    if (
+      typeof payload.sub !== 'string' ||
+      typeof payload['sid'] !== 'string' ||
+      !isAccessTokenType(payload['type']) ||
+      !isAccessTokenLocale(payload['locale'])
+    ) {
       return fail('TOKEN_INVALID');
     }
     return ok({
       sub: payload.sub,
-      type: payload['type'] as AccessTokenClaims['type'],
-      locale: payload['locale'] as AccessTokenClaims['locale'],
+      type: payload['type'],
+      locale: payload['locale'],
       sid: payload['sid'],
     });
   } catch {
