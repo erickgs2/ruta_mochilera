@@ -1,0 +1,9 @@
+{
+  "name": "costing",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/domain/costing/src",
+  "projectType": "library",
+  "tags": [],
+  "// targets": "to see all targets run: nx show project costing --web",
+  "targets": {}
+}

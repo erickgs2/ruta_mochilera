@@ -1,0 +1,40 @@
+{
+  "compileOnSave": false,
+  "compilerOptions": {
+    "target": "es2022",
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "lib": ["es2022", "dom", "dom.iterable"],
+    "skipLibCheck": true,
+    "strict": true,
+    "noFallthroughCasesInSwitch": true,
+    "noImplicitOverride": true,
+    "noImplicitReturns": true,
+    "noUnusedLocals": true,
+    "importHelpers": true,
+    "declaration": false,
+    "resolveJsonModule": true,
+    "esModuleInterop": true,
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
+    "types": ["node"],
+    "paths": {
+      "@rm/shared-utils": ["./libs/shared-utils/src/index.ts"],
+      "@rm/db": ["./libs/db/src/index.ts"],
+      "@rm/db/testing": ["./libs/db/src/testing/index.ts"],
+      "@rm/contracts": ["./libs/contracts/src/index.ts"],
+      "@rm/storage": ["./libs/storage/src/index.ts"],
+      "@rm/storage/testing": ["./libs/storage/src/testing/index.ts"],
+      "@rm/api-client": ["./libs/api-client/src/index.ts"],
+      "@rm/auth-web": ["./libs/auth-web/src/index.ts"],
+      "@rm/i18n": ["./libs/i18n/src/index.ts"],
+      "@rm/domain-identity": ["./libs/domain/identity/src/index.ts"],
+      "@rm/domain-rbac": ["./libs/domain/rbac/src/index.ts"],
+      "@rm/domain-staff": ["./libs/domain/staff/src/index.ts"],
+      "@rm/domain-trips": ["./libs/domain/trips/src/index.ts"],
+      "@rm/domain-costing": ["./libs/domain/costing/src/index.ts"],
+      "@rm/domain-audit": ["./libs/domain/audit/src/index.ts"],
+      "@rm/ui": ["./libs/ui/src/index.ts"]
+    }
+  }
+}

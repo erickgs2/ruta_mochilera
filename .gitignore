@@ -4,6 +4,13 @@ tmp/
 .nx/
 .env
 .env.local
-storage/
+/storage/
 .DS_Store
 .superpowers/
+
+# Next.js
+.next
+out
+
+vitest.config.*.timestamp*
+.angular
