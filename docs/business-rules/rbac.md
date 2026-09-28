@@ -64,3 +64,27 @@ ejecución y otorga el catálogo completo al rol `Super Admin`.
 2. Correr `pnpm db:seed` (es idempotente y sincroniza la tabla).
 3. Usarlo en el Route Handler correspondiente vía `route({ permission: '…' })`.
 4. Documentarlo en la tabla de arriba **en el mismo commit**.
+
+## Reglas de sesión
+
+- **Login**: correo insensible a mayúsculas. Usuario inexistente y contraseña
+  equivocada devuelven **el mismo** código `INVALID_CREDENTIALS`; distinguirlos
+  revelaría qué correos están registrados.
+- Una cuenta con `status = DISABLED` no inicia sesión, aunque la contraseña sea
+  correcta (`ACCOUNT_DISABLED`). Tampoco puede refrescar una sesión ya
+  existente: `refreshSession` vuelve a comprobar el estado de la cuenta en cada
+  llamada, así que deshabilitar a alguien corta sus sesiones vivas en cuanto
+  intente rotar su token, no sólo en el siguiente intento de login.
+- **Access token**: 15 minutos por defecto (`ACCESS_TOKEN_TTL_SECONDS`), HS256,
+  con `sid` = identificador de sesión.
+- **Refresh token**: opaco, 32 bytes aleatorios. Se persiste **sólo su SHA-256**.
+  Vigencia de 30 días por defecto (`REFRESH_TOKEN_TTL_DAYS`).
+- **Rotación**: cada refresh revoca el token usado y emite uno nuevo con el
+  mismo `session_id`, dentro de una única transacción: revocar el viejo y crear
+  el nuevo no pueden quedar separados por un fallo a la mitad.
+- **Detección de reuso**: presentar un token ya revocado revoca **todos** los
+  tokens vivos de esa sesión (agrupados por `session_id`, no sólo el token
+  presentado) y devuelve `TOKEN_REUSED`. El usuario tendrá que iniciar sesión
+  otra vez; es el comportamiento correcto ante un token filtrado.
+- **Logout**: revoca la sesión completa (todos los tokens vivos de su
+  `session_id`) y es idempotente: cerrar una sesión ya cerrada no es un error.

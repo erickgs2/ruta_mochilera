@@ -1,5 +1,5 @@
 import { PrismaPg } from '@prisma/adapter-pg';
-import { PrismaClient } from '../generated/prisma/client';
+import { Prisma, PrismaClient } from '../generated/prisma/client';
 
 /**
  * The database handle every domain service receives by injection.
@@ -7,6 +7,25 @@ import { PrismaClient } from '../generated/prisma/client';
  * know which Prisma version or driver adapter is underneath.
  */
 export type Db = PrismaClient;
+
+/**
+ * A Prisma client usable both as the top-level handle and as the callback
+ * argument of `db.$transaction(async (tx) => ...)`.
+ *
+ * `Prisma.TransactionClient` is `PrismaClient` minus `$transaction`,
+ * `$connect` and `$disconnect` (Prisma's `ITXClientDenyList`): the model
+ * delegates a helper actually needs are all still there, and a full `Db` is
+ * structurally assignable to it, so callers pass either `db` or `tx` here
+ * with no cast. A helper typed this way, unlike one typed `Db`, also cannot
+ * call `$transaction` itself and silently nest one: the compiler removes
+ * that possibility instead of a cast asserting it away.
+ *
+ * Use this for any domain helper that must run standalone or inside a
+ * transaction (e.g. issuing a session as part of login and again as part of
+ * refresh rotation); keep `Db` for the public entry points that own the
+ * transaction boundary.
+ */
+export type DbTransactionClient = Prisma.TransactionClient;
 
 export interface CreatePrismaClientOptions {
   /**
