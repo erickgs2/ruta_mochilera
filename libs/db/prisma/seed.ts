@@ -79,6 +79,15 @@ async function main() {
     create: {
       email,
       type: 'STAFF',
+      // Hashed directly with @node-rs/argon2 rather than the domain's
+      // hashPassword(): libs/db cannot depend on libs/domain/identity
+      // without creating the import cycle db -> domain/identity -> db
+      // (identity imports the Db type from @rm/db). This is safe: an
+      // encoded argon2 hash embeds its own m/t/p parameters, so
+      // verifyPassword() can check a hash produced with different
+      // options — only the cost of producing it differs, never whether
+      // it verifies. Do not "fix" this duplication by importing
+      // hashPassword here.
       passwordHash: await hash(password),
       emailVerifiedAt: new Date(),
       staffProfile: { create: { fullName: 'Initial Administrator' } },
