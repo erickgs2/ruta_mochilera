@@ -38,7 +38,12 @@ export interface AppEnv {
 export function loadEnv(source: Record<string, string | undefined>): AppEnv {
   const parsed = schema.safeParse(source);
   if (!parsed.success) {
-    const message = parsed.error.issues.map((issue) => issue.message).join('; ');
+    const message = parsed.error.issues
+      .map((issue) => {
+        const path = issue.path.join('.');
+        return path ? `${path}: ${issue.message}` : issue.message;
+      })
+      .join('; ');
     throw new Error(`Invalid environment configuration: ${message}`);
   }
   const value = parsed.data;

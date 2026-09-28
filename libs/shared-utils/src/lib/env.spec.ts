@@ -28,4 +28,8 @@ describe('loadEnv', () => {
       loadEnv({ ...valid, STORAGE_DRIVER: 's3', STORAGE_LOCAL_ROOT: undefined })
     ).toThrow(/STORAGE_S3_BUCKET/);
   });
+
+  it('names the offending variable when a stock Zod message is used', () => {
+    expect(() => loadEnv({ ...valid, DATABASE_URL: 'not-a-url' })).toThrow(/DATABASE_URL/);
+  });
 });

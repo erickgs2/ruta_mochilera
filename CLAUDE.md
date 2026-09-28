@@ -64,7 +64,7 @@ pnpm db:seed                          # sembrar permisos, rol y usuario inicial
 - `DATABASE_URL=postgresql://rm:rm@localhost:5432/rm_dev`
 - `TEST_DATABASE_URL=postgresql://rm:rm@localhost:5432/rm_test`
 - El rol `rm` y ambas bases ya existen en esta máquina.
-- Los archivos de `infra/compose/` se escriben en la Tarea 19 como artefactos de despliegue para Raspberry Pi y EC2; no se ejecutan en local.
+- `compose.dev.yml` y `compose.test.yml` ya existen como artefactos de despliegue para Raspberry Pi y EC2 y no se ejecutan en esta máquina; la Tarea 19 añade `compose.prod.yml` y los Dockerfiles.
 
 ## Spec y planes
 
