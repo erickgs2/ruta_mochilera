@@ -54,10 +54,17 @@ Stripe o desde una importación CSV recorre el mismo código.
 ```bash
 pnpm nx run-many -t lint test build   # todo el workspace
 pnpm nx test shared-utils             # una librería
-docker compose -f infra/compose/compose.dev.yml up -d    # Postgres local
 pnpm db:migrate                       # aplicar migraciones
 pnpm db:seed                          # sembrar permisos, rol y usuario inicial
 ```
+
+### Postgres en esta máquina
+
+- Dev y pruebas corren contra un **PostgreSQL 15 nativo** en `localhost:5432`, no en Docker.
+- `DATABASE_URL=postgresql://rm:rm@localhost:5432/rm_dev`
+- `TEST_DATABASE_URL=postgresql://rm:rm@localhost:5432/rm_test`
+- El rol `rm` y ambas bases ya existen en esta máquina.
+- Los archivos de `infra/compose/` se escriben en la Tarea 19 como artefactos de despliegue para Raspberry Pi y EC2; no se ejecutan en local.
 
 ## Spec y planes
 
