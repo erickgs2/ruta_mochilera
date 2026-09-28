@@ -19,3 +19,48 @@
 Al detectar el reuso de un token ya rotado, se revocan **todos** los tokens con
 ese `session_id`, no sólo el presentado. Ver `docs/business-rules/` y la
 implementación en `libs/domain/identity`.
+
+## Catálogo de permisos
+
+Fuente: `libs/domain/rbac/src/lib/permissions.ts` (29 permisos). El seed
+(`pnpm db:seed`) sincroniza la tabla `permissions` con este arreglo en cada
+ejecución y otorga el catálogo completo al rol `Super Admin`.
+
+| Clave | Categoría | Qué habilita |
+| --- | --- | --- |
+| `role.view` | rbac | View roles and the permission catalog |
+| `role.manage` | rbac | Create, edit and delete roles |
+| `staff.view` | staff | View administrator accounts |
+| `staff.manage` | staff | Create, edit and disable administrator accounts |
+| `trip.view` | trips | View trips and their details |
+| `trip.create` | trips | Create trips |
+| `trip.update` | trips | Edit trip details, translations and images |
+| `trip.publish` | trips | Publish a trip and change its status |
+| `trip.cancel` | trips | Cancel a trip |
+| `trip.change_price` | trips | Change the price of a trip that already has reservations |
+| `trip.budget.view` | costing | View the trip budget and computed sale price |
+| `trip.budget.manage` | costing | Add, edit and delete budget items and margin settings |
+| `customer.view` | customers | Search and view customer records |
+| `customer.manage` | customers | Create and edit customer records, send invitations |
+| `reservation.view` | reservations | View reservations and balances |
+| `reservation.create` | reservations | Create reservations on behalf of a customer |
+| `reservation.cancel` | reservations | Cancel a reservation and release its seat |
+| `reservation.risk.view` | reservations | Receive collection-risk alerts |
+| `payment.view` | payments | View payments and receipts |
+| `payment.register` | payments | Register cash payments taken at the branch |
+| `payment.credit.apply` | payments | Apply or write off a customer credit balance |
+| `notification.view` | notifications | View notification campaigns |
+| `notification.manage` | notifications | Create, schedule and cancel notification campaigns |
+| `expense.view` | expenses | View recorded expenses |
+| `expense.manage` | expenses | Record and edit expenses |
+| `report.view` | reports | View and export financial reports |
+| `data.backfill` | operations | Capture historical trips, reservations and payments with past dates |
+| `import.manage` | operations | Upload and confirm CSV imports |
+| `settings.manage` | operations | Change system settings |
+
+## Cómo añadir un permiso
+
+1. Agregar la entrada a `libs/domain/rbac/src/lib/permissions.ts`.
+2. Correr `pnpm db:seed` (es idempotente y sincroniza la tabla).
+3. Usarlo en el Route Handler correspondiente vía `route({ permission: '…' })`.
+4. Documentarlo en la tabla de arriba **en el mismo commit**.

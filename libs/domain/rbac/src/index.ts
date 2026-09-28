@@ -1,1 +1,2 @@
-export * from './lib/rbac';
+export * from './lib/access';
+export * from './lib/permissions';
