@@ -30,6 +30,25 @@ async function main() {
     });
   }
 
+  // Fully converge the table on the catalog, the same way the Super Admin
+  // role is resynced below: a key removed or renamed in `PERMISSIONS` must
+  // stop existing in the database too, otherwise a stale row keeps granting
+  // whatever it used to grant to every role still linked to it. The foreign
+  // key from `role_permissions` to `permissions` cascades on delete, so
+  // removing the row is enough to drop those links as well.
+  const catalogKeys = new Set(PERMISSIONS.map((permission) => permission.key));
+  const stalePermissions = await db.permission.findMany({
+    where: { key: { notIn: [...catalogKeys] } },
+  });
+  if (stalePermissions.length > 0) {
+    for (const stale of stalePermissions) {
+      console.log(`Pruning permission no longer in the catalog: ${stale.key}`);
+    }
+    await db.permission.deleteMany({
+      where: { id: { in: stalePermissions.map((stale) => stale.id) } },
+    });
+  }
+
   for (const [key, value] of Object.entries(DEFAULT_SETTINGS)) {
     await db.systemSetting.upsert({
       where: { key },
