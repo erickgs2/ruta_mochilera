@@ -70,6 +70,7 @@
     "@angular/platform-browser": "~22.1.0",
     "@angular/platform-browser-dynamic": "~22.1.0",
     "@angular/router": "~22.1.0",
+    "@aws-sdk/client-s3": "^3.1141.0",
     "@node-rs/argon2": "^2.2.1",
     "@prisma/adapter-pg": "7.10.0",
     "@prisma/client": "7.10.0",
