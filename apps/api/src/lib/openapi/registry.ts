@@ -19,6 +19,8 @@ import {
   updateStaffRequestSchema as updateStaffRequestSchemaImport,
   updateTripRequestSchema as updateTripRequestSchemaImport,
 } from '@rm/contracts';
+import type { TripCostingDto, BudgetItemDto } from '@rm/domain-costing';
+import type { TripDto, TripImageDto, TripSummaryDto } from '@rm/domain-trips';
 
 /**
  * `@rm/contracts` schemas are tagged with `.meta({ id })` here, rather than
@@ -170,6 +172,68 @@ const uploadTripImageSchema = z.object({
 });
 
 /**
+ * Compile-time proof that the hand-modelled schemas above still match the
+ * domain DTOs they claim to mirror.
+ *
+ * Nothing at runtime ever pushes a domain `Result.value` through these Zod
+ * schemas -- `toResponse()` in `apps/api/src/lib/http/route.ts` serialises it
+ * directly -- so without a check like this, the correspondence between (say)
+ * `tripSchema` and `TripDto` lives only in a prose comment. A field rename on
+ * either side would leave the API serving the new shape correctly while this
+ * file's copy silently goes stale: `schema.d.ts` would regenerate from the
+ * stale description, and the Angular client would compile clean against a
+ * type that no longer matches the wire. This block turns that drift into a
+ * `typecheck`/`build` failure instead of a bug someone notices at runtime.
+ *
+ * `Equals` is the standard "distributive conditional over a bare type
+ * parameter" trick: two types are compared as the generic constraints of two
+ * `<T>() => T extends X ? 1 : 2` function types, so it only reports `true`
+ * when `X` and `Y` are assignable to each other in both directions and no
+ * property is optional on one side and required on the other -- unlike a
+ * plain `X extends Y`, it does not accept a structural subtype as a match.
+ *
+ * `DateToString` is the one legitimate difference this comparison has to
+ * look past: every domain DTO carries `Date` where the wire (and these Zod
+ * schemas) carry an ISO string, because `Response.json` serialises `Date`
+ * values that way. It recurses through arrays and nested objects so the
+ * conversion reaches `TripDto.images[].` and `TripCostingDto.items[].`
+ * fields too, not just the top level.
+ */
+type DateToString<T> = T extends Date
+  ? string
+  : T extends (infer U)[]
+    ? DateToString<U>[]
+    : T extends object
+      ? { [K in keyof T]: DateToString<T[K]> }
+      : T;
+
+type Equals<X, Y> = (<T>() => T extends X ? 1 : 2) extends <T>() => T extends Y ? 1 : 2 ? true : false;
+
+/** Fails to compile (`Type 'false' does not satisfy the constraint 'true'`) when `Actual` and `Expected` diverge. */
+type Expect<Actual extends true> = Actual;
+
+type _tripSchemaMatchesDto = Expect<Equals<z.infer<typeof tripSchema>, DateToString<TripDto>>>;
+type _tripSummarySchemaMatchesDto = Expect<Equals<z.infer<typeof tripSummarySchema>, DateToString<TripSummaryDto>>>;
+type _tripImageSchemaMatchesDto = Expect<Equals<z.infer<typeof tripImageSchema>, DateToString<TripImageDto>>>;
+type _budgetItemSchemaMatchesDto = Expect<Equals<z.infer<typeof budgetItemSchema>, DateToString<BudgetItemDto>>>;
+type _tripCostingSchemaMatchesDto = Expect<Equals<z.infer<typeof tripCostingSchema>, DateToString<TripCostingDto>>>;
+
+/**
+ * `noUnusedLocals` would otherwise flag the five type aliases above as
+ * unused -- they only exist to be evaluated by the compiler, never
+ * referenced at a value position. Re-exporting them as a single type (never
+ * imported by anything) is enough to count as a use without adding any
+ * runtime code or public API surface.
+ */
+export type _OpenApiDtoAssertions = [
+  _tripSchemaMatchesDto,
+  _tripSummarySchemaMatchesDto,
+  _tripImageSchemaMatchesDto,
+  _budgetItemSchemaMatchesDto,
+  _tripCostingSchemaMatchesDto,
+];
+
+/**
  * The Zod schemas in `@rm/contracts` (plus the response DTOs defined above,
  * for the endpoints contracts does not yet cover) are the single source of
  * truth: this file derives the OpenAPI document from them, and the Angular
@@ -199,6 +263,7 @@ export function buildOpenApiDocument() {
     responses: {
       200: { description: 'Session issued', ...json(sessionResponseSchema) },
       401: problem('Invalid email or password'),
+      422: problem('Validation failed'),
     },
   });
 
@@ -211,6 +276,7 @@ export function buildOpenApiDocument() {
       200: { description: 'Session rotated', ...json(sessionResponseSchema) },
       401: problem('Unknown, expired or replayed refresh token'),
       403: problem('Account disabled'),
+      422: problem('Validation failed'),
     },
   });
 
@@ -221,6 +287,7 @@ export function buildOpenApiDocument() {
     request: { body: requestBody(refreshRequestSchema) },
     responses: {
       200: { description: 'Session revoked (idempotent: an already-closed session still returns 200)', ...json(z.null()) },
+      422: problem('Validation failed'),
     },
   });
 
@@ -421,6 +488,7 @@ export function buildOpenApiDocument() {
       403: problem('Missing trip.publish'),
       404: problem('Trip not found'),
       409: problem('Illegal status transition, or the trip is not publishable yet'),
+      422: problem('Validation failed'),
     },
   });
 
