@@ -70,10 +70,22 @@ async function parseBody<TBody>(
   return ok(parsed.data);
 }
 
+/**
+ * Statuses the Fetch spec forbids from carrying a body (WHATWG "null body
+ * status"). `Response.json(value, { status })` always serialises `value` into
+ * a body -- even `Response.json(null, { status: 204 })` produces the 4-byte
+ * body `"null"` -- so calling it with one of these statuses throws at
+ * runtime regardless of what `value` is. A `DELETE` endpoint returning
+ * `successStatus: 204` is exactly this case.
+ */
+const NULL_BODY_STATUSES = new Set([204, 205, 304]);
+
 /** Turns a domain `Result` into the HTTP response: problem+json on failure, the value on success. */
 function toResponse<TResult>(result: Result<TResult>, successStatus: number | undefined): Response {
   if (!result.ok) return problemResponse(result.error);
-  return Response.json(result.value, { status: successStatus ?? 200 });
+  const status = successStatus ?? 200;
+  if (NULL_BODY_STATUSES.has(status)) return new Response(null, { status });
+  return Response.json(result.value, { status });
 }
 
 /**

@@ -150,6 +150,21 @@ describe('route', () => {
     expect(JSON.stringify(body)).not.toContain('boom');
   });
 
+  it('returns a bodyless 204 when successStatus is 204, even though the handler resolves a value', async () => {
+    // Regression test: `Response.json(value, { status: 204 })` throws at
+    // runtime for any `value` (including `null`), because the Fetch spec
+    // forbids a body on a null-body status. A DELETE endpoint returning
+    // `successStatus: 204` must not go through `Response.json` at all.
+    mockedGetActor.mockResolvedValue(staffActor());
+    const handler = vi.fn(async () => ok(null));
+    const endpoint = route({ successStatus: 204, handler });
+
+    const response = await endpoint(new Request('http://localhost/x', { method: 'DELETE' }));
+
+    expect(response.status).toBe(204);
+    expect(await response.text()).toBe('');
+  });
+
   it('rejects at compile time: a public route cannot declare a permission', () => {
     // This body never runs any meaningful assertion; the check is the
     // `@ts-expect-error` itself. If `{ auth: 'public', permission: ... }`
