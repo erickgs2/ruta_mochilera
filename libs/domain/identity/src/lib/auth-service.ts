@@ -85,7 +85,12 @@ async function issueSession(
   return { accessToken, refreshToken: token, expiresInSeconds: config.accessTokenTtlSeconds };
 }
 
-async function describeUser(db: Db, userId: string): Promise<AuthenticatedUser> {
+/**
+ * Shapes the profile DTO shared by `login`, `refreshSession` and the `/me`
+ * endpoint: exported so the HTTP layer never re-implements this lookup (and
+ * its staff/customer `fullName` fallback) directly against Prisma.
+ */
+export async function describeUser(db: Db, userId: string): Promise<AuthenticatedUser> {
   const user = await db.user.findUniqueOrThrow({
     where: { id: userId },
     include: { staffProfile: true, customerProfile: true },

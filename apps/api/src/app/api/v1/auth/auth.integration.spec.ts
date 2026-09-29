@@ -70,6 +70,8 @@ describe('auth endpoints', () => {
   it('rejects /me without a token', async () => {
     const response = await meRoute(new Request('http://localhost/api/v1/me'));
     expect(response.status).toBe(401);
+    expect(response.headers.get('content-type')).toBe('application/problem+json');
+    expect((await response.json()).code).toBe('TOKEN_INVALID');
   });
 
   it('returns the profile for an authenticated caller', async () => {
