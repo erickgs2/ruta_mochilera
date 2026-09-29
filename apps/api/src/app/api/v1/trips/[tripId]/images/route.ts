@@ -1,5 +1,5 @@
-import { randomUUID } from 'node:crypto';
-import { fail, ok } from '@rm/shared-utils';
+import { fail } from '@rm/shared-utils';
+import { addTripImage } from '@rm/domain-trips';
 import { db } from '../../../../../../lib/db';
 import { route } from '../../../../../../lib/http/route';
 import { storage } from '../../../../../../lib/storage';
@@ -21,6 +21,13 @@ const MAX_BYTES = 8 * 1024 * 1024;
  * stored content type and the file extension from the sniff result (never
  * from the client) closes that gap: a mislabelled non-image is rejected
  * before it ever reaches the storage provider.
+ *
+ * This sniff, the multipart parsing and the size limit below are the
+ * transport-level parts of accepting an upload -- facts about what arrived
+ * over the wire. The business rules about the trip's gallery (first image
+ * becomes the cover, position sequencing) live in `@rm/domain-trips`'s
+ * `addTripImage`, which this handler calls once the upload has been
+ * validated.
  */
 const IMAGE_SIGNATURES: { type: 'image/jpeg' | 'image/png' | 'image/webp'; extension: string; matches: (buffer: Buffer) => boolean }[] = [
   {
@@ -52,11 +59,6 @@ export const POST = route({
   permission: 'trip.update',
   successStatus: 201,
   handler: async ({ params, request }) => {
-    const tripId = params['tripId'];
-    if (!(await db().trip.findUnique({ where: { id: tripId }, select: { id: true } }))) {
-      return fail('NOT_FOUND');
-    }
-
     // `request.formData()` throws for a body that is not well-formed
     // multipart at all (wrong content-type, a missing boundary, a truncated
     // body) rather than returning something we can branch on. `route()`
@@ -74,28 +76,12 @@ export const POST = route({
     const sniffed = sniffImageType(buffer);
     if (!sniffed) return fail('VALIDATION_FAILED', { field: 'contentType' });
 
-    // The key is derived from the trip id and a freshly generated UUID --
-    // never from the client-supplied filename -- so a filename such as
-    // `../../etc/passwd.jpg`, or one with no extension at all, never reaches
-    // the storage layer as a path component. `assertSafeKey` inside the
-    // storage provider (`@rm/storage`) is a second, independent gate on top
-    // of this: even if this construction were ever wrong, it would still
-    // refuse to write outside its root.
-    const key = `trips/${tripId}/${randomUUID()}.${sniffed.extension}`;
-    await storage().put(key, buffer, sniffed.type);
-
-    const count = await db().tripImage.count({ where: { tripId } });
-    const image = await db().tripImage.create({
-      data: {
-        tripId,
-        storageKey: key,
-        position: count,
-        // The first image uploaded becomes the cover by default.
-        isCover: count === 0,
-        altText: (form.get('altText') as string | null) ?? undefined,
-      },
+    const altText = form.get('altText');
+    return addTripImage(db(), storage(), params['tripId'], {
+      buffer,
+      contentType: sniffed.type,
+      extension: sniffed.extension,
+      altText: typeof altText === 'string' ? altText : undefined,
     });
-
-    return ok({ ...image, url: storage().publicUrl(key) });
   },
 });

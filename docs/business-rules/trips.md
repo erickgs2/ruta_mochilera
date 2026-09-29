@@ -14,6 +14,44 @@ Un viaje sólo pasa a `PUBLISHED` si tiene **al menos una imagen** y un
 `price_per_seat_cents` mayor que cero. El error `TRIP_NOT_PUBLISHABLE` incluye
 en `details.missing` la lista de lo que falta.
 
+## Galería de imágenes
+
+Implementado en `libs/domain/trips/src/lib/trip-image-service.ts`
+(`addTripImage`, `deleteTripImage`), no en el handler HTTP: son reglas de
+negocio sobre la galería del viaje, y viven en el dominio por la misma razón
+que el recálculo de precio al cambiar el cupo (ver arriba) — así una CLI o una
+importación que llamen a estas funciones directamente obtienen las mismas
+garantías que el endpoint.
+
+- **La primera imagen subida** para un viaje se marca automáticamente como
+  **portada** (`is_cover = true`).
+- Las imágenes se numeran (`position`) en el orden en que se suben, empezando
+  en 0.
+- **Al eliminar la portada**, la siguiente imagen por `position` la sustituye
+  automáticamente. Esa promoción ocurre en la **misma transacción** que borra
+  la fila eliminada.
+- El objeto almacenado se elimina **después** de que la transacción que borra
+  la fila (y promueve la siguiente portada) haya confirmado, nunca antes. El
+  orden inverso —borrar primero el objeto— fallaría peor: si la transacción
+  después revirtiera, la fila quedaría apuntando a un objeto que ya no existe,
+  y cualquiera vería una imagen rota de forma indefinida. Con el orden
+  elegido, el único modo de falla es un objeto huérfano en el almacenamiento
+  —bytes que ya nadie referencia— si el borrado físico falla después de que
+  la base de datos ya confirmó el cambio: un problema de espacio desperdiciado
+  que una tarea de limpieza periódica puede resolver, nunca una referencia
+  rota visible para un cliente.
+
+Lo que **no** vive aquí: aceptar el `multipart/form-data`, verificar los bytes
+mágicos del archivo (para no confiar en el `Content-Type` que declara el
+navegador) y aplicar el límite de tamaño. Eso es trabajo de transporte —
+hechos sobre lo que llegó por la red, no reglas sobre la galería— y se queda
+en el handler HTTP (`apps/api/.../images/route.ts`).
+
+`libs/domain/trips` recibe el proveedor de almacenamiento inyectado como el
+puerto `StorageProvider` de `@rm/storage` (la interfaz, nunca la
+implementación local o S3 concreta) — la misma razón por la que recibe el
+cliente Prisma inyectado en vez de construirlo él mismo.
+
 ## Cupo disponible
 
 ```

@@ -11,7 +11,17 @@ export async function GET(
   _request: Request,
   context: { params: Promise<{ key: string[] }> }
 ): Promise<Response> {
-  if (config().storageDriver !== 'local') return new Response(null, { status: 404 });
+  if (config().storageDriver !== 'local') {
+    // The response is a bare 404, same as a genuine missing key -- the
+    // client must never learn how storage is configured. But a 404 here
+    // could otherwise mean either "this file does not exist" or "this route
+    // is being hit in an environment where it should never be reachable at
+    // all", and those need different fixes. Logging server-side, naming the
+    // driver, is what makes that second case discoverable instead of
+    // looking exactly like the first one forever.
+    console.warn(`Refusing to serve a local file: storage driver is "${config().storageDriver}", not "local"`);
+    return new Response(null, { status: 404 });
+  }
 
   const { key } = await context.params;
   try {

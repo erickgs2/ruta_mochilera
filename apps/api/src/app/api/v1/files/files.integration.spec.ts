@@ -1,7 +1,7 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { LocalFileStorage } from '@rm/storage';
 import { config, setConfig } from '../../../../lib/config';
 import { setStorage, storage } from '../../../../lib/storage';
@@ -46,10 +46,17 @@ describe('files route', () => {
     // In qa and production the driver is S3 and the bucket serves files
     // directly, so this route must never fall back to the local disk.
     setConfig({ ...config(), storageDriver: 's3' });
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
 
     const response = await filesRoute(new Request('http://localhost/api/v1/files/trips/a/cover.jpg'), {
       params: Promise.resolve({ key: ['trips', 'a', 'cover.jpg'] }),
     });
+
+    // A bare 404 must never leak the misconfiguration to the client -- but
+    // it is indistinguishable from a genuine missing key, so the driver name
+    // has to be discoverable server-side instead.
     expect(response.status).toBe(404);
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('s3'));
+    warn.mockRestore();
   });
 });
