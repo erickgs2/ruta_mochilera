@@ -30,8 +30,12 @@ export class LocalFileStorage implements StorageProvider {
   }
 
   async exists(key: string): Promise<boolean> {
+    // Resolve (and validate) the path before the try, so an unsafe key
+    // throws instead of being absorbed by the catch below, which exists
+    // only to turn a genuine filesystem miss into `false`.
+    const target = this.path(key);
     try {
-      await access(this.path(key));
+      await access(target);
       return true;
     } catch {
       return false;

@@ -98,5 +98,19 @@ export function runStorageContract(name: string, factory: () => Promise<StorageP
     it('rejects building a public url for an unsafe key', () => {
       expect(() => storage.publicUrl('../escape.txt')).toThrow();
     });
+
+    it('rejects an unsafe key on every keyed operation, not just put', async () => {
+      // The ten cases above only ever call put(). That let a backend reject
+      // an unsafe key in put()/get() while quietly swallowing it in
+      // exists() or delete() — every implementation must refuse the same
+      // key across the whole interface, so pin one representative unsafe
+      // key against all five operations here.
+      const unsafeKey = '../escape.txt';
+      await expect(storage.put(unsafeKey, Buffer.from('x'), 'text/plain')).rejects.toThrow();
+      await expect(storage.get(unsafeKey)).rejects.toThrow();
+      await expect(storage.delete(unsafeKey)).rejects.toThrow();
+      await expect(storage.exists(unsafeKey)).rejects.toThrow();
+      expect(() => storage.publicUrl(unsafeKey)).toThrow();
+    });
   });
 }
