@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { closeTestDb, prepareTestDb, resetDatabase, withTestDb } from '@rm/db/testing';
 import type { Actor } from '@rm/domain-rbac';
 import { changeTripStatus, createTrip, listTrips, updateTrip } from './trip-service';
@@ -116,6 +116,19 @@ describe('trip service', () => {
     if (!result.ok) expect(result.error.code).toBe('PERMISSION_DENIED');
   });
 
+  it('rejects an ordinary future trip explicitly flagged as backfilled without the permission', async () => {
+    // `isBackfilled: true` must demand `data.backfill` on its own, even when
+    // none of the data-derived triggers (past date, pre-sold seats, non-DRAFT
+    // initial status) fire -- otherwise a caller could pollute the audit
+    // trail by labelling a perfectly ordinary trip as a hot-start backfill.
+    const result = await createTrip(db, actorWith(['trip.create']), {
+      ...baseInput,
+      isBackfilled: true,
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.code).toBe('PERMISSION_DENIED');
+  });
+
   it('allows a past, in-progress trip with pre-sold seats when backfilling', async () => {
     const result = await createTrip(db, actorWith(['trip.create', 'data.backfill']), {
       ...baseInput,
@@ -138,6 +151,54 @@ describe('trip service', () => {
     await createTrip(db, actorWith(['trip.create']), baseInput);
     const second = await createTrip(db, actorWith(['trip.create']), baseInput);
     expect(second.ok && second.value.slug).toBe('oaxaca-magica-2026-2');
+  });
+
+  it('recovers with the next slug when two concurrent creates collide on the same one', async () => {
+    // Reproduces the race `uniqueSlug`'s pre-check alone cannot close: a
+    // second trip with the same slug is inserted immediately after the first
+    // `findUnique` check has already reported the base slug free, so
+    // `createTrip`'s own insert collides on the database's unique index
+    // rather than on the application-level pre-check. See the cast note in
+    // `role-service.spec.ts`: `mockImplementation` requires an exact
+    // structural match with Prisma's fluent client type, which a plain async
+    // replacement never has.
+    const originalFindUnique = db.trip.findUnique.bind(db.trip);
+    let racerInserted = false;
+    const findUniqueSpy = vi.spyOn(db.trip, 'findUnique').mockImplementation(
+      (async (args: Parameters<typeof db.trip.findUnique>[0]) => {
+        const result = await originalFindUnique(args);
+        if (!racerInserted && args?.where?.slug === 'oaxaca-magica-2026') {
+          racerInserted = true;
+          await db.trip.create({
+            data: {
+              slug: 'oaxaca-magica-2026',
+              departureDate: baseInput.departureDate,
+              returnDate: baseInput.returnDate,
+              paymentDeadline: baseInput.paymentDeadline,
+              totalCapacity: baseInput.totalCapacity,
+              holdTtlHours: baseInput.holdTtlHours,
+              minimumDepositCents: baseInput.minimumDepositCents,
+              marginMode: baseInput.marginMode,
+              marginValue: baseInput.marginValue,
+              createdById: creatorId,
+            },
+          });
+        }
+        return result;
+      }) as unknown as typeof db.trip.findUnique
+    );
+
+    try {
+      const result = await createTrip(db, actorWith(['trip.create']), baseInput);
+      expect(result.ok).toBe(true);
+      // The racer took the base slug, so the retry inside `createTrip` must
+      // land on the next free one -- proving the backstop recomputed and
+      // retried rather than the first-pass loop having somehow avoided the
+      // race.
+      if (result.ok) expect(result.value.slug).toBe('oaxaca-magica-2026-2');
+    } finally {
+      findUniqueSpy.mockRestore();
+    }
   });
 
   it('refuses to publish a trip without images or a price', async () => {
@@ -190,6 +251,31 @@ describe('trip service', () => {
     // The slug does not change: it may already be shared on social media.
     expect(updated.value.slug).toBe('oaxaca-magica-2026');
     expect(updated.value.translations[0].name).toBe('Oaxaca Renombrada');
+  });
+
+  it('rejects a capacity update that would drop below the pre-sold seats being persisted', async () => {
+    // With the Phase 2 `committedSeats` stub returning zero, the only way to
+    // exercise CAPACITY_BELOW_COMMITTED today is through pre-sold seats: the
+    // update tries to set 15 pre-sold seats against a capacity of only 10.
+    const created = await createTrip(db, actorWith(['trip.create']), baseInput);
+    if (!created.ok) throw new Error('setup failed');
+
+    const result = await updateTrip(db, actorWith(['trip.update']), created.value.id, {
+      ...baseInput,
+      totalCapacity: 10,
+      preSoldSeats: 15,
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe('CAPACITY_BELOW_COMMITTED');
+      expect(result.error.details).toEqual({ alreadyTaken: 15 });
+    }
+
+    // The failed update must not have written anything.
+    const untouched = await db.trip.findUniqueOrThrow({ where: { id: created.value.id } });
+    expect(untouched.totalCapacity).toBe(20);
+    expect(untouched.preSoldSeats).toBe(0);
   });
 
   it('filters the list by status and by name', async () => {

@@ -22,26 +22,43 @@ available_seats = total_capacity − pre_sold_seats − reservas ACTIVE − apar
 
 **Nunca se almacena.** Un contador mutable es donde aparece la sobreventa cuando
 dos personas reservan el último lugar en el mismo segundo. En la Fase 2, el
-cálculo ocurre dentro de una transacción que bloquea la fila del viaje.
+cálculo ocurre dentro de una transacción que bloquea la fila del viaje; hoy,
+con `committedSeats` siempre en cero, no hay nada que ese bloqueo protegería
+todavía, así que no existe (ver más abajo).
 
 `pre_sold_seats` son los lugares vendidos fuera del sistema durante el arranque
 en caliente, que la agencia no quiso capturar uno por uno.
 
 En la Fase 1 todavía no existe el modelo `Reservation`, así que las reservas
-activas y los apartados vigentes se calculan con un stub
-(`committedSeats` en `trip-service.ts`) que siempre regresa cero. La Fase 2
-sustituye ese stub por las consultas reales contra `Reservation`.
+activas y los apartados vigentes se calculan con un stub (`committedSeats` en
+`trip-service.ts`) que siempre regresa cero. **Los tres puntos donde se calcula
+el cupo** — el detalle de un viaje, el listado (`listTrips`) y la validación de
+cupo al editar — pasan por este mismo stub, así que los tres cambian en
+conjunto el día que la Fase 2 lo sustituya por las consultas reales contra
+`Reservation`; ninguno calcula por su cuenta.
 
 ## Validaciones al crear y editar
 
-| Regla | Error |
-|---|---|
-| `total_capacity > 0` | `INVALID_CAPACITY` |
-| `0 ≤ pre_sold_seats ≤ total_capacity` | `INVALID_CAPACITY` |
-| `return_date ≥ departure_date` | `VALIDATION_FAILED` |
-| `payment_deadline ≤ departure_date` | `VALIDATION_FAILED` |
-| Existe traducción en español | `MISSING_REQUIRED_TRANSLATION` |
-| Al editar, `total_capacity` no baja de lo ya comprometido | `CAPACITY_BELOW_COMMITTED` |
+| Regla | Al crear | Al editar |
+|---|---|---|
+| `total_capacity > 0` | `INVALID_CAPACITY` | `INVALID_CAPACITY` |
+| `pre_sold_seats ≥ 0` | `INVALID_CAPACITY` | `INVALID_CAPACITY` |
+| `pre_sold_seats ≤ total_capacity` | `INVALID_CAPACITY` | `CAPACITY_BELOW_COMMITTED` (ver nota) |
+| `return_date ≥ departure_date` | `VALIDATION_FAILED` | `VALIDATION_FAILED` |
+| `payment_deadline ≤ departure_date` | `VALIDATION_FAILED` | `VALIDATION_FAILED` |
+| Existe traducción en español | `MISSING_REQUIRED_TRANSLATION` | `MISSING_REQUIRED_TRANSLATION` |
+
+Nota: al crear, un viaje nuevo no tiene nada "ya comprometido" todavía, así que
+exceder el cupo con `pre_sold_seats` es sencillamente un dato inválido
+(`INVALID_CAPACITY`). Al editar, esa misma condición se evalúa como parte de
+"¿el cupo nuevo alcanza para lo que ya está comprometido?" (`pre_sold_seats`
+que se va a persistir, más reservas activas y apartados vigentes — hoy
+siempre cero), así que produce el código más específico
+`CAPACITY_BELOW_COMMITTED` en su lugar. Esta verificación se calcula **con el
+valor de `pre_sold_seats` que se va a guardar**, no con el valor anterior: son
+datos que el propio formulario de edición está sobrescribiendo, así que el
+piso que protege esta regla tiene que ser el número que será cierto en cuanto
+la edición se guarde.
 
 El inglés es **opcional**: cuando falta, la app muestra el español.
 
@@ -51,11 +68,38 @@ Se genera del nombre en español más el año de salida (`oaxaca-magica-2026`) y
 desambigua con un contador si ya existe. **Nunca cambia al editar**: puede estar
 compartido en redes sociales.
 
+Dos creaciones concurrentes con el mismo nombre pueden pasar la verificación
+previa antes de que cualquiera haya insertado, y chocar contra el índice único
+de la base de datos. Ese choque no se propaga como error interno: se recalcula
+el siguiente slug disponible contra el estado actual de la tabla y se
+reintenta la inserción una vez (el slug es generado por el sistema, no elegido
+por quien llama, así que la respuesta correcta es que ambas creaciones
+terminen existiendo con slugs distintos, no que la segunda reciba un
+conflicto que tenga que resolver a mano). Un segundo choque seguido — una
+carrera mucho mayor que dos solicitudes concurrentes normales — sí se reporta
+como `CONFLICT`.
+
 ## Arranque en caliente
 
-Crear un viaje con fecha de salida pasada, con `pre_sold_seats > 0` **o** con un
-estado inicial distinto de `DRAFT` exige el permiso `data.backfill`. Basta con
-que se cumpla **cualquiera** de las tres condiciones — no hace falta que se
-cumplan todas — porque de lo contrario alguien podría crear un viaje con fecha
-pasada sin el permiso con sólo dejar `pre_sold_seats` en cero. El viaje queda
+Crear un viaje exige el permiso `data.backfill` en cuanto se cumple
+**cualquiera** de estas cuatro condiciones — no hace falta que se cumplan
+todas:
+
+1. El llamador pide explícitamente `is_backfilled = true`.
+2. La fecha de salida ya pasó.
+3. `pre_sold_seats > 0`.
+4. El estado inicial es distinto de `DRAFT`.
+
+Es una condición `OR`, nunca `AND`: de lo contrario alguien podría crear un
+viaje con fecha pasada sin el permiso con sólo dejar `pre_sold_seats` en cero,
+o marcar un viaje corriente como backfilled (ensuciando la bitácora de
+auditoría) sin sostener el permiso que ese rótulo implica. El viaje queda
 marcado con `is_backfilled = true` y la creación se registra en `audit_logs`.
+
+La fecha de salida es una columna `DATE` sin zona horaria: "¿ya pasó?" se
+evalúa comparando el día calendario de `departure_date` contra el día
+calendario de "hoy" en `SystemSetting.organization.timezone` (por defecto
+`America/Mexico_City`, UTC−6) — nunca comparando instantes UTC en crudo. Esa
+comparación ingenua clasificaría mal un viaje que sale "hoy" durante las
+primeras horas del día en UTC, seis horas antes de que empiece el día en
+Ciudad de México. Implementado en `isPastDate` (`@rm/shared-utils/calendar.ts`).

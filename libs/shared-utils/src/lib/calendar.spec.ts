@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { monthStartsBetween } from './calendar';
+import { isPastDate, monthStartsBetween } from './calendar';
 
 const TZ = 'America/Mexico_City';
 const at = (iso: string) => new Date(iso);
@@ -33,5 +33,28 @@ describe('monthStartsBetween', () => {
     // 2026-04-01T02:00Z is still Mar 31 20:00 in Mexico City,
     // so April 1st still counts as pending.
     expect(monthStartsBetween(at('2026-04-01T02:00:00Z'), at('2026-04-05T12:00:00Z'), TZ)).toBe(1);
+  });
+});
+
+describe('isPastDate', () => {
+  it('treats a date on a calendar day strictly before today as past', () => {
+    expect(isPastDate(at('2026-09-28T00:00:00Z'), at('2026-09-29T12:00:00Z'), TZ)).toBe(true);
+  });
+
+  it('does not treat today as past', () => {
+    expect(isPastDate(at('2026-09-29T00:00:00Z'), at('2026-09-29T12:00:00Z'), TZ)).toBe(false);
+  });
+
+  it('does not treat a future date as past', () => {
+    expect(isPastDate(at('2026-12-01T00:00:00Z'), at('2026-09-29T12:00:00Z'), TZ)).toBe(false);
+  });
+
+  it('pins the UTC-rollover boundary: a trip departing today in Mexico City is not past just because UTC already rolled over', () => {
+    // 2026-09-29T02:00:00Z is still 2026-09-28T20:00 in America/Mexico_City
+    // (UTC-6), so "today" there is still the 28th. A trip departing on the
+    // 28th must not be classified as past just because UTC has already
+    // ticked over into the 29th. Naively comparing `departureDate < now` as
+    // raw instants gets this wrong for six hours every day.
+    expect(isPastDate(at('2026-09-28T00:00:00Z'), at('2026-09-29T02:00:00Z'), TZ)).toBe(false);
   });
 });

@@ -1,7 +1,7 @@
-import type { Db } from '@rm/db';
+import { uniqueViolationIndex, type Db, type DbTransactionClient } from '@rm/db';
 import { recordAudit } from '@rm/domain-audit';
 import { requirePermission, type Actor } from '@rm/domain-rbac';
-import { fail, ok, type Result } from '@rm/shared-utils';
+import { fail, isPastDate, ok, type Result } from '@rm/shared-utils';
 import { availableSeats } from './capacity';
 import { slugify } from './slug';
 import { canTransition, type TripStatus } from './trip-status';
@@ -72,14 +72,37 @@ const TRIP_SHAPE = {
   images: { orderBy: { position: 'asc' } },
 } as const;
 
+const DEFAULT_TIMEZONE = 'America/Mexico_City';
+const TIMEZONE_SETTING_KEY = 'organization.timezone';
+
+/**
+ * Reads the organisation's IANA timezone from `SystemSetting`, falling back
+ * to the seed's own default when the row is missing -- e.g. a database that
+ * has run migrations but never the seed, which is exactly this file's own
+ * test suite. Calendar rules must never hardcode a timezone (a workspace-wide
+ * constraint), so every date comparison below resolves it through here
+ * instead of a literal.
+ */
+async function organizationTimeZone(db: Db): Promise<string> {
+  const setting = await db.systemSetting.findUnique({ where: { key: TIMEZONE_SETTING_KEY } });
+  return typeof setting?.value === 'string' ? setting.value : DEFAULT_TIMEZONE;
+}
+
 /**
  * Stub for Phase 2. Phase 1 has no `Reservation` model yet, so this always
  * reports zero commitments; the real queries against `Reservation` (ACTIVE
  * status and live HELD rows within their TTL) land with the reservations
- * domain task. Every caller below already routes through this function so
+ * domain task. Every caller in this file -- `toDto`, `listTrips`, and
+ * `updateTrip`'s capacity check -- already routes through this function, so
  * that swap is the only change needed later.
+ *
+ * Typed to accept `DbTransactionClient` rather than `Db`, the same reasoning
+ * `recordAudit` uses: `updateTrip` calls this from inside its transaction,
+ * and a full `Db` is structurally assignable to `DbTransactionClient`, so
+ * every call site -- inside a transaction or not -- passes its client
+ * through with no cast.
  */
-async function committedSeats(_db: Db, _tripId: string) {
+async function committedSeats(_db: DbTransactionClient, _tripId: string) {
   return { activeReservations: 0, liveHolds: 0 };
 }
 
@@ -141,11 +164,33 @@ function validateDates(input: {
   return ok(null);
 }
 
+/**
+ * Full capacity validation used at creation: capacity must be positive, and
+ * pre-sold seats cannot be negative or exceed it. A brand-new trip has no
+ * committed state yet for anything to be "below", so this is the only
+ * capacity check `createTrip` needs.
+ */
 function validateCapacity(totalCapacity: number, preSoldSeats: number): Result<null> {
   if (totalCapacity <= 0) return fail('INVALID_CAPACITY', { field: 'totalCapacity' });
   if (preSoldSeats < 0 || preSoldSeats > totalCapacity) {
     return fail('INVALID_CAPACITY', { field: 'preSoldSeats' });
   }
+  return ok(null);
+}
+
+/**
+ * Structural capacity validation used at update time: capacity must be
+ * positive and pre-sold seats cannot be negative. Deliberately does not
+ * compare `preSoldSeats` against `totalCapacity` here -- on update, that
+ * comparison is subsumed by the `CAPACITY_BELOW_COMMITTED` check inside
+ * `updateTrip`'s transaction, which additionally folds in real reservations
+ * and holds once Phase 2 supplies them, and which reports the more specific
+ * "you can't shrink capacity below what's already committed" rather than a
+ * generic invalid-input error for what is, on update, exactly that mistake.
+ */
+function validateCapacityStructure(totalCapacity: number, preSoldSeats: number): Result<null> {
+  if (totalCapacity <= 0) return fail('INVALID_CAPACITY', { field: 'totalCapacity' });
+  if (preSoldSeats < 0) return fail('INVALID_CAPACITY', { field: 'preSoldSeats' });
   return ok(null);
 }
 
@@ -166,6 +211,54 @@ async function uniqueSlug(db: Db, base: string): Promise<string> {
   return candidate;
 }
 
+/** The unique index backing `Trip.slug` (see the `init` migration). */
+const TRIP_SLUG_UNIQUE_INDEX = 'trips_slug_key';
+
+/**
+ * Detects the race `uniqueSlug`'s pre-check cannot close on its own: see the
+ * retry in `createTrip`. Mirrors `role-service.ts`'s `isRoleNameConflict`.
+ */
+function isSlugConflict(error: unknown): boolean {
+  return uniqueViolationIndex(error) === TRIP_SLUG_UNIQUE_INDEX;
+}
+
+async function insertTrip(
+  db: Db,
+  actor: Actor,
+  input: CreateTripInput,
+  slug: string,
+  isBackfilled: boolean
+) {
+  return db.$transaction(async (tx) => {
+    const created = await tx.trip.create({
+      data: {
+        slug,
+        status: input.initialStatus ?? 'DRAFT',
+        departureDate: input.departureDate,
+        returnDate: input.returnDate,
+        paymentDeadline: input.paymentDeadline,
+        totalCapacity: input.totalCapacity,
+        preSoldSeats: input.preSoldSeats,
+        holdTtlHours: input.holdTtlHours,
+        minimumDepositCents: input.minimumDepositCents,
+        marginMode: input.marginMode,
+        marginValue: input.marginValue,
+        isBackfilled,
+        createdById: actor.userId,
+        translations: { create: input.translations },
+      },
+    });
+    await recordAudit(tx, {
+      actorUserId: actor.userId,
+      action: 'trip.created',
+      entityType: 'Trip',
+      entityId: created.id,
+      after: { slug, status: created.status, isBackfilled: created.isBackfilled },
+    });
+    return created;
+  });
+}
+
 export async function createTrip(
   db: Db,
   actor: Actor,
@@ -180,50 +273,59 @@ export async function createTrip(
   const dates = validateDates(input);
   if (!dates.ok) return dates;
 
-  // Hot start: a past departure date, pre-sold seats, or an initial status
-  // other than DRAFT each independently require `data.backfill` -- this must
-  // be `||`, not `&&`, or someone could create a past-dated trip without the
-  // permission just by also leaving pre-sold seats at zero.
-  const needsBackfill =
-    input.departureDate < new Date() ||
+  const timeZone = await organizationTimeZone(db);
+
+  // Hot start: the caller explicitly flagging the trip as backfilled, a past
+  // departure date, pre-sold seats, or an initial status other than DRAFT
+  // each independently require `data.backfill` -- this must be `||` across
+  // every one of these, not `&&`, or (for example) someone could create a
+  // past-dated trip without the permission just by also leaving pre-sold
+  // seats at zero. `input.isBackfilled` is folded into the same `||` for the
+  // same reason: without it, a caller could mark an ordinary future trip as
+  // backfilled -- polluting the audit trail with a label the permission is
+  // meant to gate -- without ever holding `data.backfill`.
+  const isBackfilled =
+    input.isBackfilled ||
+    isPastDate(input.departureDate, new Date(), timeZone) ||
     input.preSoldSeats > 0 ||
     (input.initialStatus !== undefined && input.initialStatus !== 'DRAFT');
 
-  if (needsBackfill) {
+  if (isBackfilled) {
     const allowed = requirePermission(actor, 'data.backfill');
     if (!allowed.ok) return allowed;
   }
 
-  const slug = await uniqueSlug(db, slugify(name.value, input.departureDate));
+  const baseSlug = slugify(name.value, input.departureDate);
+  let slug = await uniqueSlug(db, baseSlug);
 
-  const trip = await db.$transaction(async (tx) => {
-    const created = await tx.trip.create({
-      data: {
-        slug,
-        status: input.initialStatus ?? 'DRAFT',
-        departureDate: input.departureDate,
-        returnDate: input.returnDate,
-        paymentDeadline: input.paymentDeadline,
-        totalCapacity: input.totalCapacity,
-        preSoldSeats: input.preSoldSeats,
-        holdTtlHours: input.holdTtlHours,
-        minimumDepositCents: input.minimumDepositCents,
-        marginMode: input.marginMode,
-        marginValue: input.marginValue,
-        isBackfilled: input.isBackfilled || needsBackfill,
-        createdById: actor.userId,
-        translations: { create: input.translations },
-      },
-    });
-    await recordAudit(tx, {
-      actorUserId: actor.userId,
-      action: 'trip.created',
-      entityType: 'Trip',
-      entityId: created.id,
-      after: { slug, status: created.status, isBackfilled: created.isBackfilled },
-    });
-    return created;
-  });
+  let trip;
+  try {
+    trip = await insertTrip(db, actor, input, slug, isBackfilled);
+  } catch (error) {
+    if (!isSlugConflict(error)) throw error;
+    // Two concurrent creates for the same name and departure year can both
+    // pass `uniqueSlug`'s pre-check before either has inserted, so the
+    // database's unique index on `slug` is the final word, not just a
+    // nice-to-have -- the same race `role-service.createRole` closes for
+    // role names. Unlike a user-chosen name, though, this slug is generated
+    // by us: a caller creating "Oaxaca Mágica" twice concurrently should end
+    // up with two trips (`oaxaca-magica-2026` and `oaxaca-magica-2026-2`),
+    // not a CONFLICT they have to retry by hand. So the chosen response is
+    // to recompute `uniqueSlug` against the now-current table and retry the
+    // insert once, rather than surface a user-facing conflict for something
+    // nobody typed.
+    slug = await uniqueSlug(db, baseSlug);
+    try {
+      trip = await insertTrip(db, actor, input, slug, isBackfilled);
+    } catch (retryError) {
+      if (!isSlugConflict(retryError)) throw retryError;
+      // Colliding twice in a row against a freshly recomputed slug means a
+      // much larger race than two ordinary concurrent requests (or a bug in
+      // `uniqueSlug` itself) -- treated as a genuine conflict instead of
+      // retried indefinitely.
+      return fail('CONFLICT', { field: 'slug' });
+    }
+  }
 
   return ok(await toDto(db, trip.id));
 }
@@ -240,19 +342,40 @@ export async function updateTrip(
   const name = spanishName(input.translations);
   if (!name.ok) return name;
 
-  const capacity = validateCapacity(input.totalCapacity, input.preSoldSeats);
+  const capacity = validateCapacityStructure(input.totalCapacity, input.preSoldSeats);
   if (!capacity.ok) return capacity;
 
   const dates = validateDates(input);
   if (!dates.ok) return dates;
 
-  const committed = await committedSeats(db, tripId);
-  const alreadyTaken = existing.preSoldSeats + committed.activeReservations + committed.liveHolds;
-  if (input.totalCapacity < alreadyTaken) {
-    return fail('CAPACITY_BELOW_COMMITTED', { alreadyTaken });
-  }
+  const result = await db.$transaction(async (tx) => {
+    // Computed inside the transaction, and against `input.preSoldSeats` --
+    // the value about to be persisted -- rather than `existing.preSoldSeats`,
+    // the value being replaced: pre-sold seats are a field this very call is
+    // overwriting, so the floor this check enforces has to be the number
+    // that will actually be true once the update commits, not a stale
+    // snapshot of what it used to be.
+    //
+    // This subsumes the plain "pre-sold seats over capacity" check for
+    // updates: exceeding capacity through pre-sold seats alone now surfaces
+    // as the more specific CAPACITY_BELOW_COMMITTED (folding in real
+    // reservations and holds too, once Phase 2 supplies them) instead of the
+    // generic INVALID_CAPACITY that `createTrip` still returns for that same
+    // shape of mistake -- a brand-new trip has no committed state yet for it
+    // to be "below".
+    //
+    // Not guarded by `SELECT ... FOR UPDATE`: `committedSeats` is still the
+    // Phase 1 stub returning zero, so there is no concurrent write for a row
+    // lock to protect against today. Phase 2 must add that lock once
+    // `committedSeats` reads real `Reservation` rows -- otherwise two
+    // concurrent updates could each read a stale commitment count and both
+    // pass this check.
+    const committed = await committedSeats(tx, tripId);
+    const alreadyTaken = input.preSoldSeats + committed.activeReservations + committed.liveHolds;
+    if (input.totalCapacity < alreadyTaken) {
+      return fail('CAPACITY_BELOW_COMMITTED', { alreadyTaken });
+    }
 
-  await db.$transaction(async (tx) => {
     // The slug never changes: it may already be shared on social media.
     await tx.tripTranslation.deleteMany({ where: { tripId } });
     await tx.trip.update({
@@ -278,7 +401,10 @@ export async function updateTrip(
       before: { totalCapacity: existing.totalCapacity, departureDate: existing.departureDate },
       after: { totalCapacity: input.totalCapacity, departureDate: input.departureDate },
     });
+    return ok(null);
   });
+
+  if (!result.ok) return result;
 
   return ok(await toDto(db, tripId));
 }
@@ -340,21 +466,30 @@ export async function listTrips(
     orderBy: { departureDate: 'asc' },
   });
 
-  return ok(
-    trips.map((trip) => ({
-      id: trip.id,
-      slug: trip.slug,
-      status: trip.status,
-      name: trip.translations[0]?.name ?? trip.slug,
-      departureDate: trip.departureDate,
-      totalCapacity: trip.totalCapacity,
-      availableSeats: availableSeats({
+  // Routed through `committedSeats`, the same stub `toDto` and `updateTrip`
+  // use, so the list view's numbers move in lockstep with the detail view's
+  // once Phase 2 fills the stub in -- an inline `{ activeReservations: 0,
+  // liveHolds: 0 }` here would silently diverge from the rest of this file
+  // the day that happens.
+  const summaries = await Promise.all(
+    trips.map(async (trip) => {
+      const committed = await committedSeats(db, trip.id);
+      return {
+        id: trip.id,
+        slug: trip.slug,
+        status: trip.status,
+        name: trip.translations[0]?.name ?? trip.slug,
+        departureDate: trip.departureDate,
         totalCapacity: trip.totalCapacity,
-        preSoldSeats: trip.preSoldSeats,
-        activeReservations: 0,
-        liveHolds: 0,
-      }),
-      pricePerSeatCents: trip.pricePerSeatCents,
-    }))
+        availableSeats: availableSeats({
+          totalCapacity: trip.totalCapacity,
+          preSoldSeats: trip.preSoldSeats,
+          ...committed,
+        }),
+        pricePerSeatCents: trip.pricePerSeatCents,
+      };
+    })
   );
+
+  return ok(summaries);
 }
