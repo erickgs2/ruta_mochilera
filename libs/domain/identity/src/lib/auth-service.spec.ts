@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { closeTestDb, prepareTestDb, resetDatabase, withTestDb } from '@rm/db/testing';
 import { hashPassword } from './password';
-import { verifyAccessToken } from './tokens';
+import { hashRefreshToken, verifyAccessToken } from './tokens';
 import { login, logout, refreshSession, type AuthConfig } from './auth-service';
 
 const db = withTestDb();
@@ -230,5 +230,34 @@ describe('logout', () => {
 
     // A second logout with the same token must not fail.
     expect((await logout(db, { refreshToken: refreshed.value.tokens.refreshToken })).ok).toBe(true);
+  });
+
+  it('revokes a live sibling token sharing the same session id, not just the one presented', async () => {
+    await seedStaffUser();
+    const first = await login(db, config, { email: 'ana@agency.test', password: 'Correct-Horse-1' });
+    if (!first.ok) throw new Error('login failed');
+
+    const legit = await db.refreshToken.findFirstOrThrow({ where: { userId: first.value.user.id } });
+
+    // Directly constructed: this models the state a rotation race would leave
+    // behind if the fix in refreshSession ever regressed -- two live tokens
+    // sharing one session id. login/refreshSession never produce this shape
+    // themselves, but logout's chain-wide revocation is the defence against
+    // it, so it has to be tested against the state it defends against, not
+    // only states the public API can reach on its own.
+    await db.refreshToken.create({
+      data: {
+        userId: legit.userId,
+        sessionId: legit.sessionId,
+        tokenHash: hashRefreshToken('sibling-token-from-a-hypothetical-rotation-race'),
+        expiresAt: new Date(Date.now() + 60 * 60 * 1000),
+      },
+    });
+
+    expect((await logout(db, { refreshToken: first.value.tokens.refreshToken })).ok).toBe(true);
+
+    const rows = await db.refreshToken.findMany({ where: { sessionId: legit.sessionId } });
+    expect(rows).toHaveLength(2);
+    expect(rows.every((row) => row.revokedAt !== null)).toBe(true);
   });
 });
