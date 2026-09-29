@@ -1,4 +1,4 @@
-import type { Db } from '@rm/db';
+import type { Db, DbTransactionClient } from '@rm/db';
 import { recordAudit } from '@rm/domain-audit';
 import type { Actor } from '@rm/domain-rbac';
 import { fail, ok, type Result } from '@rm/shared-utils';
@@ -45,39 +45,40 @@ export interface PricingPolicyInput {
   manualPricePerSeatCents?: number;
 }
 
+/** The shape `computeCosting` needs from a trip row -- deliberately narrower
+ *  than the full Prisma model, so it stays a plain data-in/data-out function. */
+interface TripForCosting {
+  id: string;
+  totalCapacity: number;
+  marginMode: MarginMode;
+  marginValue: number;
+  priceMode: 'AUTO' | 'MANUAL';
+  pricePerSeatCents: number;
+  budgetItems: {
+    id: string;
+    concept: string;
+    supplier: string | null;
+    quantity: number;
+    unitAmountCents: number;
+    notes: string | null;
+  }[];
+}
+
 /**
- * Single source of truth for the trip's money columns (`budget_total_cents` and
- * `price_per_seat_cents`). Every mutation that can change the sale price --
- * adding, editing or deleting a budget item, or changing the margin/price
- * policy -- ends by calling this, and nothing else in this file writes those
- * two columns. That is what keeps them from ever drifting out of sync with the
- * budget items that produced them: there is exactly one place that computes
- * and persists them.
- *
- * Editing the budget of an already-published trip re-prices the trip itself
- * through this same function, but Phase 1 has no `Reservation` model yet, so
- * there is nothing here that could touch one. Once reservations exist
- * (Phase 2), they freeze their own total at booking time and this function
- * must keep not touching them -- propagating a new price to existing
- * reservations is a deliberate, separate operation, not a side effect of
- * editing a budget line.
+ * Computes the trip's full costing picture from its current budget items and
+ * margin/price policy. Pure: reads only what is passed in, writes nothing to
+ * any database. This is what `listBudgetItems` calls directly -- a read never
+ * has a side effect -- and what `persistCosting` wraps for the mutations that
+ * need the result stored.
  *
  * `manualPriceOverride` exists solely for `setPricingPolicy`: the moment an
- * administrator types a new manual price, that number has to land in
- * `price_per_seat_cents` somehow, and this parameter is how it gets there --
- * through this function's own write, rather than `setPricingPolicy` writing
- * the column itself first and this function silently repeating the same
- * value. When omitted, MANUAL falls back to whatever price is already stored
- * (the normal case: a budget item changed, not the price policy itself).
+ * administrator types a new manual price, that number has to flow into the
+ * result somehow, and this parameter is how it gets there before it has been
+ * written to the trip row at all. When omitted, MANUAL falls back to whatever
+ * price is already on `trip.pricePerSeatCents` -- the normal case where a
+ * budget item changed but the price policy itself did not.
  */
-async function recomputeAndPersist(
-  db: Db,
-  tripId: string,
-  manualPriceOverride?: number
-): Promise<Result<TripCostingDto>> {
-  const trip = await db.trip.findUnique({ where: { id: tripId }, include: { budgetItems: true } });
-  if (!trip) return fail('NOT_FOUND');
-
+function computeCosting(trip: TripForCosting, manualPriceOverride?: number): Result<TripCostingDto> {
   const pricing = calculatePricing({
     lines: trip.budgetItems.map((item) => ({
       quantity: item.quantity,
@@ -94,13 +95,8 @@ async function recomputeAndPersist(
   const pricePerSeatCents =
     trip.priceMode === 'MANUAL' ? manualPriceOverride ?? trip.pricePerSeatCents : pricing.value.pricePerSeatCents;
 
-  await db.trip.update({
-    where: { id: tripId },
-    data: { budgetTotalCents: pricing.value.budgetTotalCents, pricePerSeatCents },
-  });
-
   return ok({
-    tripId,
+    tripId: trip.id,
     items: trip.budgetItems.map((item) => ({
       id: item.id,
       concept: item.concept,
@@ -121,13 +117,87 @@ async function recomputeAndPersist(
 }
 
 /**
+ * Single source of truth for the trip's money columns (`budget_total_cents`
+ * and `price_per_seat_cents`): the only function in this file that writes
+ * them, via `computeCosting` above. Every mutation that can change the sale
+ * price -- adding, editing or deleting a budget item, or changing the
+ * margin/price policy -- calls this, and nothing else writes those two
+ * columns. That is what keeps them from ever drifting out of sync with the
+ * budget items that produced them.
+ *
+ * Takes `tx`, not `db`: every caller is a mutation that already opened
+ * `db.$transaction(...)` for its own item or policy write, and this must run
+ * inside that same transaction. Two reasons. First, atomicity: without it,
+ * the item write and the price recompute would be two separate commits, and
+ * a crash between them would leave a budget item on the trip whose stored
+ * price does not yet reflect it. Second, and why this function exists at
+ * all: a plain read must never write to the database, so the recompute has
+ * to live only on the mutation side, inside the mutation's own transaction --
+ * not as a step `listBudgetItems` (or anything else on a read path) can reach.
+ *
+ * No separate audit entry is recorded here. The recompute is a deterministic
+ * consequence of whatever the calling mutation already audited (the budget
+ * item or policy change), not an independent event of its own.
+ *
+ * Editing the budget of an already-published trip re-prices the trip itself
+ * through this same function, but Phase 1 has no `Reservation` model yet, so
+ * there is nothing here that could touch one. Once reservations exist
+ * (Phase 2), they freeze their own total at booking time and this function
+ * must keep not touching them -- propagating a new price to existing
+ * reservations is a deliberate, separate operation, not a side effect of
+ * editing a budget line.
+ */
+async function persistCosting(
+  tx: DbTransactionClient,
+  tripId: string,
+  manualPriceOverride?: number
+): Promise<Result<TripCostingDto>> {
+  const trip = await tx.trip.findUnique({ where: { id: tripId }, include: { budgetItems: true } });
+  if (!trip) return fail('NOT_FOUND');
+
+  const costing = computeCosting(trip, manualPriceOverride);
+  if (!costing.ok) return costing;
+
+  await tx.trip.update({
+    where: { id: tripId },
+    data: {
+      budgetTotalCents: costing.value.budgetTotalCents,
+      pricePerSeatCents: costing.value.pricePerSeatCents,
+    },
+  });
+
+  return costing;
+}
+
+/**
  * Returns the trip's full costing picture -- not just the line items, since
  * the costing screen always needs the total, the margin and the price
- * alongside the list, and this goes through `recomputeAndPersist` so that
- * view is never stale relative to what is stored.
+ * alongside the list. A pure read: it calls `computeCosting` directly and
+ * never touches `persistCosting`, so viewing the costing screen can never
+ * write to the trip row (Task 14 wraps this in a `GET` endpoint, where a
+ * write would be a genuine surprise).
+ *
+ * One consequence of a read no longer refreshing the stored columns: if the
+ * budget items and policy are unchanged but the *inputs* to the formula
+ * change some other way, the stored `price_per_seat_cents` can go stale
+ * until the next budget mutation. `total_capacity` is exactly such an input,
+ * and it lives on `Trip`, owned by `libs/domain/trips`'s `updateTrip` --
+ * which does not call into this file. So today, changing a trip's capacity
+ * through `updateTrip` does NOT re-price it: the stored price reflects the
+ * old capacity until someone next touches a budget item or the pricing
+ * policy. `listBudgetItems` still reports the *correct* number in the
+ * meantime, since it always recomputes from the current row rather than
+ * trusting the stored columns -- but the stored `price_per_seat_cents` a
+ * caller might read directly off `Trip` (as `trip-service.ts`'s `toDto`
+ * does) can be wrong. This is a pre-existing cross-domain gap, not something
+ * introduced by moving the write out of this function; closing it belongs
+ * wherever `updateTrip` and this package get wired together (Task 14 or
+ * later), not in this file.
  */
 export async function listBudgetItems(db: Db, tripId: string): Promise<Result<TripCostingDto>> {
-  return recomputeAndPersist(db, tripId);
+  const trip = await db.trip.findUnique({ where: { id: tripId }, include: { budgetItems: true } });
+  if (!trip) return fail('NOT_FOUND');
+  return computeCosting(trip);
 }
 
 /** A free line item is not a line item: both fields must be strictly positive. */
@@ -149,7 +219,7 @@ export async function addBudgetItem(
   const trip = await db.trip.findUnique({ where: { id: tripId }, select: { id: true } });
   if (!trip) return fail('NOT_FOUND');
 
-  await db.$transaction(async (tx) => {
+  return db.$transaction(async (tx) => {
     const created = await tx.tripBudgetItem.create({
       data: { ...input, tripId, createdById: actor.userId },
     });
@@ -160,9 +230,8 @@ export async function addBudgetItem(
       entityId: created.id,
       after: { tripId, ...input },
     });
+    return persistCosting(tx, tripId);
   });
-
-  return recomputeAndPersist(db, tripId);
 }
 
 export async function updateBudgetItem(
@@ -177,7 +246,7 @@ export async function updateBudgetItem(
   const existing = await db.tripBudgetItem.findUnique({ where: { id: itemId } });
   if (!existing) return fail('NOT_FOUND');
 
-  await db.$transaction(async (tx) => {
+  return db.$transaction(async (tx) => {
     await tx.tripBudgetItem.update({ where: { id: itemId }, data: input });
     await recordAudit(tx, {
       actorUserId: actor.userId,
@@ -191,9 +260,8 @@ export async function updateBudgetItem(
       },
       after: input,
     });
+    return persistCosting(tx, existing.tripId);
   });
-
-  return recomputeAndPersist(db, existing.tripId);
 }
 
 export async function deleteBudgetItem(
@@ -204,7 +272,7 @@ export async function deleteBudgetItem(
   const existing = await db.tripBudgetItem.findUnique({ where: { id: itemId } });
   if (!existing) return fail('NOT_FOUND');
 
-  await db.$transaction(async (tx) => {
+  return db.$transaction(async (tx) => {
     await tx.tripBudgetItem.delete({ where: { id: itemId } });
     await recordAudit(tx, {
       actorUserId: actor.userId,
@@ -213,9 +281,8 @@ export async function deleteBudgetItem(
       entityId: itemId,
       before: { concept: existing.concept, unitAmountCents: existing.unitAmountCents },
     });
+    return persistCosting(tx, existing.tripId);
   });
-
-  return recomputeAndPersist(db, existing.tripId);
 }
 
 export async function setPricingPolicy(
@@ -236,10 +303,10 @@ export async function setPricingPolicy(
   const existing = await db.trip.findUnique({ where: { id: tripId } });
   if (!existing) return fail('NOT_FOUND');
 
-  await db.$transaction(async (tx) => {
+  return db.$transaction(async (tx) => {
     // Deliberately does not touch `pricePerSeatCents` (or `budgetTotalCents`):
-    // those are the trip's money columns, and `recomputeAndPersist` below is
-    // their only writer. A freshly-typed manual price still has to reach the
+    // those are the trip's money columns, and `persistCosting` below is their
+    // only writer. A freshly-typed manual price still has to reach the
     // database, so it travels as that call's `manualPriceOverride` argument
     // instead of being written here first.
     await tx.trip.update({
@@ -263,11 +330,6 @@ export async function setPricingPolicy(
       },
       after: input,
     });
+    return persistCosting(tx, tripId, input.priceMode === 'MANUAL' ? input.manualPricePerSeatCents : undefined);
   });
-
-  return recomputeAndPersist(
-    db,
-    tripId,
-    input.priceMode === 'MANUAL' ? input.manualPricePerSeatCents : undefined
-  );
 }

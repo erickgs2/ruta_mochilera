@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { closeTestDb, prepareTestDb, resetDatabase, withTestDb } from '@rm/db/testing';
 import type { Actor } from '@rm/domain-rbac';
-import { addBudgetItem, deleteBudgetItem, setPricingPolicy, updateBudgetItem } from './budget-service';
+import { addBudgetItem, deleteBudgetItem, listBudgetItems, setPricingPolicy, updateBudgetItem } from './budget-service';
 
 const db = withTestDb();
 let actor: Actor;
@@ -136,9 +136,43 @@ describe('budget service', () => {
     if (!result.ok) expect(result.error.code).toBe('VALIDATION_FAILED');
   });
 
+  it('rejects a negative manual price', async () => {
+    const result = await setPricingPolicy(db, actor, tripId, {
+      marginMode: 'PERCENTAGE',
+      marginValue: 2000,
+      priceMode: 'MANUAL',
+      manualPricePerSeatCents: -100,
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.code).toBe('VALIDATION_FAILED');
+  });
+
   it('audits every budget mutation', async () => {
     await addBudgetItem(db, actor, tripId, { concept: 'Bus', quantity: 1, unitAmountCents: 500_000 });
     const actions = (await db.auditLog.findMany({ orderBy: { createdAt: 'asc' } })).map((e) => e.action);
     expect(actions).toContain('trip.budget_item_added');
+  });
+
+  it('a plain read recomputes correctly without writing to the trip row', async () => {
+    await addBudgetItem(db, actor, tripId, { concept: 'Bus', quantity: 1, unitAmountCents: 500_000 });
+
+    // Simulate the stored columns having gone stale -- e.g. as if `totalCapacity`
+    // had changed through `updateTrip` in the trips domain, which does not
+    // recompute price. `listBudgetItems` must still report the number the
+    // current budget and margin actually produce...
+    await db.trip.update({ where: { id: tripId }, data: { pricePerSeatCents: 1, budgetTotalCents: 1 } });
+
+    const result = await listBudgetItems(db, tripId);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.budgetTotalCents).toBe(500_000);
+    expect(result.value.pricePerSeatCents).toBe(30_000);
+
+    // ...and it must do so without writing that corrected number back: a read
+    // is not allowed to mutate the trip row, so the stale value the test just
+    // planted is still exactly what is stored.
+    const trip = await db.trip.findUniqueOrThrow({ where: { id: tripId } });
+    expect(trip.pricePerSeatCents).toBe(1);
+    expect(trip.budgetTotalCents).toBe(1);
   });
 });

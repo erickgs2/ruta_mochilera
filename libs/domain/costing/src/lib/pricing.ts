@@ -68,14 +68,23 @@ function applyMargin(
 
 /**
  * Computes the trip's budget total, the total after margin, and the resulting
- * price per seat. Pure and side-effect free: `budget-service.ts` is the only
- * caller that persists anything, and it always goes through
- * `recomputeAndPersist` so the stored columns can never drift from this
- * calculation.
+ * price per seat. Pure and side-effect free: nothing in this file touches a
+ * database. `budget-service.ts` is the only caller that persists anything --
+ * see `computeCosting` and `persistCosting` there.
  */
 export function calculatePricing(input: PricingInput): Result<PricingResult> {
   if (input.totalCapacity <= 0) return fail('INVALID_CAPACITY', { field: 'totalCapacity' });
   if (input.marginValue < 0) return fail('VALIDATION_FAILED', { field: 'marginValue' });
+
+  // Enforced here, not just upstream: this function is exported from the
+  // package's public API, so a caller reaching it directly -- bypassing
+  // `budget-service.ts`'s own `validateItem` -- must still get a clear error
+  // at the source instead of a silently wrong (or, via the guard below,
+  // rejected-too-late) total. A free or negative-quantity line is not a line.
+  for (const line of input.lines) {
+    if (line.quantity <= 0) return fail('VALIDATION_FAILED', { field: 'quantity' });
+    if (line.unitAmountCents <= 0) return fail('VALIDATION_FAILED', { field: 'unitAmountCents' });
+  }
 
   const budgetTotalCents = input.lines.reduce(
     (total, line) => total + line.quantity * line.unitAmountCents,
@@ -89,12 +98,12 @@ export function calculatePricing(input: PricingInput): Result<PricingResult> {
     input.totalCapacity
   );
 
-  // A non-negative margin applied to a non-negative budget can never produce a
-  // negative total -- but `roundUpToPeso` rounds a negative amount *toward*
-  // zero, not away from it, which would undercharge if this were ever
-  // negative. The invariant that keeps it non-negative lives in the caller
-  // (`budget-service.ts` rejects a non-positive `unitAmountCents` before any
-  // line reaches here), so this guard is made explicit rather than assumed.
+  // A non-negative margin applied to a non-negative budget (every line above
+  // is now checked strictly positive) can never produce a negative total --
+  // but `roundUpToPeso` rounds a negative amount *toward* zero, not away from
+  // it, which would undercharge if this were ever negative. Kept as an
+  // explicit guard rather than an assumption, in case a future margin mode or
+  // a change to the checks above breaks that invariant.
   if (totalWithMarginCents < 0) {
     return fail('VALIDATION_FAILED', { field: 'totalWithMarginCents' });
   }

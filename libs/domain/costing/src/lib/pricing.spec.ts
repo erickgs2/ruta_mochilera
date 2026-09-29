@@ -67,4 +67,26 @@ describe('calculatePricing', () => {
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.error.code).toBe('VALIDATION_FAILED');
   });
+
+  it('rejects a line with a non-positive quantity, even when called directly with no upstream validation', () => {
+    const result = calculatePricing({
+      lines: [{ quantity: 0, unitAmountCents: 500_000 }],
+      marginMode: 'FIXED_TOTAL',
+      marginValue: 0,
+      totalCapacity: 10,
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.code).toBe('VALIDATION_FAILED');
+  });
+
+  it('rejects a line with a non-positive unit amount, even when called directly with no upstream validation', () => {
+    const result = calculatePricing({
+      lines: [{ quantity: 1, unitAmountCents: 0 }],
+      marginMode: 'FIXED_TOTAL',
+      marginValue: 0,
+      totalCapacity: 10,
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.code).toBe('VALIDATION_FAILED');
+  });
 });
