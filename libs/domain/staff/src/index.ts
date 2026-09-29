@@ -1,1 +1,1 @@
-export * from './lib/staff';
+export * from './lib/staff-service';

@@ -72,7 +72,11 @@ async function main() {
     })),
   });
 
-  const email = process.env['SEED_ADMIN_EMAIL'] ?? 'admin@rutamochilera.test';
+  // Normalised the same way `createStaff` normalises every other write path:
+  // login matches case-insensitively, so an un-normalised seed email would be
+  // the one write path still able to create a second account differing only
+  // in case.
+  const email = (process.env['SEED_ADMIN_EMAIL'] ?? 'admin@rutamochilera.test').trim().toLowerCase();
   const password = process.env['SEED_ADMIN_PASSWORD'] ?? 'ChangeMe123!';
   const user = await db.user.upsert({
     where: { email },
