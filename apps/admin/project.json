@@ -26,6 +26,11 @@
           {
             "glob": "**/*",
             "input": "apps/admin/public"
+          },
+          {
+            "glob": "**/*",
+            "input": "libs/i18n/src/assets",
+            "output": "assets/i18n"
           }
         ],
         "styles": ["apps/admin/src/styles.scss"]
@@ -49,7 +54,13 @@
         "development": {
           "optimization": false,
           "extractLicenses": false,
-          "sourceMap": true
+          "sourceMap": true,
+          "fileReplacements": [
+            {
+              "replace": "apps/admin/src/environments/environment.ts",
+              "with": "apps/admin/src/environments/environment.development.ts"
+            }
+          ]
         }
       }
     },

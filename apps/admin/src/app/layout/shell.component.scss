@@ -1,0 +1,39 @@
+:host {
+  display: block;
+  height: 100vh;
+}
+
+.shell-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.shell-title {
+  margin-left: 0.5rem;
+  font-weight: 500;
+}
+
+.shell-spacer {
+  flex: 1 1 auto;
+}
+
+.shell-user {
+  margin-right: 0.5rem;
+}
+
+.shell-container {
+  height: calc(100vh - 64px);
+}
+
+.shell-sidenav {
+  width: 240px;
+}
+
+.shell-content {
+  padding: 1rem;
+}
+
+.active-link {
+  font-weight: 600;
+}

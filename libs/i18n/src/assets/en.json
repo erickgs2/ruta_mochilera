@@ -1,0 +1,59 @@
+{
+  "common": {
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "edit": "Edit",
+    "create": "Create",
+    "search": "Search",
+    "confirm": "Confirm",
+    "close": "Close",
+    "loading": "Loading…",
+    "yes": "Yes",
+    "no": "No"
+  },
+  "auth": {
+    "email": "Email",
+    "password": "Password",
+    "signIn": "Sign in",
+    "signOut": "Sign out",
+    "signingIn": "Signing in…"
+  },
+  "nav": {
+    "trips": "Trips",
+    "staff": "Administrators",
+    "roles": "Roles"
+  },
+  "forbidden": {
+    "title": "Access restricted",
+    "message": "You do not have permission to view this section.",
+    "back": "Back to home"
+  },
+  "errors": {
+    "INVALID_CREDENTIALS": "Incorrect email or password.",
+    "TOKEN_INVALID": "Your session expired. Please sign in again.",
+    "TOKEN_REUSED": "Your session was closed for security. Please sign in again.",
+    "EMAIL_NOT_VERIFIED": "Please confirm your email before continuing.",
+    "EMAIL_ALREADY_REGISTERED": "That email is already registered.",
+    "ACCOUNT_DISABLED": "This account is disabled.",
+    "RATE_LIMITED": "Too many attempts. Please wait a moment and try again.",
+    "PERMISSION_DENIED": "You do not have permission to perform this action.",
+    "SYSTEM_ROLE_IMMUTABLE": "System roles cannot be modified.",
+    "ROLE_IN_USE": "A role with assigned users cannot be deleted.",
+    "NOT_FOUND": "The requested resource was not found.",
+    "VALIDATION_FAILED": "Please check the submitted data.",
+    "CONFLICT": "A record with that data already exists.",
+    "INVALID_CAPACITY": "The entered capacity is not valid.",
+    "CAPACITY_BELOW_COMMITTED": "Capacity cannot be lower than the seats already committed.",
+    "TRIP_NOT_PUBLISHABLE": "To publish, the trip needs at least one image and a price.",
+    "INVALID_STATUS_TRANSITION": "That status change is not allowed.",
+    "TRIP_SOLD_OUT": "The trip has no seats left.",
+    "MISSING_REQUIRED_TRANSLATION": "The Spanish content is missing.",
+    "DUPLICATE_RESERVATION": "A reservation already exists for this traveler on this trip.",
+    "HOLD_EXPIRED": "The hold expired. Please try again.",
+    "PAYMENT_EXCEEDS_BALANCE": "The payment exceeds the outstanding balance.",
+    "DEPOSIT_BELOW_MINIMUM": "The deposit is below the required minimum.",
+    "INTERNAL_ERROR": "A server error occurred. Please try again later.",
+    "UNKNOWN": "An unexpected error occurred."
+  }
+}

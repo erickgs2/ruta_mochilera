@@ -1,1 +1,4 @@
-export * from './lib/auth-web';
+export * from './lib/auth.service';
+export * from './lib/auth.interceptor';
+export * from './lib/auth.guard';
+export * from './lib/has-permission.directive';

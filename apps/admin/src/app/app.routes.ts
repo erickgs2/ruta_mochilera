@@ -1,3 +1,37 @@
-import { Route } from '@angular/router';
+import type { Routes } from '@angular/router';
+import { authGuard, permissionGuard } from '@rm/auth-web';
 
-export const appRoutes: Route[] = [];
+export const appRoutes: Routes = [
+  {
+    path: 'login',
+    loadComponent: () => import('./features/auth/login.component').then((m) => m.LoginComponent),
+  },
+  {
+    path: '',
+    canActivate: [authGuard],
+    loadComponent: () => import('./layout/shell.component').then((m) => m.ShellComponent),
+    children: [
+      { path: '', pathMatch: 'full', redirectTo: 'trips' },
+      {
+        path: 'trips',
+        canActivate: [permissionGuard('trip.view')],
+        loadChildren: () => import('./features/trips/trips.routes').then((m) => m.tripsRoutes),
+      },
+      {
+        path: 'staff',
+        canActivate: [permissionGuard('staff.view')],
+        loadChildren: () => import('./features/staff/staff.routes').then((m) => m.staffRoutes),
+      },
+      {
+        path: 'roles',
+        canActivate: [permissionGuard('role.view')],
+        loadChildren: () => import('./features/roles/roles.routes').then((m) => m.rolesRoutes),
+      },
+      {
+        path: 'forbidden',
+        loadComponent: () => import('./layout/forbidden.component').then((m) => m.ForbiddenComponent),
+      },
+    ],
+  },
+  { path: '**', redirectTo: '' },
+];

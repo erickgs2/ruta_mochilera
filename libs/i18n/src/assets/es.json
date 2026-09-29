@@ -1,0 +1,59 @@
+{
+  "common": {
+    "save": "Guardar",
+    "cancel": "Cancelar",
+    "delete": "Eliminar",
+    "edit": "Editar",
+    "create": "Crear",
+    "search": "Buscar",
+    "confirm": "Confirmar",
+    "close": "Cerrar",
+    "loading": "Cargando…",
+    "yes": "Sí",
+    "no": "No"
+  },
+  "auth": {
+    "email": "Correo",
+    "password": "Contraseña",
+    "signIn": "Iniciar sesión",
+    "signOut": "Cerrar sesión",
+    "signingIn": "Iniciando sesión…"
+  },
+  "nav": {
+    "trips": "Viajes",
+    "staff": "Administradores",
+    "roles": "Roles"
+  },
+  "forbidden": {
+    "title": "Acceso restringido",
+    "message": "No tienes permiso para ver esta sección.",
+    "back": "Volver al inicio"
+  },
+  "errors": {
+    "INVALID_CREDENTIALS": "Correo o contraseña incorrectos.",
+    "TOKEN_INVALID": "Tu sesión expiró. Inicia sesión de nuevo.",
+    "TOKEN_REUSED": "Tu sesión se cerró por seguridad. Inicia sesión de nuevo.",
+    "EMAIL_NOT_VERIFIED": "Confirma tu correo antes de continuar.",
+    "EMAIL_ALREADY_REGISTERED": "Ese correo ya está registrado.",
+    "ACCOUNT_DISABLED": "Esta cuenta está deshabilitada.",
+    "RATE_LIMITED": "Demasiados intentos. Espera un momento e inténtalo de nuevo.",
+    "PERMISSION_DENIED": "No tienes permiso para realizar esta acción.",
+    "SYSTEM_ROLE_IMMUTABLE": "Los roles del sistema no se pueden modificar.",
+    "ROLE_IN_USE": "No se puede eliminar un rol que tiene usuarios asignados.",
+    "NOT_FOUND": "No se encontró el recurso solicitado.",
+    "VALIDATION_FAILED": "Revisa los datos capturados.",
+    "CONFLICT": "Ya existe un registro con esos datos.",
+    "INVALID_CAPACITY": "El cupo capturado no es válido.",
+    "CAPACITY_BELOW_COMMITTED": "El cupo no puede ser menor a los lugares ya comprometidos.",
+    "TRIP_NOT_PUBLISHABLE": "Para publicar, el viaje necesita al menos una imagen y un precio.",
+    "INVALID_STATUS_TRANSITION": "Ese cambio de estado no está permitido.",
+    "TRIP_SOLD_OUT": "El viaje ya no tiene lugares disponibles.",
+    "MISSING_REQUIRED_TRANSLATION": "Falta la información en español.",
+    "DUPLICATE_RESERVATION": "Ya existe una reservación para este viajero en este viaje.",
+    "HOLD_EXPIRED": "El apartado expiró. Vuelve a intentarlo.",
+    "PAYMENT_EXCEEDS_BALANCE": "El pago excede el saldo pendiente.",
+    "DEPOSIT_BELOW_MINIMUM": "El anticipo es menor al mínimo requerido.",
+    "INTERNAL_ERROR": "Ocurrió un error en el servidor. Inténtalo más tarde.",
+    "UNKNOWN": "Ocurrió un error inesperado."
+  }
+}
