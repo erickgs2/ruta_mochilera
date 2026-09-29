@@ -69,7 +69,12 @@ ejecución y otorga el catálogo completo al rol `Super Admin`.
 
 - **Login**: correo insensible a mayúsculas. Usuario inexistente y contraseña
   equivocada devuelven **el mismo** código `INVALID_CREDENTIALS`; distinguirlos
-  revelaría qué correos están registrados.
+  revelaría qué correos están registrados. Un correo inexistente también
+  verifica contra un hash argon2 fijo antes de responder, para que ambos casos
+  tarden lo mismo: sin eso, la diferencia de tiempo (un fallo de argon2 real
+  tarda decenas de milisegundos; un correo inexistente respondería en menos de
+  uno) sería un canal por el que un atacante podría distinguirlos igualmente,
+  aunque el código de error sea idéntico.
 - Una cuenta con `status = DISABLED` no inicia sesión, aunque la contraseña sea
   correcta (`ACCOUNT_DISABLED`). Tampoco puede refrescar una sesión ya
   existente: `refreshSession` vuelve a comprobar el estado de la cuenta en cada
@@ -78,13 +83,23 @@ ejecución y otorga el catálogo completo al rol `Super Admin`.
 - **Access token**: 15 minutos por defecto (`ACCESS_TOKEN_TTL_SECONDS`), HS256,
   con `sid` = identificador de sesión.
 - **Refresh token**: opaco, 32 bytes aleatorios. Se persiste **sólo su SHA-256**.
-  Vigencia de 30 días por defecto (`REFRESH_TOKEN_TTL_DAYS`).
+  Vigencia de 30 días por defecto (`REFRESH_TOKEN_TTL_DAYS`) **desde la última
+  rotación, no desde el login**: cada refresh exitoso reinicia el contador. Es
+  una ventana deslizante, no un límite absoluto de duración de la sesión — una
+  sesión usada al menos una vez cada 30 días no expira nunca por sí sola; sólo
+  termina por logout o por detección de reuso.
 - **Rotación**: cada refresh revoca el token usado y emite uno nuevo con el
   mismo `session_id`, dentro de una única transacción: revocar el viejo y crear
-  el nuevo no pueden quedar separados por un fallo a la mitad.
+  el nuevo no pueden quedar separados por un fallo a la mitad. La revocación es
+  condicional (`revokedAt IS NULL` en el `WHERE`), no incondicional por id: dos
+  solicitudes concurrentes con el mismo token sólo dejan rotar a una; la otra
+  se trata como reuso, incluida la revocación de todo lo demás en esa sesión.
 - **Detección de reuso**: presentar un token ya revocado revoca **todos** los
   tokens vivos de esa sesión (agrupados por `session_id`, no sólo el token
   presentado) y devuelve `TOKEN_REUSED`. El usuario tendrá que iniciar sesión
-  otra vez; es el comportamiento correcto ante un token filtrado.
+  otra vez; es el comportamiento correcto ante un token filtrado. Esto también
+  cubre el caso de dos rotaciones concurrentes con el mismo token: la que pierde
+  la carrera revoca toda la sesión, incluido el token recién emitido por la que
+  ganó, así que ese token devuelto nunca llega a ser utilizable.
 - **Logout**: revoca la sesión completa (todos los tokens vivos de su
   `session_id`) y es idempotente: cerrar una sesión ya cerrada no es un error.

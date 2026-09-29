@@ -32,6 +32,20 @@ interface SessionInput {
 }
 
 /**
+ * A precomputed argon2id hash of an arbitrary, unrelated password.
+ *
+ * `login` verifies against this constant when the email doesn't match any
+ * user, so that branch spends the same argon2 time as a real, wrong-password
+ * attempt instead of returning immediately. Without it, an unknown email
+ * short-circuits before ever touching argon2 while a wrong password runs a
+ * full verification; that gap (tens of milliseconds against sub-millisecond)
+ * is trivially measurable over HTTP and reopens exactly the account-existence
+ * oracle the shared `INVALID_CREDENTIALS` error code is meant to close.
+ */
+const DUMMY_PASSWORD_HASH =
+  '$argon2id$v=19$m=19456,t=2,p=1$NvhLQhsRiMl5pBHiVnTc3g$FxBLuVG4mI516VO73fcQrsshSj7nUNEf1/VXrudzo2o';
+
+/**
  * Issues a fresh refresh token row plus a signed access token for an existing
  * session id.
  *
@@ -71,7 +85,7 @@ async function issueSession(
   return { accessToken, refreshToken: token, expiresInSeconds: config.accessTokenTtlSeconds };
 }
 
-async function describeUser(db: DbTransactionClient, userId: string): Promise<AuthenticatedUser> {
+async function describeUser(db: Db, userId: string): Promise<AuthenticatedUser> {
   const user = await db.user.findUniqueOrThrow({
     where: { id: userId },
     include: { staffProfile: true, customerProfile: true },
@@ -96,8 +110,14 @@ export async function login(
   });
 
   // Same error code for a nonexistent user and a wrong password: telling them
-  // apart would reveal which emails are registered.
-  if (!user?.passwordHash) return fail('INVALID_CREDENTIALS');
+  // apart would reveal which emails are registered. Also run argon2 on the
+  // miss path (against the fixed dummy hash) so the two branches take
+  // comparable time -- an unknown email that returned instantly would leak
+  // through timing what the shared error code hides.
+  if (!user?.passwordHash) {
+    await verifyPassword(DUMMY_PASSWORD_HASH, input.password);
+    return fail('INVALID_CREDENTIALS');
+  }
   if (!(await verifyPassword(user.passwordHash, input.password))) return fail('INVALID_CREDENTIALS');
   if (user.status === 'DISABLED') return fail('ACCOUNT_DISABLED');
 
@@ -133,12 +153,35 @@ export async function refreshSession(
   // Revoking the old token and issuing the new one must be atomic: a crash
   // between the two steps must never leave the session without a live
   // refresh token.
-  const tokens = await db.$transaction(async (tx) => {
-    await tx.refreshToken.update({ where: { id: existing.id }, data: { revokedAt: new Date() } });
-    return issueSession(tx, config, existing.userId, existing.sessionId, input);
+  //
+  // The revoke is also made conditional on `revokedAt: null` rather than an
+  // unconditional update by id. The `existing.revokedAt` check above ran
+  // outside this transaction, so two concurrent requests presenting the same
+  // token can both read it as live and both reach this point: without the
+  // condition, both updates would succeed and both would issue a new token,
+  // leaving two live tokens in one chain and defeating reuse detection
+  // entirely. With the condition, Postgres serialises the two UPDATEs on the
+  // same row; the second one re-evaluates its WHERE clause against the
+  // first's now-committed result and matches zero rows, so exactly one
+  // request rotates and the other is treated as a (concurrent) replay.
+  const outcome = await db.$transaction(async (tx) => {
+    const revoked = await tx.refreshToken.updateMany({
+      where: { id: existing.id, revokedAt: null },
+      data: { revokedAt: new Date() },
+    });
+    if (revoked.count === 0) {
+      await tx.refreshToken.updateMany({
+        where: { sessionId: existing.sessionId, revokedAt: null },
+        data: { revokedAt: new Date() },
+      });
+      return { reused: true } as const;
+    }
+    const tokens = await issueSession(tx, config, existing.userId, existing.sessionId, input);
+    return { reused: false, tokens } as const;
   });
 
-  return ok({ user: await describeUser(db, existing.userId), tokens });
+  if (outcome.reused) return fail('TOKEN_REUSED');
+  return ok({ user: await describeUser(db, existing.userId), tokens: outcome.tokens });
 }
 
 export async function logout(db: Db, input: { refreshToken: string }): Promise<Result<null>> {

@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { closeTestDb, prepareTestDb, resetDatabase, withTestDb } from '@rm/db/testing';
 import { hashPassword } from './password';
+import { verifyAccessToken } from './tokens';
 import { login, logout, refreshSession, type AuthConfig } from './auth-service';
 
 const db = withTestDb();
@@ -51,6 +52,17 @@ describe('login', () => {
     expect(result.value.user.permissions).toEqual(['trip.create']);
     expect(result.value.tokens.accessToken.split('.')).toHaveLength(3);
     expect(result.value.tokens.expiresInSeconds).toBe(900);
+
+    // The access token's claims are what Task 9/14 will trust for
+    // authentication and session revocation: `sub` must identify this user
+    // and `sid` must match the session the persisted refresh token belongs
+    // to, not some unrelated or freshly minted id.
+    const claims = await verifyAccessToken(result.value.tokens.accessToken, config.jwtSecret);
+    expect(claims.ok).toBe(true);
+    if (!claims.ok) return;
+    expect(claims.value.sub).toBe(result.value.user.id);
+    const row = await db.refreshToken.findFirstOrThrow({ where: { userId: result.value.user.id } });
+    expect(claims.value.sid).toBe(row.sessionId);
   });
 
   it('is case-insensitive on the email', async () => {
@@ -106,6 +118,15 @@ describe('refreshSession', () => {
     expect(rows[0].revokedAt).not.toBeNull();
     expect(rows[1].revokedAt).toBeNull();
     expect(rows[1].sessionId).toBe(rows[0].sessionId);
+
+    // Rotation must carry the session id forward, not mint a new one: `sid`
+    // is what Task 9/14 use to revoke a whole session, so a rotated access
+    // token pointing at a fresh session id would silently break that.
+    const claims = await verifyAccessToken(refreshed.value.tokens.accessToken, config.jwtSecret);
+    expect(claims.ok).toBe(true);
+    if (!claims.ok) return;
+    expect(claims.value.sub).toBe(first.value.user.id);
+    expect(claims.value.sid).toBe(rows[1].sessionId);
   });
 
   it('detects reuse and revokes the whole session chain', async () => {
@@ -120,6 +141,38 @@ describe('refreshSession', () => {
     expect(replay.ok).toBe(false);
     if (!replay.ok) expect(replay.error.code).toBe('TOKEN_REUSED');
 
+    const live = await db.refreshToken.count({ where: { revokedAt: null } });
+    expect(live).toBe(0);
+  });
+
+  it('detects a concurrent replay of the same token and leaves no live token', async () => {
+    await seedStaffUser();
+    const first = await login(db, config, { email: 'ana@agency.test', password: 'Correct-Horse-1' });
+    if (!first.ok) throw new Error('login failed');
+    const stolen = first.value.tokens.refreshToken;
+
+    // Two requests presenting the same refresh token at the same time: the
+    // read-then-write race this guards against. Exactly one must rotate
+    // (the transaction that wins the conditional update on the row) and the
+    // other must observe the reuse -- neither may silently succeed alongside
+    // the other, which is what an unconditional `update({ where: { id } })`
+    // would allow.
+    const [a, b] = await Promise.all([
+      refreshSession(db, config, { refreshToken: stolen }),
+      refreshSession(db, config, { refreshToken: stolen }),
+    ]);
+
+    const results = [a, b];
+    const successes = results.filter((result) => result.ok);
+    const failures = results.filter((result) => !result.ok);
+
+    expect(successes).toHaveLength(1);
+    expect(failures).toHaveLength(1);
+    if (!failures[0].ok) expect(failures[0].error.code).toBe('TOKEN_REUSED');
+
+    // A reuse was detected on this session, so the whole chain is revoked --
+    // including the token the "winning" call just issued. That call reports
+    // success, but the token it returned must not actually be usable.
     const live = await db.refreshToken.count({ where: { revokedAt: null } });
     expect(live).toBe(0);
   });
@@ -161,10 +214,21 @@ describe('logout', () => {
     const first = await login(db, config, { email: 'ana@agency.test', password: 'Correct-Horse-1' });
     if (!first.ok) throw new Error('login failed');
 
-    expect((await logout(db, { refreshToken: first.value.tokens.refreshToken })).ok).toBe(true);
-    expect(await db.refreshToken.count({ where: { revokedAt: null } })).toBe(0);
+    // Rotate once first: a session that never rotated only ever has one row,
+    // and an implementation that revokes just the presented token would pass
+    // every assertion below identically to one that revokes the whole
+    // session. With two rows in the chain, asserting both end up revoked
+    // actually exercises "the whole session", not just "the one row".
+    const refreshed = await refreshSession(db, config, { refreshToken: first.value.tokens.refreshToken });
+    if (!refreshed.ok) throw new Error('refresh failed');
+
+    expect((await logout(db, { refreshToken: refreshed.value.tokens.refreshToken })).ok).toBe(true);
+
+    const rows = await db.refreshToken.findMany();
+    expect(rows).toHaveLength(2);
+    expect(rows.every((row) => row.revokedAt !== null)).toBe(true);
 
     // A second logout with the same token must not fail.
-    expect((await logout(db, { refreshToken: first.value.tokens.refreshToken })).ok).toBe(true);
+    expect((await logout(db, { refreshToken: refreshed.value.tokens.refreshToken })).ok).toBe(true);
   });
 });
