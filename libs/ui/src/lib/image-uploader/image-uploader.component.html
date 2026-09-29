@@ -1,0 +1,50 @@
+<div
+  class="rm-image-uploader-dropzone"
+  [class.rm-image-uploader-dropzone--over]="dragOver()"
+  [class.rm-image-uploader-dropzone--disabled]="disabled()"
+  (dragover)="onDragOver($event)"
+  (dragleave)="onDragLeave()"
+  (drop)="onDrop($event)"
+>
+  <mat-icon>cloud_upload</mat-icon>
+  <p>{{ 'images.dropHint' | translate }}</p>
+  <button mat-stroked-button type="button" [disabled]="disabled()" (click)="fileInput.click()">
+    {{ 'images.pickFiles' | translate }}
+  </button>
+  <input #fileInput type="file" hidden multiple accept="image/jpeg,image/png,image/webp" (change)="onFileInputChange($event)" />
+  @if (uploading()) {
+    <mat-spinner diameter="24"></mat-spinner>
+  }
+</div>
+
+@if (rejectionKey()) {
+  <p class="rm-image-uploader-rejection">{{ rejectionKey() | translate }}</p>
+}
+
+@if (images().length === 0) {
+  <p class="rm-image-uploader-empty">{{ 'images.empty' | translate }}</p>
+} @else {
+  <div class="rm-image-uploader-grid">
+    @for (image of images(); track image.id) {
+      <div class="rm-image-uploader-item">
+        <img [src]="image.url" [alt]="image.altText ?? ''" />
+        @if (image.isCover) {
+          <mat-chip-set class="rm-image-uploader-cover-badge">
+            <mat-chip color="primary" highlighted>{{ 'images.cover' | translate }}</mat-chip>
+          </mat-chip-set>
+        }
+        <button
+          mat-icon-button
+          color="warn"
+          type="button"
+          class="rm-image-uploader-delete"
+          [attr.aria-label]="'common.delete' | translate"
+          [disabled]="disabled()"
+          (click)="requestDelete(image.id)"
+        >
+          <mat-icon>delete</mat-icon>
+        </button>
+      </div>
+    }
+  </div>
+}

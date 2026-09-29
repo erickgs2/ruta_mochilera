@@ -1,0 +1,54 @@
+.trips-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.trips-search-field {
+  width: 100%;
+  max-width: 24rem;
+}
+
+.trips-status-field {
+  width: 100%;
+  max-width: 14rem;
+}
+
+.trips-table-container {
+  overflow-x: auto;
+}
+
+.trips-table {
+  width: 100%;
+}
+
+.trips-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.trips-card {
+  border: 1px solid var(--mat-sys-outline-variant, #ccc);
+  border-radius: 0.5rem;
+  padding: 0.75rem 1rem;
+}
+
+.trips-card-name {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 500;
+}
+
+.trips-card-meta {
+  margin: 0.25rem 0;
+  color: var(--mat-sys-on-surface-variant, #666);
+}
+
+.trips-card-actions {
+  margin-top: 0.5rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}

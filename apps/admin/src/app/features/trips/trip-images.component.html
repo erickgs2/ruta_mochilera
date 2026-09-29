@@ -1,0 +1,18 @@
+<rm-page-header [title]="'images.title' | translate">
+  <a mat-button [routerLink]="['/trips', tripId()]">{{ 'images.backToTrip' | translate }}</a>
+</rm-page-header>
+
+@if (tripName()) {
+  <p class="trip-images-subtitle">{{ tripName() }}</p>
+}
+
+@if (uploadError()) {
+  <p class="trip-images-error">{{ errorMessage(uploadError()) }}</p>
+}
+
+<rm-image-uploader
+  [images]="images()"
+  [uploading]="uploading()"
+  (filesSelected)="onFilesSelected($event)"
+  (deleteRequested)="onDeleteRequested($event)"
+></rm-image-uploader>

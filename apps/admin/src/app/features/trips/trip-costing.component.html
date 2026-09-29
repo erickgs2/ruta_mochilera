@@ -1,0 +1,188 @@
+<rm-page-header [title]="'costing.title' | translate"></rm-page-header>
+
+@if (showRepriceNotice()) {
+  <div class="trip-costing-notice">{{ 'costing.repriceNotice' | translate }}</div>
+}
+
+<mat-card class="trip-costing-card">
+  <mat-card-header>
+    <mat-card-title>{{ 'costing.itemsTitle' | translate }}</mat-card-title>
+  </mat-card-header>
+  <mat-card-content>
+    @if (!costing() || costing()!.items.length === 0) {
+      <p>{{ 'costing.empty' | translate }}</p>
+    } @else {
+      <div class="trip-costing-table-container">
+        <table mat-table [dataSource]="costing()!.items" class="trip-costing-table">
+          <ng-container matColumnDef="concept">
+            <th mat-header-cell *matHeaderCellDef>{{ 'costing.columns.concept' | translate }}</th>
+            <td mat-cell *matCellDef="let item">
+              <input
+                matInput
+                [ngModel]="item.concept"
+                (ngModelChange)="updateItemField(item, { concept: $event })"
+              />
+            </td>
+          </ng-container>
+
+          <ng-container matColumnDef="supplier">
+            <th mat-header-cell *matHeaderCellDef>{{ 'costing.columns.supplier' | translate }}</th>
+            <td mat-cell *matCellDef="let item">
+              <input
+                matInput
+                [ngModel]="item.supplier ?? ''"
+                (ngModelChange)="updateItemField(item, { supplier: $event })"
+              />
+            </td>
+          </ng-container>
+
+          <ng-container matColumnDef="quantity">
+            <th mat-header-cell *matHeaderCellDef>{{ 'costing.columns.quantity' | translate }}</th>
+            <td mat-cell *matCellDef="let item">
+              <input
+                matInput
+                type="number"
+                min="1"
+                [ngModel]="item.quantity"
+                (ngModelChange)="updateItemField(item, { quantity: $event })"
+              />
+            </td>
+          </ng-container>
+
+          <ng-container matColumnDef="unitAmount">
+            <th mat-header-cell *matHeaderCellDef>{{ 'costing.columns.unitAmount' | translate }}</th>
+            <td mat-cell *matCellDef="let item">
+              <rm-money-input
+                [ngModel]="item.unitAmountCents"
+                (ngModelChange)="updateItemField(item, { unitAmountCents: $event })"
+              ></rm-money-input>
+            </td>
+          </ng-container>
+
+          <ng-container matColumnDef="total">
+            <th mat-header-cell *matHeaderCellDef>{{ 'costing.columns.total' | translate }}</th>
+            <td mat-cell *matCellDef="let item">{{ rowTotal(item) | rmMoney }}</td>
+          </ng-container>
+
+          <ng-container matColumnDef="actions">
+            <th mat-header-cell *matHeaderCellDef>{{ 'costing.columns.actions' | translate }}</th>
+            <td mat-cell *matCellDef="let item">
+              <button
+                mat-icon-button
+                color="warn"
+                type="button"
+                [attr.aria-label]="'common.delete' | translate"
+                (click)="deleteItem(item)"
+              >
+                <mat-icon>delete</mat-icon>
+              </button>
+            </td>
+          </ng-container>
+
+          <tr mat-header-row *matHeaderRowDef="displayedColumns"></tr>
+          <tr mat-row *matRowDef="let row; columns: displayedColumns"></tr>
+        </table>
+      </div>
+    }
+
+    <p class="trip-costing-total">
+      {{ 'costing.budgetTotal' | translate }}: <strong>{{ costing()?.budgetTotalCents | rmMoney }}</strong>
+    </p>
+
+    <form [formGroup]="newItemForm" (ngSubmit)="addItem()" class="trip-costing-new-item">
+      <mat-form-field appearance="outline">
+        <mat-label>{{ 'costing.conceptLabel' | translate }}</mat-label>
+        <input matInput formControlName="concept" />
+      </mat-form-field>
+
+      <mat-form-field appearance="outline">
+        <mat-label>{{ 'costing.supplierLabel' | translate }}</mat-label>
+        <input matInput formControlName="supplier" />
+      </mat-form-field>
+
+      <mat-form-field appearance="outline">
+        <mat-label>{{ 'costing.quantityLabel' | translate }}</mat-label>
+        <input matInput type="number" min="1" formControlName="quantity" />
+      </mat-form-field>
+
+      <rm-money-input [label]="'costing.unitAmountLabel' | translate" formControlName="unitAmountCents"></rm-money-input>
+
+      <button mat-flat-button color="primary" type="submit" [disabled]="newItemForm.invalid">
+        {{ 'costing.addItem' | translate }}
+      </button>
+    </form>
+  </mat-card-content>
+</mat-card>
+
+<mat-card class="trip-costing-card">
+  <mat-card-header>
+    <mat-card-title>{{ 'costing.marginSectionTitle' | translate }}</mat-card-title>
+  </mat-card-header>
+  <mat-card-content>
+    <form [formGroup]="marginForm" class="trip-costing-margin-form">
+      <mat-form-field appearance="outline">
+        <mat-label>{{ 'costing.marginModeLabel' | translate }}</mat-label>
+        <mat-select formControlName="marginMode">
+          <mat-option value="PERCENTAGE">{{ 'costing.marginMode.PERCENTAGE' | translate }}</mat-option>
+          <mat-option value="FIXED_TOTAL">{{ 'costing.marginMode.FIXED_TOTAL' | translate }}</mat-option>
+          <mat-option value="FIXED_PER_SEAT">{{ 'costing.marginMode.FIXED_PER_SEAT' | translate }}</mat-option>
+        </mat-select>
+      </mat-form-field>
+
+      <!--
+        The unit of `marginValue` depends entirely on `marginMode` (see the
+        class doc comment): under PERCENTAGE it is shown, and typed, as a
+        plain percentage with a "%" suffix; under either fixed mode it is
+        shown through `rm-money-input`, which is unambiguously pesos/centavos
+        on its own. Swapping the widget itself -- not just a label -- is what
+        makes it impossible to type a number without knowing what it means.
+      -->
+      @if (marginMode() === 'PERCENTAGE') {
+        <mat-form-field appearance="outline">
+          <mat-label>{{ 'costing.marginValueLabel' | translate }} ({{ marginUnitLabel() | translate }})</mat-label>
+          <input matInput type="number" min="0" step="0.01" formControlName="marginValue" />
+          <span matTextSuffix>{{ marginUnitLabel() | translate }}</span>
+          <mat-hint>{{ marginHintKey() | translate }}</mat-hint>
+        </mat-form-field>
+      } @else {
+        <rm-money-input
+          [label]="('costing.marginValueLabel' | translate) + ' (' + (marginUnitLabel() | translate) + ')'"
+          [hint]="marginHintKey() | translate"
+          formControlName="marginValue"
+        ></rm-money-input>
+      }
+    </form>
+
+    <div class="trip-costing-result">
+      <h3>{{ 'costing.resultTitle' | translate }}</h3>
+      <p class="trip-costing-suggested">
+        {{ 'costing.suggestedPrice' | translate }}: <strong>{{ costing()?.suggestedPricePerSeatCents | rmMoney }}</strong>
+      </p>
+
+      <form [formGroup]="priceForm" class="trip-costing-price-form">
+        <mat-slide-toggle
+          [checked]="priceMode() === 'MANUAL'"
+          (change)="priceForm.controls.priceMode.setValue($event.checked ? 'MANUAL' : 'AUTO')"
+        >
+          {{ 'costing.manualPriceToggle' | translate }}
+        </mat-slide-toggle>
+
+        @if (priceMode() === 'MANUAL') {
+          <div class="trip-costing-manual-price">
+            <rm-money-input
+              [label]="'costing.manualPriceLabel' | translate"
+              formControlName="manualPricePerSeatCents"
+            ></rm-money-input>
+            <p class="trip-costing-suggested-reference">
+              {{ 'costing.suggestedReferenceNotice' | translate }}: {{ costing()?.suggestedPricePerSeatCents | rmMoney }}
+            </p>
+          </div>
+        }
+      </form>
+
+      <button mat-flat-button color="primary" type="button" [disabled]="saving()" (click)="savePricingPolicy()">
+        {{ 'common.save' | translate }}
+      </button>
+    </div>
+  </mat-card-content>
+</mat-card>

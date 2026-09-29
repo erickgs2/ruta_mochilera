@@ -1,0 +1,38 @@
+.trip-form-card {
+  margin-bottom: 1rem;
+}
+
+.trip-form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  gap: 1rem;
+  padding: 1rem 0;
+}
+
+.full-width {
+  grid-column: 1 / -1;
+}
+
+.trip-form-english-notice {
+  color: var(--mat-sys-on-surface-variant, #666);
+  margin: 1rem 0 0;
+}
+
+.trip-form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
+.trip-status-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+
+.trip-status-publish-hints {
+  color: var(--mat-sys-error, #b00020);
+  margin-top: 0.5rem;
+}

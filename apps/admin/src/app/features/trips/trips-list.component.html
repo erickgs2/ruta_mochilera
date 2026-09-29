@@ -1,0 +1,113 @@
+<rm-page-header [title]="'trips.title' | translate">
+  <ng-container *rmHasPermission="'trip.create'">
+    <a mat-flat-button color="primary" routerLink="new" class="trips-new-button">
+      <mat-icon>add</mat-icon>
+      {{ 'trips.newTrip' | translate }}
+    </a>
+  </ng-container>
+</rm-page-header>
+
+<form [formGroup]="filters" class="trips-filters">
+  <mat-form-field appearance="outline" class="trips-search-field">
+    <mat-label>{{ 'trips.searchLabel' | translate }}</mat-label>
+    <input matInput formControlName="search" />
+    <mat-icon matSuffix>search</mat-icon>
+  </mat-form-field>
+
+  <mat-form-field appearance="outline" class="trips-status-field">
+    <mat-label>{{ 'trips.statusFilterLabel' | translate }}</mat-label>
+    <mat-select formControlName="status">
+      <mat-option value="">{{ 'trips.statusFilterAll' | translate }}</mat-option>
+      @for (status of statusOptions; track status) {
+        <mat-option [value]="status">{{ 'trips.status.' + status | translate }}</mat-option>
+      }
+    </mat-select>
+  </mat-form-field>
+</form>
+
+@if (isEmpty()) {
+  <p>{{ 'trips.empty' | translate }}</p>
+} @else if (isHandset()) {
+  <div class="trips-cards">
+    @for (row of trips(); track row.id) {
+      <div class="trips-card">
+        <h2 class="trips-card-name">{{ row.name }}</h2>
+        <mat-chip-set>
+          <mat-chip [color]="statusColor(row.status)" [highlighted]="!!statusColor(row.status)">
+            {{ 'trips.status.' + row.status | translate }}
+          </mat-chip>
+        </mat-chip-set>
+        <p class="trips-card-meta">{{ row.departureDate | date: 'mediumDate' }}</p>
+        <p class="trips-card-meta">{{ row.availableSeats }} / {{ row.totalCapacity }}</p>
+        <p class="trips-card-meta">{{ row.pricePerSeatCents | rmMoney }}</p>
+        <div class="trips-card-actions" *rmHasPermission="'trip.update'">
+          <a mat-button [routerLink]="[row.id]">{{ 'common.edit' | translate }}</a>
+          <a mat-button [routerLink]="[row.id, 'images']">{{ 'trips.manageImages' | translate }}</a>
+          <a mat-button [routerLink]="[row.id, 'costing']" *rmHasPermission="'trip.budget.view'">
+            {{ 'trips.manageCosting' | translate }}
+          </a>
+        </div>
+      </div>
+    }
+  </div>
+} @else {
+  <div class="trips-table-container">
+    <table mat-table [dataSource]="trips()" class="trips-table">
+      <ng-container matColumnDef="name">
+        <th mat-header-cell *matHeaderCellDef>{{ 'trips.columns.name' | translate }}</th>
+        <td mat-cell *matCellDef="let row">{{ row.name }}</td>
+      </ng-container>
+
+      <ng-container matColumnDef="status">
+        <th mat-header-cell *matHeaderCellDef>{{ 'trips.columns.status' | translate }}</th>
+        <td mat-cell *matCellDef="let row">
+          <mat-chip-set>
+            <mat-chip [color]="statusColor(row.status)" [highlighted]="!!statusColor(row.status)">
+              {{ 'trips.status.' + row.status | translate }}
+            </mat-chip>
+          </mat-chip-set>
+        </td>
+      </ng-container>
+
+      <ng-container matColumnDef="departureDate">
+        <th mat-header-cell *matHeaderCellDef>{{ 'trips.columns.departureDate' | translate }}</th>
+        <td mat-cell *matCellDef="let row">{{ row.departureDate | date: 'mediumDate' }}</td>
+      </ng-container>
+
+      <ng-container matColumnDef="seats">
+        <th mat-header-cell *matHeaderCellDef>{{ 'trips.columns.seats' | translate }}</th>
+        <td mat-cell *matCellDef="let row">{{ row.availableSeats }} / {{ row.totalCapacity }}</td>
+      </ng-container>
+
+      <ng-container matColumnDef="pricePerSeat">
+        <th mat-header-cell *matHeaderCellDef>{{ 'trips.columns.pricePerSeat' | translate }}</th>
+        <td mat-cell *matCellDef="let row">{{ row.pricePerSeatCents | rmMoney }}</td>
+      </ng-container>
+
+      <ng-container matColumnDef="actions">
+        <th mat-header-cell *matHeaderCellDef>{{ 'trips.columns.actions' | translate }}</th>
+        <td mat-cell *matCellDef="let row">
+          <ng-container *rmHasPermission="'trip.update'">
+            <a mat-icon-button [routerLink]="[row.id]" [attr.aria-label]="'common.edit' | translate">
+              <mat-icon>edit</mat-icon>
+            </a>
+            <a mat-icon-button [routerLink]="[row.id, 'images']" [attr.aria-label]="'trips.manageImages' | translate">
+              <mat-icon>photo_library</mat-icon>
+            </a>
+          </ng-container>
+          <a
+            mat-icon-button
+            *rmHasPermission="'trip.budget.view'"
+            [routerLink]="[row.id, 'costing']"
+            [attr.aria-label]="'trips.manageCosting' | translate"
+          >
+            <mat-icon>payments</mat-icon>
+          </a>
+        </td>
+      </ng-container>
+
+      <tr mat-header-row *matHeaderRowDef="displayedColumns"></tr>
+      <tr mat-row *matRowDef="let row; columns: displayedColumns"></tr>
+    </table>
+  </div>
+}

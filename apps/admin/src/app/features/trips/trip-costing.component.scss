@@ -1,0 +1,70 @@
+.trip-costing-notice {
+  background: var(--mat-sys-secondary-container, #e0e0e0);
+  color: var(--mat-sys-on-secondary-container, #333);
+  border-radius: 0.5rem;
+  padding: 0.75rem 1rem;
+  margin-bottom: 1rem;
+}
+
+.trip-costing-card {
+  margin-bottom: 1rem;
+}
+
+.trip-costing-table-container {
+  overflow-x: auto;
+}
+
+.trip-costing-table {
+  width: 100%;
+}
+
+.trip-costing-total {
+  margin-top: 1rem;
+  text-align: right;
+}
+
+.trip-costing-new-item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 1rem;
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--mat-sys-outline-variant, #ccc);
+}
+
+.trip-costing-margin-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.trip-costing-result {
+  margin-top: 1.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--mat-sys-outline-variant, #ccc);
+}
+
+.trip-costing-suggested {
+  font-size: 1.1rem;
+}
+
+.trip-costing-price-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin: 0.75rem 0;
+}
+
+.trip-costing-manual-price {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  max-width: 20rem;
+}
+
+.trip-costing-suggested-reference {
+  color: var(--mat-sys-on-surface-variant, #666);
+  font-size: 0.85rem;
+  margin: 0;
+}

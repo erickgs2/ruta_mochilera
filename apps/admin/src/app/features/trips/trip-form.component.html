@@ -1,0 +1,208 @@
+<rm-page-header [title]="(isEdit() ? 'trips.editTitle' : 'trips.newTripTitle') | translate"></rm-page-header>
+
+<mat-card class="trip-form-card">
+  <mat-card-content>
+    <form [formGroup]="form" (ngSubmit)="save()">
+      <mat-stepper orientation="horizontal" linear="false">
+        <mat-step [label]="'trips.stepGeneral' | translate">
+          <div class="trip-form-grid">
+            <mat-form-field appearance="outline">
+              <mat-label>{{ 'trips.departureDateLabel' | translate }}</mat-label>
+              <input matInput [matDatepicker]="departurePicker" [min]="minDepartureDate()" formControlName="departureDate" />
+              <mat-datepicker-toggle matSuffix [for]="departurePicker"></mat-datepicker-toggle>
+              <mat-datepicker #departurePicker></mat-datepicker>
+              @if (form.hasError('returnBeforeDeparture') && form.controls.returnDate.touched) {
+                <mat-error>{{ 'trips.validation.returnBeforeDeparture' | translate }}</mat-error>
+              }
+            </mat-form-field>
+
+            <mat-form-field appearance="outline">
+              <mat-label>{{ 'trips.returnDateLabel' | translate }}</mat-label>
+              <input matInput [matDatepicker]="returnPicker" formControlName="returnDate" />
+              <mat-datepicker-toggle matSuffix [for]="returnPicker"></mat-datepicker-toggle>
+              <mat-datepicker #returnPicker></mat-datepicker>
+            </mat-form-field>
+
+            <mat-form-field appearance="outline">
+              <mat-label>{{ 'trips.paymentDeadlineLabel' | translate }}</mat-label>
+              <input matInput [matDatepicker]="deadlinePicker" formControlName="paymentDeadline" />
+              <mat-datepicker-toggle matSuffix [for]="deadlinePicker"></mat-datepicker-toggle>
+              <mat-datepicker #deadlinePicker></mat-datepicker>
+              @if (form.hasError('paymentAfterDeparture') && form.controls.paymentDeadline.touched) {
+                <mat-error>{{ 'trips.validation.paymentAfterDeparture' | translate }}</mat-error>
+              }
+            </mat-form-field>
+
+            <mat-form-field appearance="outline">
+              <mat-label>{{ 'trips.totalCapacityLabel' | translate }}</mat-label>
+              <input matInput type="number" min="1" formControlName="totalCapacity" />
+              @if (form.controls.totalCapacity.hasError('server')) {
+                <mat-error>{{ 'INVALID_CAPACITY' | rmErrorCode }}</mat-error>
+              }
+            </mat-form-field>
+
+            <rm-money-input
+              [label]="'trips.minimumDepositLabel' | translate"
+              formControlName="minimumDepositCents"
+            ></rm-money-input>
+
+            <mat-form-field appearance="outline">
+              <mat-label>{{ 'trips.holdTtlHoursLabel' | translate }}</mat-label>
+              <input matInput type="number" min="1" formControlName="holdTtlHours" />
+            </mat-form-field>
+          </div>
+        </mat-step>
+
+        <mat-step [label]="'trips.stepContent' | translate">
+          <mat-tab-group>
+            <mat-tab [label]="'trips.contentLocaleEs' | translate">
+              <div class="trip-form-grid">
+                <mat-form-field appearance="outline" class="full-width">
+                  <mat-label>{{ 'trips.nameLabel' | translate }}</mat-label>
+                  <input matInput formControlName="nameEs" />
+                </mat-form-field>
+                <mat-form-field appearance="outline" class="full-width">
+                  <mat-label>{{ 'trips.descriptionLabel' | translate }}</mat-label>
+                  <textarea matInput rows="3" formControlName="descriptionEs"></textarea>
+                </mat-form-field>
+                <mat-form-field appearance="outline" class="full-width">
+                  <mat-label>{{ 'trips.itineraryLabel' | translate }}</mat-label>
+                  <textarea matInput rows="3" formControlName="itineraryEs"></textarea>
+                </mat-form-field>
+                <mat-form-field appearance="outline" class="full-width">
+                  <mat-label>{{ 'trips.includesLabel' | translate }}</mat-label>
+                  <textarea matInput rows="2" formControlName="includesEs"></textarea>
+                </mat-form-field>
+                <mat-form-field appearance="outline" class="full-width">
+                  <mat-label>{{ 'trips.excludesLabel' | translate }}</mat-label>
+                  <textarea matInput rows="2" formControlName="excludesEs"></textarea>
+                </mat-form-field>
+              </div>
+            </mat-tab>
+
+            <mat-tab [label]="'trips.contentLocaleEn' | translate">
+              <p class="trip-form-english-notice">{{ 'trips.englishOptionalNotice' | translate }}</p>
+              <div class="trip-form-grid">
+                <mat-form-field appearance="outline" class="full-width">
+                  <mat-label>{{ 'trips.nameLabel' | translate }}</mat-label>
+                  <input matInput formControlName="nameEn" />
+                </mat-form-field>
+                <mat-form-field appearance="outline" class="full-width">
+                  <mat-label>{{ 'trips.descriptionLabel' | translate }}</mat-label>
+                  <textarea matInput rows="3" formControlName="descriptionEn"></textarea>
+                </mat-form-field>
+                <mat-form-field appearance="outline" class="full-width">
+                  <mat-label>{{ 'trips.itineraryLabel' | translate }}</mat-label>
+                  <textarea matInput rows="3" formControlName="itineraryEn"></textarea>
+                </mat-form-field>
+                <mat-form-field appearance="outline" class="full-width">
+                  <mat-label>{{ 'trips.includesLabel' | translate }}</mat-label>
+                  <textarea matInput rows="2" formControlName="includesEn"></textarea>
+                </mat-form-field>
+                <mat-form-field appearance="outline" class="full-width">
+                  <mat-label>{{ 'trips.excludesLabel' | translate }}</mat-label>
+                  <textarea matInput rows="2" formControlName="excludesEn"></textarea>
+                </mat-form-field>
+              </div>
+            </mat-tab>
+          </mat-tab-group>
+        </mat-step>
+
+        <mat-step [label]="'trips.stepBackfill' | translate" *rmHasPermission="'data.backfill'">
+          <mat-checkbox formControlName="isBackfilled">{{ 'trips.backfillCheckbox' | translate }}</mat-checkbox>
+
+          @if (isBackfilled()) {
+            <div class="trip-form-grid">
+              <mat-form-field appearance="outline">
+                <mat-label>{{ 'trips.preSoldSeatsLabel' | translate }}</mat-label>
+                <input matInput type="number" min="0" formControlName="preSoldSeats" />
+                <mat-hint>{{ 'trips.preSoldSeatsHint' | translate }}</mat-hint>
+                @if (form.hasError('preSoldExceedsCapacity') && form.controls.preSoldSeats.touched) {
+                  <mat-error>{{ 'trips.validation.preSoldExceedsCapacity' | translate }}</mat-error>
+                }
+              </mat-form-field>
+
+              @if (!isEdit()) {
+                <mat-form-field appearance="outline">
+                  <mat-label>{{ 'trips.initialStatusLabel' | translate }}</mat-label>
+                  <mat-select formControlName="initialStatus">
+                    @for (status of statusOptions; track status) {
+                      <mat-option [value]="status">{{ 'trips.status.' + status | translate }}</mat-option>
+                    }
+                  </mat-select>
+                </mat-form-field>
+              }
+            </div>
+          }
+        </mat-step>
+      </mat-stepper>
+
+      <div class="trip-form-actions">
+        <a mat-button routerLink="/trips">{{ 'common.cancel' | translate }}</a>
+        <button mat-flat-button color="primary" type="submit" [disabled]="form.invalid || saving()">
+          {{ 'common.save' | translate }}
+        </button>
+      </div>
+    </form>
+  </mat-card-content>
+</mat-card>
+
+@if (isEdit() && trip(); as currentTrip) {
+  <mat-card class="trip-status-card">
+    <mat-card-header>
+      <mat-card-title>{{ 'trips.statusSectionTitle' | translate }}</mat-card-title>
+    </mat-card-header>
+    <mat-card-content>
+      <mat-chip-set>
+        <mat-chip color="primary" highlighted>{{ 'trips.status.' + currentTrip.status | translate }}</mat-chip>
+      </mat-chip-set>
+
+      @if (availableTransitions().length === 0) {
+        <p>{{ 'trips.noStatusChangesAvailable' | translate }}</p>
+      } @else {
+        <div class="trip-status-actions">
+          @for (target of availableTransitions(); track target) {
+            <ng-template #transitionButton>
+              <button
+                mat-stroked-button
+                type="button"
+                [disabled]="changingStatus() || (target === 'PUBLISHED' && publishBlockedReasons().length > 0)"
+                (click)="requestStatusChange(target)"
+              >
+                {{ 'trips.changeStatusTo' | translate: { status: ('trips.status.' + target | translate) } }}
+              </button>
+            </ng-template>
+
+            <!--
+              `*rmHasPermission` requires a literal permission key (see its
+              own doc comment), so each transition that carries its own
+              permission gets its own literal branch instead of one binding
+              built from `target` at runtime. `IN_PROGRESS`/`COMPLETED` carry
+              no extra permission beyond the `trip.update` this whole screen
+              already requires, so they render unconditionally.
+            -->
+            @if (target === 'PUBLISHED') {
+              <ng-container *rmHasPermission="'trip.publish'">
+                <ng-container [ngTemplateOutlet]="transitionButton"></ng-container>
+              </ng-container>
+            } @else if (target === 'CANCELLED') {
+              <ng-container *rmHasPermission="'trip.cancel'">
+                <ng-container [ngTemplateOutlet]="transitionButton"></ng-container>
+              </ng-container>
+            } @else {
+              <ng-container [ngTemplateOutlet]="transitionButton"></ng-container>
+            }
+          }
+        </div>
+
+        @if (publishBlockedReasons().length > 0 && availableTransitions().includes('PUBLISHED')) {
+          <ul class="trip-status-publish-hints">
+            @for (reason of publishBlockedReasons(); track reason) {
+              <li>{{ reason | translate }}</li>
+            }
+          </ul>
+        }
+      }
+    </mat-card-content>
+  </mat-card>
+}
