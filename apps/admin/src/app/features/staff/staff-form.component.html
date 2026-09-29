@@ -1,0 +1,78 @@
+<mat-card class="staff-form-card">
+  <mat-card-header>
+    <mat-card-title>{{ (isEdit ? 'staff.editTitle' : 'staff.newStaff') | translate }}</mat-card-title>
+  </mat-card-header>
+
+  <mat-card-content>
+    <form [formGroup]="form" (ngSubmit)="save()">
+      @if (!isEdit) {
+        <mat-form-field appearance="outline" class="full-width">
+          <mat-label>{{ 'staff.emailLabel' | translate }}</mat-label>
+          <input matInput type="email" formControlName="email" autocomplete="email" />
+          @if (form.controls.email.hasError('conflict')) {
+            <mat-error>{{ 'EMAIL_ALREADY_REGISTERED' | rmErrorCode }}</mat-error>
+          }
+        </mat-form-field>
+      }
+
+      <mat-form-field appearance="outline" class="full-width">
+        <mat-label>{{ 'staff.fullNameLabel' | translate }}</mat-label>
+        <input matInput formControlName="fullName" />
+      </mat-form-field>
+
+      <mat-form-field appearance="outline" class="full-width">
+        <mat-label>{{ 'staff.employeeCodeLabel' | translate }}</mat-label>
+        <input matInput formControlName="employeeCode" />
+        <mat-hint>{{ 'staff.employeeCodeHint' | translate }}</mat-hint>
+      </mat-form-field>
+
+      <mat-form-field appearance="outline" class="full-width">
+        <mat-label>{{ 'staff.localeLabel' | translate }}</mat-label>
+        <mat-select formControlName="locale">
+          <mat-option value="es">Español</mat-option>
+          <mat-option value="en">English</mat-option>
+        </mat-select>
+      </mat-form-field>
+
+      <mat-form-field appearance="outline" class="full-width">
+        <mat-label>{{ 'staff.rolesLabel' | translate }}</mat-label>
+        <mat-select formControlName="roleIds" multiple>
+          @for (role of roles(); track role.id) {
+            <mat-option [value]="role.id">{{ role.name }}</mat-option>
+          }
+        </mat-select>
+      </mat-form-field>
+
+      @if (!isEdit) {
+        <mat-form-field appearance="outline" class="full-width">
+          <mat-label>{{ 'staff.passwordLabel' | translate }}</mat-label>
+          <input matInput type="password" formControlName="password" autocomplete="new-password" />
+        </mat-form-field>
+
+        <mat-form-field appearance="outline" class="full-width">
+          <mat-label>{{ 'staff.confirmPasswordLabel' | translate }}</mat-label>
+          <input matInput type="password" formControlName="confirmPassword" autocomplete="new-password" />
+          @if (form.hasError('passwordMismatch') && form.controls.confirmPassword.touched) {
+            <mat-error>{{ 'staff.passwordMismatch' | translate }}</mat-error>
+          }
+        </mat-form-field>
+      }
+
+      @if (isEdit) {
+        <div class="staff-form-status">
+          <mat-slide-toggle [checked]="form.controls.status.value === 'ACTIVE'" (change)="onStatusToggle($event)">
+            {{ (form.controls.status.value === 'ACTIVE' ? 'staff.statusActive' : 'staff.statusDisabled') | translate }}
+          </mat-slide-toggle>
+          <p class="staff-form-status-notice">{{ 'staff.disableNotice' | translate }}</p>
+        </div>
+      }
+
+      <div class="staff-form-actions">
+        <a mat-button routerLink="/staff">{{ 'common.cancel' | translate }}</a>
+        <button mat-flat-button color="primary" type="submit" [disabled]="form.invalid || saving()">
+          {{ 'common.save' | translate }}
+        </button>
+      </div>
+    </form>
+  </mat-card-content>
+</mat-card>

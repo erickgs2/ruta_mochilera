@@ -1,0 +1,42 @@
+.role-table-container {
+  overflow-x: auto;
+}
+
+.role-table {
+  width: 100%;
+}
+
+.role-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.role-card {
+  border: 1px solid var(--mat-sys-outline-variant, #ccc);
+  border-radius: 0.5rem;
+  padding: 0.75rem 1rem;
+}
+
+.role-card-name {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 500;
+}
+
+.role-card-description {
+  margin: 0.25rem 0;
+  color: var(--mat-sys-on-surface-variant, #666);
+}
+
+.role-card-meta {
+  margin: 0.25rem 0;
+  font-size: 0.85rem;
+  color: var(--mat-sys-on-surface-variant, #666);
+}
+
+.role-card-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}

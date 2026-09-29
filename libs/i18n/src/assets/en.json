@@ -29,6 +29,55 @@
     "message": "You do not have permission to view this section.",
     "back": "Back to home"
   },
+  "roles": {
+    "title": "Roles",
+    "newRole": "New role",
+    "editTitle": "Edit role",
+    "empty": "There are no roles yet.",
+    "columns": {
+      "name": "Name",
+      "description": "Description",
+      "permissions": "Permissions",
+      "users": "Users",
+      "actions": "Actions"
+    },
+    "deleteTitle": "Delete role",
+    "deleteMessage": "Delete the \"{{name}}\" role? This cannot be undone.",
+    "systemRoleNotice": "System roles cannot be edited or deleted.",
+    "permissionsHeading": "Permissions",
+    "nameLabel": "Name",
+    "descriptionLabel": "Description"
+  },
+  "staff": {
+    "title": "Administrators",
+    "newStaff": "New administrator",
+    "editTitle": "Edit administrator",
+    "searchLabel": "Search by name or email",
+    "empty": "No administrators found.",
+    "columns": {
+      "fullName": "Name",
+      "email": "Email",
+      "employeeCode": "Employee code",
+      "status": "Status",
+      "locale": "Language",
+      "actions": "Actions"
+    },
+    "statusActive": "Active",
+    "statusDisabled": "Disabled",
+    "emailLabel": "Email",
+    "fullNameLabel": "Full name",
+    "employeeCodeLabel": "Employee code",
+    "employeeCodeHint": "The employee code cannot be cleared once set. Leave it blank to keep it unchanged.",
+    "localeLabel": "Language",
+    "passwordLabel": "Initial password",
+    "confirmPasswordLabel": "Confirm password",
+    "passwordMismatch": "Passwords do not match.",
+    "rolesLabel": "Roles",
+    "statusLabel": "Account enabled",
+    "disableTitle": "Disable account",
+    "disableMessage": "Disabling the account for \"{{name}}\" closes their active sessions immediately.",
+    "disableNotice": "Disabling this account closes its active sessions immediately."
+  },
   "errors": {
     "INVALID_CREDENTIALS": "Incorrect email or password.",
     "TOKEN_INVALID": "Your session expired. Please sign in again.",

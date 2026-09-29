@@ -1,0 +1,43 @@
+.role-form-card {
+  max-width: 48rem;
+  margin: 0 auto;
+}
+
+.full-width {
+  width: 100%;
+  display: block;
+}
+
+.role-form-notice {
+  color: var(--mat-sys-error, #b3261e);
+}
+
+.role-form-permissions-heading {
+  font-size: 1rem;
+  font-weight: 500;
+  margin: 1.5rem 0 0.5rem;
+}
+
+.role-form-category {
+  text-transform: capitalize;
+}
+
+.role-form-permission {
+  display: flex;
+  flex-direction: column;
+  padding: 0.25rem 0;
+}
+
+.role-form-permission-description {
+  margin: 0 0 0 2rem;
+  color: var(--mat-sys-on-surface-variant, #666);
+  font-size: 0.85rem;
+}
+
+.role-form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 1.5rem;
+  flex-wrap: wrap;
+}

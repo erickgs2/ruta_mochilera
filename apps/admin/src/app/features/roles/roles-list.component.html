@@ -1,0 +1,87 @@
+<rm-page-header [title]="'roles.title' | translate">
+  <ng-container *rmHasPermission="'role.manage'">
+    <a mat-flat-button color="primary" routerLink="new" class="role-new-button">
+      <mat-icon>add</mat-icon>
+      {{ 'roles.newRole' | translate }}
+    </a>
+  </ng-container>
+</rm-page-header>
+
+@if (loading()) {
+  <p>{{ 'common.loading' | translate }}</p>
+} @else if (roles().length === 0) {
+  <p>{{ 'roles.empty' | translate }}</p>
+} @else if (isHandset()) {
+  <div class="role-cards">
+    @for (role of roles(); track role.id) {
+      <div class="role-card">
+        <h2 class="role-card-name">{{ role.name }}</h2>
+        <p class="role-card-description">{{ role.description }}</p>
+        <p class="role-card-meta">
+          {{ 'roles.columns.permissions' | translate }}: {{ role.permissionKeys.length }} ·
+          {{ 'roles.columns.users' | translate }}: {{ role.userCount }}
+        </p>
+        <div class="role-card-actions" *rmHasPermission="'role.manage'">
+          <a mat-button [routerLink]="[role.id]" class="role-edit-button">{{ 'common.edit' | translate }}</a>
+          <button
+            mat-button
+            color="warn"
+            class="role-delete-button"
+            [disabled]="role.isSystem"
+            (click)="delete(role)"
+          >
+            {{ 'common.delete' | translate }}
+          </button>
+        </div>
+      </div>
+    }
+  </div>
+} @else {
+  <div class="role-table-container">
+    <table mat-table [dataSource]="roles()" class="role-table">
+      <ng-container matColumnDef="name">
+        <th mat-header-cell *matHeaderCellDef>{{ 'roles.columns.name' | translate }}</th>
+        <td mat-cell *matCellDef="let role">{{ role.name }}</td>
+      </ng-container>
+
+      <ng-container matColumnDef="description">
+        <th mat-header-cell *matHeaderCellDef>{{ 'roles.columns.description' | translate }}</th>
+        <td mat-cell *matCellDef="let role">{{ role.description }}</td>
+      </ng-container>
+
+      <ng-container matColumnDef="permissions">
+        <th mat-header-cell *matHeaderCellDef>{{ 'roles.columns.permissions' | translate }}</th>
+        <td mat-cell *matCellDef="let role">{{ role.permissionKeys.length }}</td>
+      </ng-container>
+
+      <ng-container matColumnDef="users">
+        <th mat-header-cell *matHeaderCellDef>{{ 'roles.columns.users' | translate }}</th>
+        <td mat-cell *matCellDef="let role">{{ role.userCount }}</td>
+      </ng-container>
+
+      <ng-container matColumnDef="actions">
+        <th mat-header-cell *matHeaderCellDef>{{ 'roles.columns.actions' | translate }}</th>
+        <td mat-cell *matCellDef="let role">
+          <ng-container *rmHasPermission="'role.manage'">
+            <a mat-icon-button [routerLink]="[role.id]" class="role-edit-button" [attr.aria-label]="'common.edit' | translate">
+              <mat-icon>edit</mat-icon>
+            </a>
+            <button
+              mat-icon-button
+              color="warn"
+              class="role-delete-button"
+              [disabled]="role.isSystem"
+              [attr.aria-label]="'common.delete' | translate"
+              (click)="delete(role)"
+            >
+              <mat-icon>delete</mat-icon>
+            </button>
+          </ng-container>
+        </td>
+      </ng-container>
+
+      <tr mat-header-row *matHeaderRowDef="displayedColumns"></tr>
+      <tr mat-row *matRowDef="let row; columns: displayedColumns"></tr>
+    </table>
+  </div>
+}

@@ -1,0 +1,27 @@
+.staff-form-card {
+  max-width: 40rem;
+  margin: 0 auto;
+}
+
+.full-width {
+  width: 100%;
+  display: block;
+}
+
+.staff-form-status {
+  margin: 1rem 0;
+}
+
+.staff-form-status-notice {
+  margin: 0.5rem 0 0;
+  font-size: 0.85rem;
+  color: var(--mat-sys-on-surface-variant, #666);
+}
+
+.staff-form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 1.5rem;
+  flex-wrap: wrap;
+}

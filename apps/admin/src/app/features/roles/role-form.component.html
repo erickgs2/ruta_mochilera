@@ -1,0 +1,62 @@
+<mat-card class="role-form-card">
+  <mat-card-header>
+    <mat-card-title>
+      {{ (isEdit ? 'roles.editTitle' : 'roles.newRole') | translate }}
+    </mat-card-title>
+  </mat-card-header>
+
+  <mat-card-content>
+    @if (readOnly()) {
+      <p class="role-form-notice">{{ 'roles.systemRoleNotice' | translate }}</p>
+    }
+
+    <form [formGroup]="form" (ngSubmit)="save()">
+      <mat-form-field appearance="outline" class="full-width">
+        <mat-label>{{ 'roles.nameLabel' | translate }}</mat-label>
+        <input matInput formControlName="name" />
+        @if (form.controls.name.hasError('conflict')) {
+          <mat-error>{{ 'CONFLICT' | rmErrorCode }}</mat-error>
+        } @else if (form.controls.name.hasError('minlength') || form.controls.name.hasError('required')) {
+          <mat-error>{{ 'VALIDATION_FAILED' | rmErrorCode }}</mat-error>
+        }
+      </mat-form-field>
+
+      <mat-form-field appearance="outline" class="full-width">
+        <mat-label>{{ 'roles.descriptionLabel' | translate }}</mat-label>
+        <textarea matInput formControlName="description" rows="2"></textarea>
+      </mat-form-field>
+
+      <h2 class="role-form-permissions-heading">{{ 'roles.permissionsHeading' | translate }}</h2>
+
+      <mat-accordion multi>
+        @for (group of groupedPermissions(); track group.category) {
+          <mat-expansion-panel>
+            <mat-expansion-panel-header>
+              <mat-panel-title class="role-form-category">{{ group.category }}</mat-panel-title>
+            </mat-expansion-panel-header>
+
+            @for (permission of group.permissions; track permission.key) {
+              <div class="role-form-permission">
+                <mat-checkbox
+                  [checked]="isChecked(permission.key)"
+                  [disabled]="readOnly()"
+                  (change)="togglePermission(permission.key, $event.checked)"
+                >
+                  {{ permission.key }}
+                </mat-checkbox>
+                <p class="role-form-permission-description">{{ permission.description }}</p>
+              </div>
+            }
+          </mat-expansion-panel>
+        }
+      </mat-accordion>
+
+      <div class="role-form-actions">
+        <a mat-button routerLink="/roles">{{ 'common.cancel' | translate }}</a>
+        <button mat-flat-button color="primary" type="submit" [disabled]="form.invalid || saving() || readOnly()">
+          {{ 'common.save' | translate }}
+        </button>
+      </div>
+    </form>
+  </mat-card-content>
+</mat-card>

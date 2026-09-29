@@ -1,0 +1,88 @@
+<rm-page-header [title]="'staff.title' | translate">
+  <ng-container *rmHasPermission="'staff.manage'">
+    <a mat-flat-button color="primary" routerLink="new" class="staff-new-button">
+      <mat-icon>add</mat-icon>
+      {{ 'staff.newStaff' | translate }}
+    </a>
+  </ng-container>
+</rm-page-header>
+
+<mat-form-field appearance="outline" class="staff-search-field">
+  <mat-label>{{ 'staff.searchLabel' | translate }}</mat-label>
+  <input matInput [formControl]="searchControl" />
+  <mat-icon matSuffix>search</mat-icon>
+</mat-form-field>
+
+@if (staff().length === 0) {
+  <p>{{ 'staff.empty' | translate }}</p>
+} @else if (isHandset()) {
+  <div class="staff-cards">
+    @for (row of staff(); track row.id) {
+      <div class="staff-card" [class.staff-card--disabled]="row.status === 'DISABLED'">
+        <h2 class="staff-card-name">{{ row.fullName }}</h2>
+        <p class="staff-card-email">{{ row.email }}</p>
+        <mat-chip-set>
+          <mat-chip [color]="row.status === 'ACTIVE' ? 'primary' : undefined" [highlighted]="row.status === 'ACTIVE'">
+            {{ (row.status === 'ACTIVE' ? 'staff.statusActive' : 'staff.statusDisabled') | translate }}
+          </mat-chip>
+        </mat-chip-set>
+        <div class="staff-card-actions" *rmHasPermission="'staff.manage'">
+          <a mat-button [routerLink]="[row.id]">{{ 'common.edit' | translate }}</a>
+        </div>
+      </div>
+    }
+  </div>
+} @else {
+  <div class="staff-table-container">
+    <table mat-table [dataSource]="staff()" class="staff-table">
+      <ng-container matColumnDef="fullName">
+        <th mat-header-cell *matHeaderCellDef>{{ 'staff.columns.fullName' | translate }}</th>
+        <td mat-cell *matCellDef="let row">{{ row.fullName }}</td>
+      </ng-container>
+
+      <ng-container matColumnDef="email">
+        <th mat-header-cell *matHeaderCellDef>{{ 'staff.columns.email' | translate }}</th>
+        <td mat-cell *matCellDef="let row">{{ row.email }}</td>
+      </ng-container>
+
+      <ng-container matColumnDef="employeeCode">
+        <th mat-header-cell *matHeaderCellDef>{{ 'staff.columns.employeeCode' | translate }}</th>
+        <td mat-cell *matCellDef="let row">{{ row.employeeCode ?? '—' }}</td>
+      </ng-container>
+
+      <ng-container matColumnDef="status">
+        <th mat-header-cell *matHeaderCellDef>{{ 'staff.columns.status' | translate }}</th>
+        <td mat-cell *matCellDef="let row">
+          <mat-chip-set>
+            <mat-chip [color]="row.status === 'ACTIVE' ? 'primary' : undefined" [highlighted]="row.status === 'ACTIVE'">
+              {{ (row.status === 'ACTIVE' ? 'staff.statusActive' : 'staff.statusDisabled') | translate }}
+            </mat-chip>
+          </mat-chip-set>
+        </td>
+      </ng-container>
+
+      <ng-container matColumnDef="locale">
+        <th mat-header-cell *matHeaderCellDef>{{ 'staff.columns.locale' | translate }}</th>
+        <td mat-cell *matCellDef="let row">{{ row.locale }}</td>
+      </ng-container>
+
+      <ng-container matColumnDef="actions">
+        <th mat-header-cell *matHeaderCellDef>{{ 'staff.columns.actions' | translate }}</th>
+        <td mat-cell *matCellDef="let row">
+          <ng-container *rmHasPermission="'staff.manage'">
+            <a mat-icon-button [routerLink]="[row.id]" [attr.aria-label]="'common.edit' | translate">
+              <mat-icon>edit</mat-icon>
+            </a>
+          </ng-container>
+        </td>
+      </ng-container>
+
+      <tr mat-header-row *matHeaderRowDef="displayedColumns"></tr>
+      <tr
+        mat-row
+        *matRowDef="let row; columns: displayedColumns"
+        [class.staff-row--disabled]="row.status === 'DISABLED'"
+      ></tr>
+    </table>
+  </div>
+}

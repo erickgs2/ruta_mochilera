@@ -29,6 +29,55 @@
     "message": "No tienes permiso para ver esta sección.",
     "back": "Volver al inicio"
   },
+  "roles": {
+    "title": "Roles",
+    "newRole": "Nuevo rol",
+    "editTitle": "Editar rol",
+    "empty": "Aún no hay roles.",
+    "columns": {
+      "name": "Nombre",
+      "description": "Descripción",
+      "permissions": "Permisos",
+      "users": "Usuarios",
+      "actions": "Acciones"
+    },
+    "deleteTitle": "Eliminar rol",
+    "deleteMessage": "¿Eliminar el rol \"{{name}}\"? Esta acción no se puede deshacer.",
+    "systemRoleNotice": "Los roles del sistema no se pueden modificar ni eliminar.",
+    "permissionsHeading": "Permisos",
+    "nameLabel": "Nombre",
+    "descriptionLabel": "Descripción"
+  },
+  "staff": {
+    "title": "Administradores",
+    "newStaff": "Nuevo administrador",
+    "editTitle": "Editar administrador",
+    "searchLabel": "Buscar por nombre o correo",
+    "empty": "No se encontraron administradores.",
+    "columns": {
+      "fullName": "Nombre",
+      "email": "Correo",
+      "employeeCode": "Código de empleado",
+      "status": "Estado",
+      "locale": "Idioma",
+      "actions": "Acciones"
+    },
+    "statusActive": "Activo",
+    "statusDisabled": "Deshabilitado",
+    "emailLabel": "Correo",
+    "fullNameLabel": "Nombre completo",
+    "employeeCodeLabel": "Código de empleado",
+    "employeeCodeHint": "El código de empleado no se puede borrar una vez asignado. Déjalo en blanco para no modificarlo.",
+    "localeLabel": "Idioma",
+    "passwordLabel": "Contraseña inicial",
+    "confirmPasswordLabel": "Confirmar contraseña",
+    "passwordMismatch": "Las contraseñas no coinciden.",
+    "rolesLabel": "Roles",
+    "statusLabel": "Cuenta habilitada",
+    "disableTitle": "Deshabilitar cuenta",
+    "disableMessage": "Deshabilitar la cuenta de \"{{name}}\" cierra sus sesiones activas de inmediato.",
+    "disableNotice": "Deshabilitar esta cuenta cierra sus sesiones activas de inmediato."
+  },
   "errors": {
     "INVALID_CREDENTIALS": "Correo o contraseña incorrectos.",
     "TOKEN_INVALID": "Tu sesión expiró. Inicia sesión de nuevo.",
