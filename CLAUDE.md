@@ -49,6 +49,20 @@ Stripe o desde una importación CSV recorre el mismo código.
 - Permisos: se verifican **siempre** en la API. Ocultar un botón en Angular es
   comodidad visual, nunca seguridad.
 
+## Cliente API generado (Angular)
+
+`apps/api/src/lib/openapi/registry.ts` deriva un documento OpenAPI de los
+esquemas Zod de `@rm/contracts` (y de las formas de respuesta de dominio que
+`@rm/contracts` aún no cubre). `libs/api-client/src/lib/schema.d.ts` se genera
+a partir de ese documento con `pnpm api:types` y **nunca se edita a mano** — el
+propio archivo lleva una cabecera que lo dice y `pnpm api:types` lo sobreescribe
+por completo en cada corrida. Para cambiar esos tipos: cambia el esquema Zod (o
+la forma modelada en `registry.ts`) y vuelve a correr `pnpm api:types`.
+`libs/api-client/src/lib/api-client.ts` y `endpoints.ts` son el envoltorio
+tipado sobre `HttpClient` que sí se edita a mano; no se genera un cliente
+`fetch` completo porque eso saltaría los interceptores de Angular (refresh de
+token, manejo central de errores).
+
 ## Comandos
 
 ```bash

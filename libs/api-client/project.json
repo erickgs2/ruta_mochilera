@@ -2,15 +2,23 @@
   "name": "api-client",
   "$schema": "../../node_modules/nx/schemas/project-schema.json",
   "sourceRoot": "libs/api-client/src",
+  "prefix": "rm",
   "projectType": "library",
   "tags": [],
-  "// targets": "to see all targets run: nx show project api-client --web",
   "targets": {
     "typecheck": {
       "executor": "nx:run-commands",
       "options": {
         "command": "tsc -p tsconfig.typecheck.json",
         "cwd": "{projectRoot}"
+      }
+    },
+    "test": {
+      "executor": "@nx/jest:jest",
+      "outputs": ["{workspaceRoot}/coverage/{projectRoot}"],
+      "options": {
+        "jestConfig": "libs/api-client/jest.config.cts",
+        "tsConfig": "libs/api-client/tsconfig.spec.json"
       }
     }
   }

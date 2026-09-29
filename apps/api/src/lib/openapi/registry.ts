@@ -1,0 +1,555 @@
+import { OpenAPIRegistry, OpenApiGeneratorV31 } from '@asteasolutions/zod-to-openapi';
+import { z } from 'zod';
+import {
+  authenticatedUserSchema as authenticatedUserSchemaImport,
+  budgetItemRequestSchema as budgetItemRequestSchemaImport,
+  changeStatusRequestSchema as changeStatusRequestSchemaImport,
+  createStaffRequestSchema as createStaffRequestSchemaImport,
+  createTripRequestSchema as createTripRequestSchemaImport,
+  loginRequestSchema as loginRequestSchemaImport,
+  permissionSchema as permissionSchemaImport,
+  pricingPolicyRequestSchema as pricingPolicyRequestSchemaImport,
+  problemSchema as problemSchemaImport,
+  refreshRequestSchema as refreshRequestSchemaImport,
+  roleInputSchema as roleInputSchemaImport,
+  roleSchema as roleSchemaImport,
+  sessionResponseSchema as sessionResponseSchemaImport,
+  staffSchema as staffSchemaImport,
+  tripTranslationSchema,
+  updateStaffRequestSchema as updateStaffRequestSchemaImport,
+  updateTripRequestSchema as updateTripRequestSchemaImport,
+} from '@rm/contracts';
+
+/**
+ * `@rm/contracts` schemas are tagged with `.meta({ id })` here, rather than
+ * registered by name through `OpenAPIRegistry.register(...)`. The registry's
+ * `register` relies on the `zodSchema.openapi(...)` method that
+ * `extendZodWithOpenApi` monkey-patches onto `ZodType.prototype` at runtime
+ * -- but `@rm/contracts`'s schemas are already fully constructed by the time
+ * this module's own top-level code would run that patch (ES module imports
+ * evaluate before the importing module's body), so the patched method never
+ * reaches them and `.openapi()` is `undefined` on every imported schema.
+ * `.meta({ id })` is Zod 4's own, built-in mechanism (no prototype patch, no
+ * import-order dependency) and the generator honours it identically: a
+ * schema tagged this way still lands in `components.schemas` under `id` and
+ * is referenced with `$ref` everywhere else it is used.
+ */
+const problemSchema = problemSchemaImport.meta({ id: 'Problem' });
+const loginRequestSchema = loginRequestSchemaImport.meta({ id: 'LoginRequest' });
+const refreshRequestSchema = refreshRequestSchemaImport.meta({ id: 'RefreshRequest' });
+const authenticatedUserSchema = authenticatedUserSchemaImport.meta({ id: 'AuthenticatedUser' });
+const sessionResponseSchema = sessionResponseSchemaImport.meta({ id: 'Session' });
+const permissionSchema = permissionSchemaImport.meta({ id: 'Permission' });
+const roleInputSchema = roleInputSchemaImport.meta({ id: 'RoleInput' });
+const roleSchema = roleSchemaImport.meta({ id: 'Role' });
+const createStaffRequestSchema = createStaffRequestSchemaImport.meta({ id: 'CreateStaffRequest' });
+const updateStaffRequestSchema = updateStaffRequestSchemaImport.meta({ id: 'UpdateStaffRequest' });
+const staffSchema = staffSchemaImport.meta({ id: 'Staff' });
+const createTripRequestSchema = createTripRequestSchemaImport.meta({ id: 'CreateTripRequest' });
+const updateTripRequestSchema = updateTripRequestSchemaImport.meta({ id: 'UpdateTripRequest' });
+const changeStatusRequestSchema = changeStatusRequestSchemaImport.meta({ id: 'ChangeStatusRequest' });
+const budgetItemRequestSchema = budgetItemRequestSchemaImport.meta({ id: 'BudgetItemRequest' });
+const pricingPolicyRequestSchema = pricingPolicyRequestSchemaImport.meta({ id: 'PricingPolicyRequest' });
+
+const json = (schema: z.ZodTypeAny) => ({ content: { 'application/json': { schema } } });
+
+/**
+ * A required JSON request body. Marked `required: true` explicitly (the
+ * OpenAPI default is `false`) so the generated `paths[P][M]['requestBody']`
+ * type is non-optional -- `route()` always parses the body for these
+ * routes, there is no "body omitted" case for the client to type around.
+ */
+const requestBody = (schema: z.ZodTypeAny) => ({ ...json(schema), required: true });
+
+/** A `problem+json` error response, per RFC 7807. The body always carries the stable `code` @rm/contracts' `problemSchema` describes. */
+const problem = (description: string) => ({
+  description,
+  content: { 'application/problem+json': { schema: problemSchema } },
+});
+
+const uuidParam = (name: string) => z.object({ [name]: z.string().uuid() });
+
+/**
+ * DTOs for trips, images and costing are not yet part of `@rm/contracts`
+ * (only their *request* shapes are, since those are what Zod validates at
+ * the HTTP boundary). They are modelled here, matching the domain services'
+ * response types field-for-field (`TripDto`, `TripSummaryDto`, `TripImageDto`,
+ * `BudgetItemDto`, `TripCostingDto` in `@rm/domain-trips` and
+ * `@rm/domain-costing`), so the generated Angular types stay accurate for
+ * every endpoint rather than only the ones with a matching Zod contract.
+ * Dates are `string` here (not `Date`): Prisma `Date` values are serialised
+ * to ISO strings by `Response.json`, and it is that wire shape the client
+ * receives.
+ */
+const tripStatusSchema = z.enum(['DRAFT', 'PUBLISHED', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED']);
+const marginModeSchema = z.enum(['PERCENTAGE', 'FIXED_TOTAL', 'FIXED_PER_SEAT']);
+const priceModeSchema = z.enum(['AUTO', 'MANUAL']);
+
+const tripImageEmbeddedSchema = z.object({
+  id: z.string().uuid(),
+  storageKey: z.string(),
+  position: z.number().int().nonnegative(),
+  isCover: z.boolean(),
+  altText: z.string().nullable(),
+});
+
+const tripSchema = z
+  .object({
+    id: z.string().uuid(),
+    slug: z.string(),
+    status: tripStatusSchema,
+    departureDate: z.iso.datetime(),
+    returnDate: z.iso.datetime(),
+    paymentDeadline: z.iso.datetime(),
+    totalCapacity: z.number().int(),
+    preSoldSeats: z.number().int(),
+    availableSeats: z.number().int(),
+    holdTtlHours: z.number().int(),
+    minimumDepositCents: z.number().int(),
+    budgetTotalCents: z.number().int(),
+    marginMode: marginModeSchema,
+    marginValue: z.number().int(),
+    pricePerSeatCents: z.number().int(),
+    priceMode: priceModeSchema,
+    publishedAt: z.iso.datetime().nullable(),
+    isBackfilled: z.boolean(),
+    translations: z.array(tripTranslationSchema),
+    images: z.array(tripImageEmbeddedSchema),
+  })
+  .meta({ id: 'Trip' });
+
+const tripSummarySchema = z
+  .object({
+    id: z.string().uuid(),
+    slug: z.string(),
+    status: tripStatusSchema,
+    name: z.string(),
+    departureDate: z.iso.datetime(),
+    totalCapacity: z.number().int(),
+    availableSeats: z.number().int(),
+    pricePerSeatCents: z.number().int(),
+  })
+  .meta({ id: 'TripSummary' });
+
+const tripImageSchema = tripImageEmbeddedSchema
+  .extend({
+    tripId: z.string().uuid(),
+    url: z.string(),
+  })
+  .meta({ id: 'TripImage' });
+
+const budgetItemSchema = z
+  .object({
+    id: z.string().uuid(),
+    concept: z.string(),
+    supplier: z.string().nullable(),
+    quantity: z.number().int(),
+    unitAmountCents: z.number().int(),
+    totalCents: z.number().int(),
+    notes: z.string().nullable(),
+  })
+  .meta({ id: 'BudgetItem' });
+
+const tripCostingSchema = z
+  .object({
+    tripId: z.string().uuid(),
+    items: z.array(budgetItemSchema),
+    budgetTotalCents: z.number().int(),
+    marginMode: marginModeSchema,
+    marginValue: z.number().int(),
+    priceMode: priceModeSchema,
+    suggestedPricePerSeatCents: z.number().int(),
+    pricePerSeatCents: z.number().int(),
+    totalCapacity: z.number().int(),
+  })
+  .meta({ id: 'TripCosting' });
+
+const uploadTripImageSchema = z.object({
+  file: z.string().meta({ type: 'string', format: 'binary', description: 'Image bytes (jpeg, png or webp; max 8MB).' }),
+  altText: z.string().max(240).optional(),
+});
+
+/**
+ * The Zod schemas in `@rm/contracts` (plus the response DTOs defined above,
+ * for the endpoints contracts does not yet cover) are the single source of
+ * truth: this file derives the OpenAPI document from them, and the Angular
+ * types are generated from that document. A contract change therefore
+ * breaks the build, not production.
+ *
+ * Every schema referenced by more than one path -- and every one imported
+ * from `@rm/contracts` -- is tagged with `.meta({ id: 'Name' })` above, so it
+ * lands in `components.schemas` under that name instead of being inlined at
+ * every use site.
+ */
+export function buildOpenApiDocument() {
+  const registry = new OpenAPIRegistry();
+
+  registry.registerComponent('securitySchemes', 'bearerAuth', {
+    type: 'http',
+    scheme: 'bearer',
+    bearerFormat: 'JWT',
+  });
+
+  // --- auth --------------------------------------------------------------
+  registry.registerPath({
+    method: 'post',
+    path: '/api/v1/auth/login',
+    tags: ['auth'],
+    request: { body: requestBody(loginRequestSchema) },
+    responses: {
+      200: { description: 'Session issued', ...json(sessionResponseSchema) },
+      401: problem('Invalid email or password'),
+    },
+  });
+
+  registry.registerPath({
+    method: 'post',
+    path: '/api/v1/auth/refresh',
+    tags: ['auth'],
+    request: { body: requestBody(refreshRequestSchema) },
+    responses: {
+      200: { description: 'Session rotated', ...json(sessionResponseSchema) },
+      401: problem('Unknown, expired or replayed refresh token'),
+      403: problem('Account disabled'),
+    },
+  });
+
+  registry.registerPath({
+    method: 'post',
+    path: '/api/v1/auth/logout',
+    tags: ['auth'],
+    request: { body: requestBody(refreshRequestSchema) },
+    responses: {
+      200: { description: 'Session revoked (idempotent: an already-closed session still returns 200)', ...json(z.null()) },
+    },
+  });
+
+  registry.registerPath({
+    method: 'get',
+    path: '/api/v1/me',
+    tags: ['auth'],
+    security: [{ bearerAuth: [] }],
+    responses: {
+      200: { description: 'The authenticated caller', ...json(authenticatedUserSchema) },
+      401: problem('Missing or invalid access token'),
+    },
+  });
+
+  // --- rbac ----------------------------------------------------------------
+  registry.registerPath({
+    method: 'get',
+    path: '/api/v1/rbac/permissions',
+    tags: ['rbac'],
+    security: [{ bearerAuth: [] }],
+    responses: {
+      200: { description: 'Full permission catalog', ...json(permissionSchema.array()) },
+      401: problem('Missing or invalid access token'),
+      403: problem('Missing role.view'),
+    },
+  });
+
+  registry.registerPath({
+    method: 'get',
+    path: '/api/v1/rbac/roles',
+    tags: ['rbac'],
+    security: [{ bearerAuth: [] }],
+    responses: {
+      200: { description: 'Roles', ...json(roleSchema.array()) },
+      401: problem('Missing or invalid access token'),
+      403: problem('Missing role.view'),
+    },
+  });
+
+  registry.registerPath({
+    method: 'post',
+    path: '/api/v1/rbac/roles',
+    tags: ['rbac'],
+    security: [{ bearerAuth: [] }],
+    request: { body: requestBody(roleInputSchema) },
+    responses: {
+      201: { description: 'Role created', ...json(roleSchema) },
+      401: problem('Missing or invalid access token'),
+      403: problem('Missing role.manage'),
+      409: problem('Duplicate role name'),
+      422: problem('Validation failed, or an unknown permission key was supplied'),
+    },
+  });
+
+  registry.registerPath({
+    method: 'put',
+    path: '/api/v1/rbac/roles/{roleId}',
+    tags: ['rbac'],
+    security: [{ bearerAuth: [] }],
+    request: { params: uuidParam('roleId'), body: requestBody(roleInputSchema) },
+    responses: {
+      200: { description: 'Role updated', ...json(roleSchema) },
+      401: problem('Missing or invalid access token'),
+      403: problem('Missing role.manage, or the role is a system role and cannot be modified'),
+      404: problem('Role not found'),
+      409: problem('Duplicate role name'),
+      422: problem('Validation failed, or an unknown permission key was supplied'),
+    },
+  });
+
+  registry.registerPath({
+    method: 'delete',
+    path: '/api/v1/rbac/roles/{roleId}',
+    tags: ['rbac'],
+    security: [{ bearerAuth: [] }],
+    request: { params: uuidParam('roleId') },
+    responses: {
+      204: { description: 'Role deleted' },
+      401: problem('Missing or invalid access token'),
+      403: problem('Missing role.manage, or the role is a system role and cannot be deleted'),
+      404: problem('Role not found'),
+      409: problem('Role still has assigned users'),
+    },
+  });
+
+  // --- staff -----------------------------------------------------------
+  registry.registerPath({
+    method: 'get',
+    path: '/api/v1/staff',
+    tags: ['staff'],
+    security: [{ bearerAuth: [] }],
+    request: { query: z.object({ search: z.string().optional() }) },
+    responses: {
+      200: { description: 'Administrator accounts', ...json(staffSchema.array()) },
+      401: problem('Missing or invalid access token'),
+      403: problem('Missing staff.view'),
+    },
+  });
+
+  registry.registerPath({
+    method: 'post',
+    path: '/api/v1/staff',
+    tags: ['staff'],
+    security: [{ bearerAuth: [] }],
+    request: { body: requestBody(createStaffRequestSchema) },
+    responses: {
+      201: { description: 'Administrator created', ...json(staffSchema) },
+      401: problem('Missing or invalid access token'),
+      403: problem('Missing staff.manage'),
+      409: problem('Email already registered'),
+      422: problem('Validation failed, or an unknown role id was supplied'),
+    },
+  });
+
+  registry.registerPath({
+    method: 'put',
+    path: '/api/v1/staff/{userId}',
+    tags: ['staff'],
+    security: [{ bearerAuth: [] }],
+    request: { params: uuidParam('userId'), body: requestBody(updateStaffRequestSchema) },
+    responses: {
+      200: { description: 'Administrator updated', ...json(staffSchema) },
+      401: problem('Missing or invalid access token'),
+      403: problem('Missing staff.manage'),
+      404: problem('Administrator not found'),
+      422: problem('Validation failed, or an unknown role id was supplied'),
+    },
+  });
+
+  // --- trips -----------------------------------------------------------
+  registry.registerPath({
+    method: 'get',
+    path: '/api/v1/trips',
+    tags: ['trips'],
+    security: [{ bearerAuth: [] }],
+    request: { query: z.object({ status: tripStatusSchema.optional(), search: z.string().optional() }) },
+    responses: {
+      200: { description: 'Trip summaries', ...json(tripSummarySchema.array()) },
+      401: problem('Missing or invalid access token'),
+      403: problem('Missing trip.view'),
+    },
+  });
+
+  registry.registerPath({
+    method: 'post',
+    path: '/api/v1/trips',
+    tags: ['trips'],
+    security: [{ bearerAuth: [] }],
+    request: { body: requestBody(createTripRequestSchema) },
+    responses: {
+      201: { description: 'Trip created', ...json(tripSchema) },
+      401: problem('Missing or invalid access token'),
+      403: problem('Missing trip.create, or missing data.backfill for a backfilled trip'),
+      409: problem('Slug collision that could not be resolved automatically'),
+      422: problem('Validation failed, invalid capacity, or missing the required Spanish translation'),
+    },
+  });
+
+  registry.registerPath({
+    method: 'get',
+    path: '/api/v1/trips/{tripId}',
+    tags: ['trips'],
+    security: [{ bearerAuth: [] }],
+    request: { params: uuidParam('tripId') },
+    responses: {
+      200: { description: 'Trip detail', ...json(tripSchema) },
+      401: problem('Missing or invalid access token'),
+      403: problem('Missing trip.view'),
+      404: problem('Trip not found'),
+    },
+  });
+
+  registry.registerPath({
+    method: 'put',
+    path: '/api/v1/trips/{tripId}',
+    tags: ['trips'],
+    security: [{ bearerAuth: [] }],
+    request: { params: uuidParam('tripId'), body: requestBody(updateTripRequestSchema) },
+    responses: {
+      200: { description: 'Trip updated', ...json(tripSchema) },
+      401: problem('Missing or invalid access token'),
+      403: problem('Missing trip.update'),
+      404: problem('Trip not found'),
+      409: problem('New capacity is below what is already committed'),
+      422: problem('Validation failed, invalid capacity, or missing the required Spanish translation'),
+    },
+  });
+
+  registry.registerPath({
+    method: 'put',
+    path: '/api/v1/trips/{tripId}/status',
+    tags: ['trips'],
+    security: [{ bearerAuth: [] }],
+    request: { params: uuidParam('tripId'), body: requestBody(changeStatusRequestSchema) },
+    responses: {
+      200: { description: 'Status changed', ...json(tripSchema) },
+      401: problem('Missing or invalid access token'),
+      403: problem('Missing trip.publish'),
+      404: problem('Trip not found'),
+      409: problem('Illegal status transition, or the trip is not publishable yet'),
+    },
+  });
+
+  registry.registerPath({
+    method: 'post',
+    path: '/api/v1/trips/{tripId}/images',
+    tags: ['trips'],
+    security: [{ bearerAuth: [] }],
+    request: {
+      params: uuidParam('tripId'),
+      body: { content: { 'multipart/form-data': { schema: uploadTripImageSchema } }, required: true },
+    },
+    responses: {
+      201: { description: 'Image uploaded and attached to the trip gallery', ...json(tripImageSchema) },
+      401: problem('Missing or invalid access token'),
+      403: problem('Missing trip.update'),
+      404: problem('Trip not found'),
+      422: problem('Missing file, oversized file, or a file that is not a jpeg/png/webp image'),
+    },
+  });
+
+  registry.registerPath({
+    method: 'delete',
+    path: '/api/v1/trips/{tripId}/images/{imageId}',
+    tags: ['trips'],
+    security: [{ bearerAuth: [] }],
+    request: { params: z.object({ tripId: z.string().uuid(), imageId: z.string().uuid() }) },
+    responses: {
+      200: { description: 'Image removed; the next image is promoted to cover if the deleted one was it', ...json(z.null()) },
+      401: problem('Missing or invalid access token'),
+      403: problem('Missing trip.update'),
+      404: problem('Image not found'),
+    },
+  });
+
+  // --- costing -----------------------------------------------------------
+  registry.registerPath({
+    method: 'get',
+    path: '/api/v1/trips/{tripId}/costing',
+    tags: ['costing'],
+    security: [{ bearerAuth: [] }],
+    request: { params: uuidParam('tripId') },
+    responses: {
+      200: { description: 'Budget items and the current pricing policy', ...json(tripCostingSchema) },
+      401: problem('Missing or invalid access token'),
+      403: problem('Missing trip.budget.view'),
+      404: problem('Trip not found'),
+    },
+  });
+
+  registry.registerPath({
+    method: 'put',
+    path: '/api/v1/trips/{tripId}/costing',
+    tags: ['costing'],
+    security: [{ bearerAuth: [] }],
+    request: { params: uuidParam('tripId'), body: requestBody(pricingPolicyRequestSchema) },
+    responses: {
+      200: { description: 'Pricing policy updated and the trip repriced', ...json(tripCostingSchema) },
+      401: problem('Missing or invalid access token'),
+      403: problem('Missing trip.budget.manage'),
+      404: problem('Trip not found'),
+      422: problem('Validation failed, e.g. a manual price mode with no manual price set'),
+    },
+  });
+
+  registry.registerPath({
+    method: 'post',
+    path: '/api/v1/trips/{tripId}/costing/items',
+    tags: ['costing'],
+    security: [{ bearerAuth: [] }],
+    request: { params: uuidParam('tripId'), body: requestBody(budgetItemRequestSchema) },
+    responses: {
+      201: { description: 'Budget item added and the trip repriced', ...json(tripCostingSchema) },
+      401: problem('Missing or invalid access token'),
+      403: problem('Missing trip.budget.manage'),
+      404: problem('Trip not found'),
+      422: problem('Validation failed'),
+    },
+  });
+
+  registry.registerPath({
+    method: 'put',
+    path: '/api/v1/trips/{tripId}/costing/items/{itemId}',
+    tags: ['costing'],
+    security: [{ bearerAuth: [] }],
+    request: { params: z.object({ tripId: z.string().uuid(), itemId: z.string().uuid() }), body: requestBody(budgetItemRequestSchema) },
+    responses: {
+      200: { description: 'Budget item updated and the trip repriced', ...json(tripCostingSchema) },
+      401: problem('Missing or invalid access token'),
+      403: problem('Missing trip.budget.manage'),
+      404: problem('Budget item not found'),
+      422: problem('Validation failed'),
+    },
+  });
+
+  registry.registerPath({
+    method: 'delete',
+    path: '/api/v1/trips/{tripId}/costing/items/{itemId}',
+    tags: ['costing'],
+    security: [{ bearerAuth: [] }],
+    request: { params: z.object({ tripId: z.string().uuid(), itemId: z.string().uuid() }) },
+    responses: {
+      200: { description: 'Budget item deleted and the trip repriced', ...json(tripCostingSchema) },
+      401: problem('Missing or invalid access token'),
+      403: problem('Missing trip.budget.manage'),
+      404: problem('Budget item not found'),
+    },
+  });
+
+  // --- files ---------------------------------------------------------------
+  registry.registerPath({
+    method: 'get',
+    path: '/api/v1/files/{key}',
+    tags: ['files'],
+    description:
+      'Serves a locally stored file (the local storage driver only -- in qa and production, ' +
+      'files are served straight from the S3 bucket and this route always 404s). Not wrapped by ' +
+      "`route()`: a miss reports a bare 404, never `problem+json`, so a client can never tell a " +
+      'missing key apart from this route being reachable in an environment where it should not be.',
+    request: { params: z.object({ key: z.string().describe('Storage key; may contain multiple "/"-separated segments.') }) },
+    responses: {
+      200: { description: 'File contents', content: { 'application/octet-stream': { schema: { type: 'string', format: 'binary' } } } },
+      404: { description: 'File not found, or the active storage driver is not "local"' },
+    },
+  });
+
+  return new OpenApiGeneratorV31(registry.definitions).generateDocument({
+    openapi: '3.1.0',
+    info: { title: 'Ruta Mochilera API', version: '1.0.0' },
+    servers: [{ url: '/' }],
+  });
+}

@@ -10,6 +10,7 @@ export default tseslint.config(
       '**/coverage',
       '**/out-tsc',
       '**/generated/prisma',
+      'libs/api-client/src/lib/schema.d.ts',
     ],
   },
   {
