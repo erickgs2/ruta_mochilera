@@ -170,6 +170,24 @@ async function persistCosting(
 }
 
 /**
+ * Re-prices a trip from its current budget and margin/price policy, inside a
+ * transaction the caller already has open. `total_capacity` is one of
+ * `calculatePricing`'s own inputs, but it lives on `Trip`, owned by
+ * `libs/domain/trips`, not here -- so this package can never notice a
+ * capacity change on its own. `libs/domain/trips`'s `updateTrip` calls this,
+ * inside its own transaction, whenever `totalCapacity` changes. See
+ * `docs/business-rules/trips.md` for the business rule this closes.
+ *
+ * A thin wrapper over `persistCosting`, which stays unexported: every
+ * in-package mutation already reaches it, and a cross-domain caller needs a
+ * name that does not read as "pass a manual price override" the way
+ * `persistCosting`'s second parameter does.
+ */
+export async function repriceTrip(tx: DbTransactionClient, tripId: string): Promise<Result<TripCostingDto>> {
+  return persistCosting(tx, tripId);
+}
+
+/**
  * Returns the trip's full costing picture -- not just the line items, since
  * the costing screen always needs the total, the margin and the price
  * alongside the list. A pure read: it calls `computeCosting` directly and
@@ -181,18 +199,13 @@ async function persistCosting(
  * budget items and policy are unchanged but the *inputs* to the formula
  * change some other way, the stored `price_per_seat_cents` can go stale
  * until the next budget mutation. `total_capacity` is exactly such an input,
- * and it lives on `Trip`, owned by `libs/domain/trips`'s `updateTrip` --
- * which does not call into this file. So today, changing a trip's capacity
- * through `updateTrip` does NOT re-price it: the stored price reflects the
- * old capacity until someone next touches a budget item or the pricing
- * policy. `listBudgetItems` still reports the *correct* number in the
- * meantime, since it always recomputes from the current row rather than
- * trusting the stored columns -- but the stored `price_per_seat_cents` a
- * caller might read directly off `Trip` (as `trip-service.ts`'s `toDto`
- * does) can be wrong. This is a pre-existing cross-domain gap, not something
- * introduced by moving the write out of this function; closing it belongs
- * wherever `updateTrip` and this package get wired together (Task 14 or
- * later), not in this file.
+ * and it lives on `Trip`, owned by `libs/domain/trips`'s `updateTrip`. That
+ * gap is closed as of Task 14: `updateTrip` calls `repriceTrip` (below),
+ * inside its own transaction, whenever `totalCapacity` changes, so the
+ * stored price never outlives the capacity it was computed against.
+ * `listBudgetItems` still recomputes from the current row on every read
+ * regardless, so it reports the correct number even in the window before a
+ * capacity change is persisted.
  */
 export async function listBudgetItems(db: Db, tripId: string): Promise<Result<TripCostingDto>> {
   const trip = await db.trip.findUnique({ where: { id: tripId }, include: { budgetItems: true } });

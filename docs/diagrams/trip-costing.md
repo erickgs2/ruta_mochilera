@@ -19,7 +19,7 @@ flowchart TD
     L --> M{price_mode}
     M -- AUTO --> N[price_per_seat_cents = suggested]
     M -- MANUAL --> O["price_per_seat_cents lo fija<br/>el administrador;<br/>suggested se sigue mostrando,<br/>nunca se descarta"]
-    N --> P[(recomputeAndPersist:<br/>única escritura de<br/>budget_total_cents y<br/>price_per_seat_cents)]
+    N --> P[(persistCosting:<br/>única escritura de<br/>budget_total_cents y<br/>price_per_seat_cents)]
     O --> P
     P --> Q{"¿El viaje ya está PUBLISHED<br/>o tiene reservas? (Fase 2)"}
     Q -- No --> R[Listo: la vista de costeo<br/>muestra el nuevo total y precio]
@@ -33,9 +33,15 @@ flowchart TD
   importar cómo se calculó `total_with_margin`.
 - El nodo `P` es deliberadamente el único punto de escritura de
   `budget_total_cents` y `price_per_seat_cents` en todo el diagrama —
-  corresponde a `recomputeAndPersist` en `budget-service.ts`. Cualquier flecha
+  corresponde a `persistCosting` en `budget-service.ts`. Cualquier flecha
   que terminara escribiendo esas columnas por otro camino sería un defecto.
 - El nodo `Q`/`S` documenta una regla que todavía no tiene código que la
   ejecute: la Fase 1 no tiene modelo `Reservation`, así que hoy esa rama nunca
   se toma con datos reales. Queda fijada aquí para que la Fase 2 la respete
   desde el primer commit que introduzca reservas.
+- `persistCosting` tiene un segundo punto de entrada desde la Tarea 14:
+  `repriceTrip`, que `updateTrip` (`libs/domain/trips`, ver
+  `trip-creation.md`) llama dentro de su propia transacción cuando cambia
+  `total_capacity`. No aparece como una rama nueva en este diagrama porque no
+  agrega ninguna decisión de negocio propia — sólo un segundo llamador del
+  mismo nodo `P`.

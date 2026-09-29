@@ -66,14 +66,23 @@ redondeo, es un precio de venta equivocado.
 - Cambiar de `MANUAL` de vuelta a `AUTO` recalcula el precio de inmediato a
   partir del presupuesto vigente; el precio manual anterior se descarta.
 
-## Una sola fuente de verdad: `recomputeAndPersist`
+## Una sola fuente de verdad: `persistCosting`
 
-`budget-service.ts` tiene una única función, `recomputeAndPersist`, que
+`budget-service.ts` tiene una única función, `persistCosting`, que
 escribe las columnas `budget_total_cents` y `price_per_seat_cents` del viaje.
 Agregar, editar o eliminar una partida, y cambiar la política de margen o de
 precio, terminan **siempre** llamándola. Ninguna otra ruta del código escribe
 esas dos columnas directamente — así es como se garantiza que nunca queden
 desincronizadas de las partidas que las produjeron.
+
+Desde la Tarea 14, `persistCosting` tiene un segundo punto de entrada:
+`repriceTrip`, exportado para que `libs/domain/trips`'s `updateTrip` pueda
+volver a calcular el precio cuando cambia `total_capacity` — un divisor de la
+fórmula que vive fuera de este paquete. Ver
+`docs/business-rules/trips.md#cambiar-el-cupo-recalcula-el-precio-del-viaje`.
+`repriceTrip` no agrega ninguna entrada nueva a `audit_logs`: el recálculo es
+consecuencia determinista de la escritura de `total_capacity`, que
+`updateTrip` ya audita por su cuenta.
 
 ## Editar el presupuesto de un viaje ya publicado
 

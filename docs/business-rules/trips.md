@@ -62,6 +62,26 @@ la edición se guarde.
 
 El inglés es **opcional**: cuando falta, la app muestra el español.
 
+## Cambiar el cupo recalcula el precio del viaje
+
+`total_capacity` es un divisor de la fórmula de precio por vacante (ver
+`docs/business-rules/costing.md`). Por eso `updateTrip`, cuando el cupo
+cambia, llama a `repriceTrip` (`libs/domain/costing`) **dentro de la misma
+transacción** que escribe el nuevo `total_capacity` — nunca desde el
+controlador HTTP, para que una CLI o una importación que llamen a `updateTrip`
+directamente obtengan la misma garantía.
+
+Antes de la Tarea 14 esto no pasaba: `updateTrip` vive en
+`libs/domain/trips` y el costeo en `libs/domain/costing`, y nada los conectaba.
+El síntoma quedaba oculto porque la ruta de lectura del costeo recalculaba y
+guardaba el precio en cada vista, así que un precio obsolete se autocorregía
+la próxima vez que alguien abría la pantalla. Esa escritura se quitó
+correctamente de la ruta de lectura (una lectura no debe escribir), así que el
+precio obsoleto ahora es permanente hasta que este código lo corrige.
+
+Si el cupo no cambia, `updateTrip` no llama a `repriceTrip`: no hay nada que
+recalcular.
+
 ## Slug
 
 Se genera del nombre en español más el año de salida (`oaxaca-magica-2026`) y se

@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { closeTestDb, prepareTestDb, resetDatabase, withTestDb } from '@rm/db/testing';
+import { addBudgetItem } from '@rm/domain-costing';
 import type { Actor } from '@rm/domain-rbac';
 import { changeTripStatus, createTrip, listTrips, updateTrip } from './trip-service';
 
@@ -292,6 +293,36 @@ describe('trip service', () => {
 
     const search = await listTrips(db, { search: 'chiapas' });
     expect(search.ok && search.value).toHaveLength(1);
+  });
+
+  it('reprices the trip when totalCapacity changes through updateTrip', async () => {
+    // Regression test for a cross-domain gap found in Task 13: capacity is a
+    // divisor in the per-seat price formula, but `updateTrip` lives here and
+    // pricing lives in `libs/domain/costing`, so nothing used to connect the
+    // two. This must fail before `updateTrip` calls into costing to reprice.
+    const created = await createTrip(db, actorWith(['trip.create']), baseInput);
+    if (!created.ok) throw new Error('setup failed');
+
+    const priced = await addBudgetItem(db, actorWith(['trip.budget.manage']), created.value.id, {
+      concept: 'Bus',
+      quantity: 1,
+      unitAmountCents: 500_000,
+    });
+    if (!priced.ok) throw new Error('setup failed');
+    // 500,000 x 1.20 margin / 20 seats = 30,000 cents per seat.
+    expect(priced.value.pricePerSeatCents).toBe(30_000);
+
+    const updated = await updateTrip(db, actorWith(['trip.update']), created.value.id, {
+      ...baseInput,
+      totalCapacity: 30,
+    });
+
+    expect(updated.ok).toBe(true);
+    // Same 600,000 total-with-margin now split across 30 seats: 20,000 cents.
+    if (updated.ok) expect(updated.value.pricePerSeatCents).toBe(20_000);
+
+    const stored = await db.trip.findUniqueOrThrow({ where: { id: created.value.id } });
+    expect(stored.pricePerSeatCents).toBe(20_000);
   });
 
   it('writes an audit entry on creation and on status change', async () => {

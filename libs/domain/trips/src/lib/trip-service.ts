@@ -1,5 +1,6 @@
 import { uniqueViolationIndex, type Db, type DbTransactionClient } from '@rm/db';
 import { recordAudit } from '@rm/domain-audit';
+import { repriceTrip } from '@rm/domain-costing';
 import { requirePermission, type Actor } from '@rm/domain-rbac';
 import { fail, isPastDate, ok, type Result } from '@rm/shared-utils';
 import { availableSeats } from './capacity';
@@ -401,6 +402,19 @@ export async function updateTrip(
       before: { totalCapacity: existing.totalCapacity, departureDate: existing.departureDate },
       after: { totalCapacity: input.totalCapacity, departureDate: input.departureDate },
     });
+
+    // `totalCapacity` is a divisor in the per-seat price formula
+    // (`calculatePricing`'s `totalCapacity`), so a change to it must
+    // reprice the trip in the same transaction as the capacity write --
+    // otherwise a crash between the two commits, or simply nobody touching
+    // a budget item afterward, leaves `price_per_seat_cents` computed
+    // against a capacity that no longer exists. See
+    // `docs/business-rules/trips.md`.
+    if (input.totalCapacity !== existing.totalCapacity) {
+      const repriced = await repriceTrip(tx, tripId);
+      if (!repriced.ok) return repriced;
+    }
+
     return ok(null);
   });
 
