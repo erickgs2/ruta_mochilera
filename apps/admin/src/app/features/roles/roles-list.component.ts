@@ -1,4 +1,5 @@
 import { BreakpointObserver } from '@angular/cdk/layout';
+import { HttpErrorResponse } from '@angular/common/http';
 import { Component, inject, signal } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { MatButtonModule } from '@angular/material/button';
@@ -81,13 +82,28 @@ export class RolesListComponent {
       this.rbac.deleteRole(role.id).subscribe({
         next: () => this.load(),
         error: (error: unknown) => {
-          // Most commonly ROLE_IN_USE: the list looked clear a moment ago,
-          // but PostgreSQL's foreign key is the actual, up-to-date source of
-          // truth (see `deleteRole` in `@rm/domain-rbac`).
-          this.snackBar.open(this.errorCode.transform(error), undefined, { duration: 6000 });
+          this.snackBar.open(this.deleteErrorMessage(error), undefined, { duration: 6000 });
         },
       });
     });
+  }
+
+  /**
+   * Most commonly `ROLE_IN_USE`: the list looked clear a moment ago, but
+   * PostgreSQL's foreign key is the actual, up-to-date source of truth (see
+   * `deleteRole` in `@rm/domain-rbac`). The backend sends the current
+   * `userCount` in `details` precisely so the administrator can tell "one
+   * user" from "forty users" -- `ErrorCodePipe.transform()` alone calls
+   * `translate.instant(key)` with no parameters, so it cannot fill in that
+   * count; this special-cases the one code that carries one, the same way
+   * `roles.deleteMessage` above interpolates `{{ name }}`.
+   */
+  private deleteErrorMessage(error: unknown): string {
+    if (error instanceof HttpErrorResponse && error.error?.code === 'ROLE_IN_USE') {
+      const userCount = error.error.details?.userCount;
+      return this.translate.instant('errors.ROLE_IN_USE', { userCount });
+    }
+    return this.errorCode.transform(error);
   }
 
   private load(): void {

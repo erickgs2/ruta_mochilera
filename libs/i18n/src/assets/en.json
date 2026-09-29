@@ -73,7 +73,6 @@
     "confirmPasswordLabel": "Confirm password",
     "passwordMismatch": "Passwords do not match.",
     "rolesLabel": "Roles",
-    "statusLabel": "Account enabled",
     "disableTitle": "Disable account",
     "disableMessage": "Disabling the account for \"{{name}}\" closes their active sessions immediately.",
     "disableNotice": "Disabling this account closes its active sessions immediately."
@@ -88,7 +87,7 @@
     "RATE_LIMITED": "Too many attempts. Please wait a moment and try again.",
     "PERMISSION_DENIED": "You do not have permission to perform this action.",
     "SYSTEM_ROLE_IMMUTABLE": "System roles cannot be modified.",
-    "ROLE_IN_USE": "A role with assigned users cannot be deleted.",
+    "ROLE_IN_USE": "A role with {{userCount}} assigned user(s) cannot be deleted.",
     "NOT_FOUND": "The requested resource was not found.",
     "VALIDATION_FAILED": "Please check the submitted data.",
     "CONFLICT": "A record with that data already exists.",
@@ -104,5 +103,166 @@
     "DEPOSIT_BELOW_MINIMUM": "The deposit is below the required minimum.",
     "INTERNAL_ERROR": "A server error occurred. Please try again later.",
     "UNKNOWN": "An unexpected error occurred."
+  },
+  "permissions": {
+    "categories": {
+      "rbac": "Roles and permissions",
+      "staff": "Administrators",
+      "trips": "Trips",
+      "costing": "Costing",
+      "customers": "Customers",
+      "reservations": "Reservations",
+      "payments": "Payments",
+      "notifications": "Notifications",
+      "expenses": "Expenses",
+      "reports": "Reports",
+      "operations": "Operations"
+    },
+    "role": {
+      "view": {
+        "label": "View roles",
+        "description": "View roles and the permission catalog"
+      },
+      "manage": {
+        "label": "Manage roles",
+        "description": "Create, edit and delete roles"
+      }
+    },
+    "staff": {
+      "view": {
+        "label": "View administrators",
+        "description": "View administrator accounts"
+      },
+      "manage": {
+        "label": "Manage administrators",
+        "description": "Create, edit and disable administrator accounts"
+      }
+    },
+    "trip": {
+      "view": {
+        "label": "View trips",
+        "description": "View trips and their details"
+      },
+      "create": {
+        "label": "Create trips",
+        "description": "Create trips"
+      },
+      "update": {
+        "label": "Edit trips",
+        "description": "Edit trip details, translations and images"
+      },
+      "publish": {
+        "label": "Publish trips",
+        "description": "Publish a trip and change its status"
+      },
+      "cancel": {
+        "label": "Cancel trips",
+        "description": "Cancel a trip"
+      },
+      "change_price": {
+        "label": "Change price",
+        "description": "Change the price of a trip that already has reservations"
+      },
+      "budget": {
+        "view": {
+          "label": "View budget",
+          "description": "View the trip budget and computed sale price"
+        },
+        "manage": {
+          "label": "Manage budget",
+          "description": "Add, edit and delete budget items and margin settings"
+        }
+      }
+    },
+    "customer": {
+      "view": {
+        "label": "View customers",
+        "description": "Search and view customer records"
+      },
+      "manage": {
+        "label": "Manage customers",
+        "description": "Create and edit customer records, send invitations"
+      }
+    },
+    "reservation": {
+      "view": {
+        "label": "View reservations",
+        "description": "View reservations and balances"
+      },
+      "create": {
+        "label": "Create reservations",
+        "description": "Create reservations on behalf of a customer"
+      },
+      "cancel": {
+        "label": "Cancel reservations",
+        "description": "Cancel a reservation and release its seat"
+      },
+      "risk": {
+        "view": {
+          "label": "View risk alerts",
+          "description": "Receive collection-risk alerts"
+        }
+      }
+    },
+    "payment": {
+      "view": {
+        "label": "View payments",
+        "description": "View payments and receipts"
+      },
+      "register": {
+        "label": "Register payments",
+        "description": "Register cash payments taken at the branch"
+      },
+      "credit": {
+        "apply": {
+          "label": "Apply credit",
+          "description": "Apply or write off a customer credit balance"
+        }
+      }
+    },
+    "notification": {
+      "view": {
+        "label": "View notifications",
+        "description": "View notification campaigns"
+      },
+      "manage": {
+        "label": "Manage notifications",
+        "description": "Create, schedule and cancel notification campaigns"
+      }
+    },
+    "expense": {
+      "view": {
+        "label": "View expenses",
+        "description": "View recorded expenses"
+      },
+      "manage": {
+        "label": "Manage expenses",
+        "description": "Record and edit expenses"
+      }
+    },
+    "report": {
+      "view": {
+        "label": "View reports",
+        "description": "View and export financial reports"
+      }
+    },
+    "data": {
+      "backfill": {
+        "label": "Backfill historical data",
+        "description": "Capture historical trips, reservations and payments with past dates"
+      }
+    },
+    "import": {
+      "manage": {
+        "label": "Manage imports",
+        "description": "Upload and confirm CSV imports"
+      }
+    },
+    "settings": {
+      "manage": {
+        "label": "Manage settings",
+        "description": "Change system settings"
+      }
+    }
   }
 }

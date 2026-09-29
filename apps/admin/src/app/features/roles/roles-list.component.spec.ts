@@ -2,9 +2,10 @@ import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
 import { MatDialog } from '@angular/material/dialog';
+import { MatSnackBar } from '@angular/material/snack-bar';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { provideRouter } from '@angular/router';
-import { provideTranslateService } from '@ngx-translate/core';
+import { provideTranslateService, TranslateService } from '@ngx-translate/core';
 import { of } from 'rxjs';
 import { API_BASE_URL } from '@rm/api-client';
 import { AuthService, type SessionUser } from '@rm/auth-web';
@@ -21,9 +22,11 @@ function userWith(permissions: string[]): SessionUser {
 
 describe('RolesListComponent', () => {
   let dialogOpen: jest.Mock;
+  let snackBarOpen: jest.Mock;
 
   function configure(dialogResult: boolean): void {
     dialogOpen = jest.fn().mockReturnValue({ afterClosed: () => of(dialogResult) });
+    snackBarOpen = jest.fn();
     TestBed.configureTestingModule({
       imports: [RolesListComponent],
       providers: [
@@ -34,6 +37,7 @@ describe('RolesListComponent', () => {
         provideTranslateService({ lang: 'es', fallbackLang: 'es' }),
         { provide: API_BASE_URL, useValue: '' },
         { provide: MatDialog, useValue: { open: dialogOpen } },
+        { provide: MatSnackBar, useValue: { open: snackBarOpen } },
       ],
     });
   }
@@ -105,10 +109,13 @@ describe('RolesListComponent', () => {
     httpMock.expectOne('/api/v1/rbac/roles').flush(roles);
   });
 
-  it('translates ROLE_IN_USE when the backend rejects a delete', () => {
+  it('shows the userCount the backend sent with ROLE_IN_USE, not a generic message', () => {
     configure(true);
     const auth = TestBed.inject(AuthService);
     auth.setSessionForTesting('access', 'refresh', userWith(['role.manage']));
+    TestBed.inject(TranslateService).setTranslation('es', {
+      errors: { ROLE_IN_USE: 'Tiene {{userCount}} usuarios asignados.' },
+    });
 
     const fixture = TestBed.createComponent(RolesListComponent);
     fixture.detectChanges();
@@ -124,7 +131,10 @@ describe('RolesListComponent', () => {
       { status: 409, statusText: 'Conflict' }
     );
 
-    // No crash, and the list is not silently reloaded on failure.
+    // The administrator sees the actual count (3), not just "some users" --
+    // that is the difference between "I'll go fix that" and "I'll leave it".
+    expect(snackBarOpen).toHaveBeenCalledWith('Tiene 3 usuarios asignados.', undefined, { duration: 6000 });
+    // And the list is not silently reloaded on failure.
     httpMock.expectNone('/api/v1/rbac/roles');
   });
 });

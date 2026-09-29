@@ -24,6 +24,15 @@ const HANDSET_BREAKPOINT = '(max-width: 640px)';
 const TABLE_COLUMNS = ['fullName', 'email', 'employeeCode', 'status', 'locale', 'actions'] as const;
 
 /**
+ * Each language's own name, shown in itself rather than translated -- the
+ * same convention `shell.component.html`'s language menu and
+ * `staff-form.component.html`'s locale `mat-select` already use. A locale
+ * code ("es"/"en") on its own is not something an administrator should have
+ * to decode in a table cell.
+ */
+const LOCALE_LABELS: Record<Staff['locale'], string> = { es: 'Español', en: 'English' };
+
+/**
  * Lists administrator accounts, with a debounced search box calling
  * `StaffApi.list(search)` (server-side filtering, not client-side). "New
  * administrator" and the per-row edit action are gated behind `staff.manage`
@@ -72,4 +81,8 @@ export class StaffListComponent {
     ),
     { initialValue: [] as Staff[] }
   );
+
+  localeLabel(locale: Staff['locale']): string {
+    return LOCALE_LABELS[locale];
+  }
 }

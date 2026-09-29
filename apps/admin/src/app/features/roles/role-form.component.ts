@@ -1,5 +1,6 @@
 import { HttpErrorResponse } from '@angular/common/http';
-import { Component, computed, inject, signal } from '@angular/core';
+import { Component, computed, effect, inject, signal } from '@angular/core';
+import { toSignal } from '@angular/core/rxjs-interop';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
@@ -14,6 +15,7 @@ import { TranslatePipe } from '@ngx-translate/core';
 import { RbacApi } from '@rm/api-client';
 import type { components } from '@rm/api-client';
 import { ErrorCodePipe } from '@rm/ui';
+import { map } from 'rxjs';
 
 type Permission = components['schemas']['Permission'];
 type Role = components['schemas']['Role'];
@@ -41,6 +43,14 @@ function isNameConflict(error: unknown): boolean {
  * to `/roles/:roleId` (a bookmark, a page refresh) does not. So edit mode
  * re-fetches the full list and picks the matching entry out of it, same as
  * `StaffFormComponent` does for staff.
+ *
+ * `roleId` is read from `ActivatedRoute.paramMap` reactively, not once from
+ * `.snapshot`: Angular's default route-reuse strategy reuses this component
+ * instance across two URLs that match the same parameterised route, so a
+ * navigation from `/roles/role-1` straight to `/roles/role-2` would
+ * otherwise leave the first role's data (and id) sitting in the form,
+ * letting a save silently target the wrong role. The `effect()` below
+ * re-runs -- resetting the form first -- every time the id actually changes.
  */
 @Component({
   selector: 'rm-role-form',
@@ -73,8 +83,10 @@ export class RoleFormComponent {
   private readonly errorCode = inject(ErrorCodePipe);
   private readonly formBuilder = inject(FormBuilder);
 
-  private readonly roleId = this.route.snapshot.paramMap.get('roleId');
-  readonly isEdit = this.roleId !== null;
+  private readonly roleId = toSignal(this.route.paramMap.pipe(map((params) => params.get('roleId'))), {
+    initialValue: this.route.snapshot.paramMap.get('roleId'),
+  });
+  readonly isEdit = computed(() => this.roleId() !== null);
 
   readonly saving = signal(false);
   readonly role = signal<Role | null>(null);
@@ -107,9 +119,27 @@ export class RoleFormComponent {
   constructor() {
     this.rbac.listPermissions().subscribe((permissions) => this.permissions.set(permissions));
 
-    if (this.roleId) {
-      const roleId = this.roleId;
+    effect(() => {
+      const roleId = this.roleId();
+
+      // Reset first, unconditionally: this effect re-runs whenever the route
+      // param changes on the *same* component instance (route reuse), so a
+      // stale role's name/description/permissions/isSystem must not survive
+      // into the next id's form -- see the class doc comment.
+      this.role.set(null);
+      this.selectedPermissions.set([]);
+      this.form.enable();
+      this.form.reset({ name: '', description: '' });
+
+      if (!roleId) return;
+
       this.rbac.listRoles().subscribe((roles) => {
+        // The route may have already moved on to a different id by the time
+        // this resolves; a response for an id we've since navigated away
+        // from must not overwrite what the (possibly still-loading) new id
+        // put in the form.
+        if (this.roleId() !== roleId) return;
+
         const found = roles.find((candidate) => candidate.id === roleId);
         if (!found) return;
         this.role.set(found);
@@ -117,7 +147,31 @@ export class RoleFormComponent {
         this.form.patchValue({ name: found.name, description: found.description });
         if (found.isSystem) this.form.disable();
       });
-    }
+    });
+  }
+
+  /**
+   * The backend never sends prose meant to be shown to a person (see
+   * `ErrorCodePipe`'s doc comment for the same rule applied to error codes):
+   * `Permission.category` and `Permission.description` from
+   * `GET /rbac/permissions` are stable, English, developer-facing labels
+   * (see `PERMISSIONS` in `@rm/domain-rbac`), not presentation. These three
+   * helpers turn a permission key/category into a translation key instead --
+   * e.g. `trip.budget.view` becomes `permissions.trip.budget.view.label` --
+   * resolved against the `permissions.*` tree in `es.json`/`en.json`, which
+   * mirrors every key in `PERMISSIONS` by hand (see the task report for how
+   * completeness was checked).
+   */
+  categoryTranslationKey(category: string): string {
+    return `permissions.categories.${category}`;
+  }
+
+  permissionLabelKey(key: string): string {
+    return `permissions.${key}.label`;
+  }
+
+  permissionDescriptionKey(key: string): string {
+    return `permissions.${key}.description`;
   }
 
   isChecked(key: string): boolean {
@@ -136,7 +190,8 @@ export class RoleFormComponent {
     this.saving.set(true);
     const { name, description } = this.form.getRawValue();
     const body = { name, description, permissionKeys: this.selectedPermissions() };
-    const request$ = this.roleId ? this.rbac.updateRole(this.roleId, body) : this.rbac.createRole(body);
+    const roleId = this.roleId();
+    const request$ = roleId ? this.rbac.updateRole(roleId, body) : this.rbac.createRole(body);
 
     request$.subscribe({
       next: () => {

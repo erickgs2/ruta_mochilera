@@ -1,5 +1,6 @@
 import { HttpErrorResponse } from '@angular/common/http';
-import { Component, inject, signal } from '@angular/core';
+import { Component, computed, effect, inject, signal } from '@angular/core';
+import { toSignal } from '@angular/core/rxjs-interop';
 import {
   AbstractControl,
   FormBuilder,
@@ -20,6 +21,7 @@ import { TranslatePipe, TranslateService } from '@ngx-translate/core';
 import { RbacApi, StaffApi } from '@rm/api-client';
 import type { components } from '@rm/api-client';
 import { ConfirmDialogComponent, ErrorCodePipe } from '@rm/ui';
+import { map } from 'rxjs';
 
 type Staff = components['schemas']['Staff'];
 type Role = components['schemas']['Role'];
@@ -61,6 +63,15 @@ function passwordsMatch(group: AbstractControl): ValidationErrors | null {
  *
  * There is no "get staff by id" endpoint, so, like `RoleFormComponent`, edit
  * mode fetches the full list and finds the matching account in it.
+ *
+ * `userId` is read from `ActivatedRoute.paramMap` reactively, not once from
+ * `.snapshot`: Angular's default route-reuse strategy reuses this component
+ * instance across two URLs matching the same parameterised route, so
+ * navigating from `/staff/staff-1` straight to `/staff/staff-2` would
+ * otherwise leave the first account's data (and id) sitting in the form. The
+ * `effect()` below re-runs -- resetting the form first -- every time the id
+ * actually changes; see `RoleFormComponent`'s doc comment for the general
+ * hazard this closes.
  */
 @Component({
   selector: 'rm-staff-form',
@@ -94,8 +105,10 @@ export class StaffFormComponent {
   private readonly errorCode = inject(ErrorCodePipe);
   private readonly formBuilder = inject(FormBuilder);
 
-  private readonly userId = this.route.snapshot.paramMap.get('userId');
-  readonly isEdit = this.userId !== null;
+  private readonly userId = toSignal(this.route.paramMap.pipe(map((params) => params.get('userId'))), {
+    initialValue: this.route.snapshot.paramMap.get('userId'),
+  });
+  readonly isEdit = computed(() => this.userId() !== null);
 
   readonly saving = signal(false);
   readonly staff = signal<Staff | null>(null);
@@ -118,15 +131,44 @@ export class StaffFormComponent {
   constructor() {
     this.rbac.listRoles().subscribe((roles) => this.roles.set(roles));
 
-    if (this.isEdit) {
+    effect(() => {
+      const userId = this.userId();
+
+      // Reset to a blank, fully-enabled shape first; the branches below then
+      // only disable what this particular id's mode requires. Needed for
+      // route reuse (see the class doc comment) and so a stale value --
+      // or a leftover `conflict` error from a previous save -- can never
+      // survive from one id into the next.
+      this.staff.set(null);
+      this.form.reset({
+        email: '',
+        fullName: '',
+        employeeCode: '',
+        locale: 'es',
+        password: '',
+        confirmPassword: '',
+        roleIds: [],
+        status: 'ACTIVE',
+      });
+      this.form.enable();
+
+      if (!userId) {
+        // `status` only exists for edit -- creation always starts ACTIVE.
+        this.form.controls.status.disable();
+        return;
+      }
+
       // Email is the account's identity and password reset is a separate
       // operation (see the class doc comment): neither applies in edit mode.
       this.form.controls.email.disable();
       this.form.controls.password.disable();
       this.form.controls.confirmPassword.disable();
 
-      const userId = this.userId;
       this.staffApi.list().subscribe((staff) => {
+        // The route may have already moved on to a different id by the time
+        // this resolves; ignore a response for an id we've since left.
+        if (this.userId() !== userId) return;
+
         const found = staff.find((candidate) => candidate.id === userId);
         if (!found) return;
         this.staff.set(found);
@@ -139,10 +181,7 @@ export class StaffFormComponent {
           status: found.status,
         });
       });
-    } else {
-      // `status` only exists for edit -- creation always starts ACTIVE.
-      this.form.controls.status.disable();
-    }
+    });
   }
 
   /** Intercepts the toggle so turning an account off warns about revoked sessions before it takes effect. */
@@ -173,9 +212,8 @@ export class StaffFormComponent {
     if (this.form.invalid || this.saving()) return;
 
     this.saving.set(true);
-    const request$ = this.isEdit
-      ? this.staffApi.update(this.userId as string, this.buildUpdateBody())
-      : this.staffApi.create(this.buildCreateBody());
+    const userId = this.userId();
+    const request$ = userId ? this.staffApi.update(userId, this.buildUpdateBody()) : this.staffApi.create(this.buildCreateBody());
 
     request$.subscribe({
       next: () => {

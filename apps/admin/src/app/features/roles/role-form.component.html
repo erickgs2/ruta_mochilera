@@ -1,7 +1,7 @@
 <mat-card class="role-form-card">
   <mat-card-header>
     <mat-card-title>
-      {{ (isEdit ? 'roles.editTitle' : 'roles.newRole') | translate }}
+      {{ (isEdit() ? 'roles.editTitle' : 'roles.newRole') | translate }}
     </mat-card-title>
   </mat-card-header>
 
@@ -32,7 +32,9 @@
         @for (group of groupedPermissions(); track group.category) {
           <mat-expansion-panel>
             <mat-expansion-panel-header>
-              <mat-panel-title class="role-form-category">{{ group.category }}</mat-panel-title>
+              <mat-panel-title class="role-form-category">
+                {{ categoryTranslationKey(group.category) | translate }}
+              </mat-panel-title>
             </mat-expansion-panel-header>
 
             @for (permission of group.permissions; track permission.key) {
@@ -42,9 +44,11 @@
                   [disabled]="readOnly()"
                   (change)="togglePermission(permission.key, $event.checked)"
                 >
-                  {{ permission.key }}
+                  {{ permissionLabelKey(permission.key) | translate }}
                 </mat-checkbox>
-                <p class="role-form-permission-description">{{ permission.description }}</p>
+                <p class="role-form-permission-description">
+                  {{ permissionDescriptionKey(permission.key) | translate }}
+                </p>
               </div>
             }
           </mat-expansion-panel>

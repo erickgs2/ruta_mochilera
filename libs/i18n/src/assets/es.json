@@ -73,7 +73,6 @@
     "confirmPasswordLabel": "Confirmar contraseña",
     "passwordMismatch": "Las contraseñas no coinciden.",
     "rolesLabel": "Roles",
-    "statusLabel": "Cuenta habilitada",
     "disableTitle": "Deshabilitar cuenta",
     "disableMessage": "Deshabilitar la cuenta de \"{{name}}\" cierra sus sesiones activas de inmediato.",
     "disableNotice": "Deshabilitar esta cuenta cierra sus sesiones activas de inmediato."
@@ -88,7 +87,7 @@
     "RATE_LIMITED": "Demasiados intentos. Espera un momento e inténtalo de nuevo.",
     "PERMISSION_DENIED": "No tienes permiso para realizar esta acción.",
     "SYSTEM_ROLE_IMMUTABLE": "Los roles del sistema no se pueden modificar.",
-    "ROLE_IN_USE": "No se puede eliminar un rol que tiene usuarios asignados.",
+    "ROLE_IN_USE": "No se puede eliminar un rol con {{userCount}} usuario(s) asignado(s).",
     "NOT_FOUND": "No se encontró el recurso solicitado.",
     "VALIDATION_FAILED": "Revisa los datos capturados.",
     "CONFLICT": "Ya existe un registro con esos datos.",
@@ -104,5 +103,166 @@
     "DEPOSIT_BELOW_MINIMUM": "El anticipo es menor al mínimo requerido.",
     "INTERNAL_ERROR": "Ocurrió un error en el servidor. Inténtalo más tarde.",
     "UNKNOWN": "Ocurrió un error inesperado."
+  },
+  "permissions": {
+    "categories": {
+      "rbac": "Roles y permisos",
+      "staff": "Administradores",
+      "trips": "Viajes",
+      "costing": "Costeo",
+      "customers": "Clientes",
+      "reservations": "Reservaciones",
+      "payments": "Pagos",
+      "notifications": "Notificaciones",
+      "expenses": "Gastos",
+      "reports": "Reportes",
+      "operations": "Operaciones"
+    },
+    "role": {
+      "view": {
+        "label": "Ver roles",
+        "description": "Ver roles y el catálogo de permisos"
+      },
+      "manage": {
+        "label": "Gestionar roles",
+        "description": "Crear, editar y eliminar roles"
+      }
+    },
+    "staff": {
+      "view": {
+        "label": "Ver administradores",
+        "description": "Ver las cuentas de administrador"
+      },
+      "manage": {
+        "label": "Gestionar administradores",
+        "description": "Crear, editar y deshabilitar cuentas de administrador"
+      }
+    },
+    "trip": {
+      "view": {
+        "label": "Ver viajes",
+        "description": "Ver los viajes y sus detalles"
+      },
+      "create": {
+        "label": "Crear viajes",
+        "description": "Crear viajes"
+      },
+      "update": {
+        "label": "Editar viajes",
+        "description": "Editar los detalles, traducciones e imágenes del viaje"
+      },
+      "publish": {
+        "label": "Publicar viajes",
+        "description": "Publicar un viaje y cambiar su estado"
+      },
+      "cancel": {
+        "label": "Cancelar viajes",
+        "description": "Cancelar un viaje"
+      },
+      "change_price": {
+        "label": "Cambiar precio",
+        "description": "Cambiar el precio de un viaje que ya tiene reservaciones"
+      },
+      "budget": {
+        "view": {
+          "label": "Ver presupuesto",
+          "description": "Ver el presupuesto del viaje y el precio de venta calculado"
+        },
+        "manage": {
+          "label": "Gestionar presupuesto",
+          "description": "Agregar, editar y eliminar partidas de presupuesto y configuración de margen"
+        }
+      }
+    },
+    "customer": {
+      "view": {
+        "label": "Ver clientes",
+        "description": "Buscar y ver registros de clientes"
+      },
+      "manage": {
+        "label": "Gestionar clientes",
+        "description": "Crear y editar registros de clientes, enviar invitaciones"
+      }
+    },
+    "reservation": {
+      "view": {
+        "label": "Ver reservaciones",
+        "description": "Ver reservaciones y saldos"
+      },
+      "create": {
+        "label": "Crear reservaciones",
+        "description": "Crear reservaciones a nombre de un cliente"
+      },
+      "cancel": {
+        "label": "Cancelar reservaciones",
+        "description": "Cancelar una reservación y liberar su lugar"
+      },
+      "risk": {
+        "view": {
+          "label": "Ver alertas de riesgo",
+          "description": "Recibir alertas de riesgo de cobranza"
+        }
+      }
+    },
+    "payment": {
+      "view": {
+        "label": "Ver pagos",
+        "description": "Ver pagos y recibos"
+      },
+      "register": {
+        "label": "Registrar pagos",
+        "description": "Registrar pagos en efectivo recibidos en la sucursal"
+      },
+      "credit": {
+        "apply": {
+          "label": "Aplicar saldo a favor",
+          "description": "Aplicar o cancelar el saldo a favor de un cliente"
+        }
+      }
+    },
+    "notification": {
+      "view": {
+        "label": "Ver notificaciones",
+        "description": "Ver campañas de notificación"
+      },
+      "manage": {
+        "label": "Gestionar notificaciones",
+        "description": "Crear, programar y cancelar campañas de notificación"
+      }
+    },
+    "expense": {
+      "view": {
+        "label": "Ver gastos",
+        "description": "Ver los gastos registrados"
+      },
+      "manage": {
+        "label": "Gestionar gastos",
+        "description": "Registrar y editar gastos"
+      }
+    },
+    "report": {
+      "view": {
+        "label": "Ver reportes",
+        "description": "Ver y exportar reportes financieros"
+      }
+    },
+    "data": {
+      "backfill": {
+        "label": "Capturar datos históricos",
+        "description": "Capturar viajes, reservaciones y pagos históricos con fechas pasadas"
+      }
+    },
+    "import": {
+      "manage": {
+        "label": "Gestionar importaciones",
+        "description": "Subir y confirmar importaciones CSV"
+      }
+    },
+    "settings": {
+      "manage": {
+        "label": "Gestionar configuración",
+        "description": "Cambiar la configuración del sistema"
+      }
+    }
   }
 }
