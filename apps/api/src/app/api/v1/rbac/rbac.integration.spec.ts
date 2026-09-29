@@ -138,6 +138,19 @@ describe('rbac endpoints', () => {
       expect(response.status).toBe(200);
     });
 
+    it('returns 403 PERMISSION_DENIED for an authenticated actor without role.view', async () => {
+      // Closes the same gap Task 8's review found in the wrapper itself,
+      // reappearing here one route at a time: without this case, deleting
+      // `permission: 'role.view'` from this route would not fail a single
+      // test.
+      const token = await loginAs('nobody@agency.test', []);
+      const response = await listRolesRoute(
+        new Request('http://localhost/api/v1/rbac/roles', { headers: { authorization: `Bearer ${token}` } })
+      );
+      expect(response.status).toBe(403);
+      expect((await response.json()).code).toBe('PERMISSION_DENIED');
+    });
+
     it('returns 401 TOKEN_INVALID for an unauthenticated caller', async () => {
       const response = await listRolesRoute(new Request('http://localhost/api/v1/rbac/roles'));
       expect(response.status).toBe(401);
@@ -146,6 +159,19 @@ describe('rbac endpoints', () => {
   });
 
   describe('GET /api/v1/rbac/permissions', () => {
+    it('succeeds for an actor holding role.view', async () => {
+      // Without this positive case, the route could require the wrong
+      // permission key entirely and every other test here would still pass.
+      const token = await loginAs('viewer@agency.test', ['role.view']);
+      const response = await get(getPermissions, token);
+      expect(response.status).toBe(200);
+      const body = await response.json();
+      expect(Array.isArray(body)).toBe(true);
+      expect(body).toEqual(
+        expect.arrayContaining([expect.objectContaining({ key: 'role.view' })])
+      );
+    });
+
     it('returns 403 PERMISSION_DENIED for an actor with no rbac permission at all', async () => {
       const token = await loginAs('nobody@agency.test', []);
       const response = await get(getPermissions, token);

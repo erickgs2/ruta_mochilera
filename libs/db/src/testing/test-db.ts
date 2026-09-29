@@ -84,26 +84,12 @@ export async function resetDatabase(db: Db): Promise<void> {
 }
 
 /**
- * Returns the name of the violated unique index when `error` is Prisma's
- * unique-constraint failure (P2002), and `undefined` for anything else.
- *
- * Asserting on this rather than on `rejects.toThrow()` is what makes a
- * constraint test fail for the right reason: a connection error, a validation
- * error or a violation of a *different* unique index all return `undefined`.
- *
- * Note for Prisma 7: with a driver adapter the classic `meta.target` is no
- * longer populated. The violated index arrives inside the adapter error, which
- * is why this helper exists instead of an inline property read.
+ * Re-exported for existing callers that imported it from here: the
+ * implementation now lives in `../lib/prisma-errors` so production domain
+ * code can use it too without pulling in this module's module-load-time
+ * schema-name computation (see that file's doc comment for why).
  */
-export function uniqueViolationIndex(error: unknown): string | undefined {
-  if (typeof error !== 'object' || error === null) return undefined;
-  const { code, meta } = error as { code?: unknown; meta?: unknown };
-  if (code !== 'P2002' || typeof meta !== 'object' || meta === null) return undefined;
-  const cause = (meta as { driverAdapterError?: { cause?: unknown } }).driverAdapterError?.cause;
-  if (typeof cause !== 'object' || cause === null) return undefined;
-  const index = (cause as { constraint?: { index?: unknown } }).constraint?.index;
-  return typeof index === 'string' ? index : undefined;
-}
+export { uniqueViolationIndex } from '../lib/prisma-errors';
 
 async function provisionWorkerSchema(): Promise<void> {
   const db = withTestDb();

@@ -78,7 +78,21 @@ ejecución y otorga el catálogo completo al rol `Super Admin`.
   cualquier otra, incluida la de usuarios asignados).
 - **Un rol con usuarios asignados no se puede eliminar**: `deleteRole`
   devuelve `ROLE_IN_USE` con `details.userCount`. Hay que reasignar a esos
-  usuarios a otro rol primero.
+  usuarios a otro rol primero. Esta regla **no depende únicamente de la
+  comprobación previa en `deleteRole`**: la llave foránea
+  `user_roles.role_id` está declarada `ON DELETE RESTRICT` (no `CASCADE`) en
+  el esquema, así que Postgres rechaza el `DELETE` aunque un `UserRole` se
+  inserte justo entre la lectura del conteo y el borrado — una asignación
+  concurrente ya no puede colarse y desaparecer en cascada sin dejar rastro
+  de auditoría. `role_permissions` sigue en `CASCADE` a propósito: borrar un
+  rol sí debe borrar sus propios vínculos de permiso.
+- **Un nombre de rol duplicado también se resuelve en dos capas**: la
+  comprobación previa (`findUnique`/`findFirst`) responde rápido en el caso
+  normal, y el índice único `roles_name_key` es el respaldo para la carrera
+  en la que dos creaciones (o ediciones) concurrentes pasan la comprobación
+  antes de que cualquiera haya insertado; `createRole` y `updateRole`
+  capturan esa violación y devuelven el mismo `CONFLICT` en vez de dejar
+  escapar un error de Prisma sin manejar.
 - **Cada mutación (creación, edición, borrado) escribe una entrada de
   auditoría** (`role.created`, `role.updated`, `role.deleted`) dentro de la
   misma transacción que la escribe: ver la sección "Auditoría" más abajo para

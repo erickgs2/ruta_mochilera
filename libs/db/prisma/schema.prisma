@@ -200,8 +200,15 @@ model UserRole {
   userId String @map("user_id") @db.Uuid
   roleId String @map("role_id") @db.Uuid
 
+  // `roleId` is Restrict, not Cascade: "a role with users assigned cannot be
+  // deleted" is a foreign-key rule, not just an application-level pre-check.
+  // Without this, a `UserRole` created between the pre-check's read and the
+  // delete's write is silently cascade-deleted along with the role, leaving
+  // no ROLE_IN_USE error and no audit entry for the assignment that vanished.
+  // `userId` stays Cascade: deleting a *user* should remove their own
+  // assignments.
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-  role Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  role Role @relation(fields: [roleId], references: [id], onDelete: Restrict)
 
   @@id([userId, roleId])
   @@map("user_roles")
