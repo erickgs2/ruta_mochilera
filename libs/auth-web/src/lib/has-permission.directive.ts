@@ -21,14 +21,22 @@ import { AuthService } from './auth.service';
  * does not, by itself, protect anything.
  *
  * Implementation note: `rmHasPermission` is a classic `@Input()`, not a
- * signal `input()`. In this workspace's JIT (non-AOT) test/build pipeline, a
- * signal input on a *structural* directive is not reliably wired up by the
- * template compiler -- the bound value silently never reaches the signal.
- * A plain `@Input()` does not have that problem, and Angular guarantees it
- * is set before `ngOnInit`. The `effect()` that reacts to permission
- * changes is therefore created in `ngOnInit` (with an explicit `injector`,
- * since `ngOnInit` is not itself an injection context) rather than in the
- * constructor, so its first run always sees the real bound value.
+ * signal `input()` -- including `input.required()`. Both were tried and
+ * both fail: `libs/auth-web/src/lib/structural-directive-signal-input.repro.spec.ts`
+ * is a runnable reproduction showing that a signal input on a *structural*
+ * directive is never actually wired up by the template compiler under this
+ * workspace's JIT (non-AOT) test pipeline, regardless of whether the input
+ * is required or optional, or whether the code that reads it runs in the
+ * constructor or in `ngOnInit`. A classic `@Input()` does not have that
+ * problem, and Angular guarantees it is assigned before `ngOnInit` runs.
+ * The `effect()` that reacts to permission changes is therefore created in
+ * `ngOnInit` (with an explicit `injector`, since `ngOnInit` is not itself an
+ * injection context) so its first run always sees the real bound value.
+ *
+ * Losing `input.required()` also loses its compile-time and runtime
+ * "you forgot to bind this" safety net, so `ngOnInit` re-creates the loud
+ * half of that contract by hand: an unbound (empty-string) permission
+ * throws immediately, rather than silently rendering nothing forever.
  */
 @Directive({ selector: '[rmHasPermission]', standalone: true })
 export class HasPermissionDirective implements OnInit {
@@ -40,6 +48,12 @@ export class HasPermissionDirective implements OnInit {
   private readonly injector = inject(Injector);
 
   ngOnInit(): void {
+    if (!this.rmHasPermission) {
+      throw new Error(
+        '[rmHasPermission] requires a permission key, e.g. *rmHasPermission="\'trip.view\'" -- got an empty value.'
+      );
+    }
+
     effect(
       () => {
         const allowed = this.auth.hasPermission(this.rmHasPermission);

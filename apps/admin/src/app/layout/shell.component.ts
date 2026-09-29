@@ -1,5 +1,5 @@
 import { BreakpointObserver } from '@angular/cdk/layout';
-import { Component, inject } from '@angular/core';
+import { Component, effect, inject } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
@@ -56,6 +56,20 @@ export class ShellComponent {
     this.breakpointObserver.observe(SIDE_MODE_BREAKPOINT).pipe(map((state) => state.matches)),
     { initialValue: false }
   );
+
+  constructor() {
+    // Follow the signed-in user's stored language preference (set on login
+    // and on every token refresh) rather than only the browser default or
+    // whatever was last picked on this device. A manual pick via the
+    // language menu still updates `LanguageService` immediately; this just
+    // keeps the two in sync whenever the session's user record changes.
+    effect(() => {
+      const user = this.auth.user();
+      if (user && user.locale !== this.language.current()) {
+        this.language.use(user.locale);
+      }
+    });
+  }
 
   protected switchLanguage(locale: 'es' | 'en'): void {
     this.language.use(locale);

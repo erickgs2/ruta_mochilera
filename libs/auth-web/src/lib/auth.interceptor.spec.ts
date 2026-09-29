@@ -1,7 +1,8 @@
-import { HttpClient, provideHttpClient, withInterceptors } from '@angular/common/http';
+import { HttpClient, HttpErrorResponse, provideHttpClient, withInterceptors } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { provideRouter, Router } from '@angular/router';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { API_BASE_URL } from '@rm/api-client';
 import { authInterceptor } from './auth.interceptor';
 import { AuthService } from './auth.service';
@@ -10,6 +11,7 @@ describe('authInterceptor', () => {
   let http: HttpClient;
   let controller: HttpTestingController;
   let auth: AuthService;
+  let router: Router;
 
   beforeEach(() => {
     localStorage.clear();
@@ -17,12 +19,14 @@ describe('authInterceptor', () => {
       providers: [
         provideHttpClient(withInterceptors([authInterceptor])),
         provideHttpClientTesting(),
+        provideRouter([{ path: 'login', children: [] }]),
         { provide: API_BASE_URL, useValue: '' },
       ],
     });
     http = TestBed.inject(HttpClient);
     controller = TestBed.inject(HttpTestingController);
     auth = TestBed.inject(AuthService);
+    router = TestBed.inject(Router);
   });
 
   it('adds no Authorization header when there is no session', () => {
@@ -87,5 +91,42 @@ describe('authInterceptor', () => {
 
     controller.expectOne('/api/v1/auth/refresh').flush(null, { status: 401, statusText: 'Unauthorized' });
     controller.verify(); // no additional call was made
+  });
+
+  it('logs the user out and routes to /login when the refresh call itself fails', () => {
+    auth.setSessionForTesting('expired', 'refresh-1', {
+      id: 'u1',
+      email: 'a@b.test',
+      type: 'STAFF',
+      locale: 'es',
+      fullName: 'Ana',
+      permissions: ['trip.view'],
+    });
+    const navigateSpy = vi.spyOn(router, 'navigate').mockResolvedValue(true);
+
+    let receivedError: unknown;
+    http.get('/api/v1/trips').subscribe({ error: (error) => (receivedError = error) });
+
+    controller.expectOne('/api/v1/trips').flush(null, { status: 401, statusText: 'Unauthorized' });
+    // The refresh token is itself invalid/expired -- the refresh call fails too.
+    controller.expectOne('/api/v1/auth/refresh').flush(null, {
+      status: 401,
+      statusText: 'Unauthorized',
+    });
+
+    // 1. The local session is cleared -- a dead refresh token must not leave
+    //    the user looking signed in.
+    expect(auth.isAuthenticated()).toBe(false);
+    expect(auth.accessToken()).toBeNull();
+    expect(auth.refreshToken()).toBeNull();
+
+    // 2. The user is routed to the login screen.
+    expect(navigateSpy).toHaveBeenCalledWith(['/login']);
+
+    // 3. The original failure (the 401 on /api/v1/trips) propagates to the
+    //    caller -- not the refresh call's own error, and not silently swallowed.
+    expect(receivedError).toBeInstanceOf(HttpErrorResponse);
+    expect((receivedError as HttpErrorResponse).status).toBe(401);
+    expect((receivedError as HttpErrorResponse).url).toContain('/api/v1/trips');
   });
 });
