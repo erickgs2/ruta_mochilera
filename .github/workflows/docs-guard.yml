@@ -1,0 +1,83 @@
+name: Business rules documentation
+
+# Enforces the "living documentation" rule in CLAUDE.md: a PR that changes a
+# domain module's source under `libs/domain/<module>/src/` must, in the same
+# PR, update that module's file in `docs/business-rules/` and -- for trips,
+# costing and reservations -- its diagram in `docs/diagrams/`. The mapping
+# below mirrors the table in CLAUDE.md exactly; modules with no row there
+# (currently `identity`, `staff`, `audit`) carry no requirement.
+#
+# Tested against this branch's own history (40 commits): 13 touched a mapped
+# module's src/, 6 of those would have failed this guard (a scaffold commit
+# whose domain libraries were still one-line stubs, one rbac hardening fix
+# and one costing hardening fix with no accompanying prose change, and three
+# trips/costing changes that updated the business-rules prose but not the
+# diagram). See the task report for the full breakdown.
+on: pull_request
+
+jobs:
+  guard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - name: Require the matching docs update when a domain module changes
+        shell: bash
+        run: |
+          set -uo pipefail
+
+          BASE="origin/${{ github.base_ref }}"
+          git fetch origin "${{ github.base_ref }}" --depth=1
+          CHANGED=$(git diff --name-only "$BASE"...HEAD)
+
+          echo "Changed files:"
+          echo "$CHANGED"
+          echo
+
+          # module:business-rules-file:diagram-file (diagram-file empty when
+          # the module has none -- payments, notifications and rbac document
+          # rules in prose only, no diagram).
+          RULES="
+          trips:docs/business-rules/trips.md:docs/diagrams/trip-creation.md
+          costing:docs/business-rules/costing.md:docs/diagrams/trip-costing.md
+          reservations:docs/business-rules/reservations.md:docs/diagrams/trip-reservation.md
+          payments:docs/business-rules/payments.md:
+          notifications:docs/business-rules/notifications.md:
+          rbac:docs/business-rules/rbac.md:
+          "
+
+          fail=0
+          for row in $RULES; do
+            module=$(echo "$row" | cut -d: -f1)
+            rules_file=$(echo "$row" | cut -d: -f2)
+            diagram_file=$(echo "$row" | cut -d: -f3)
+
+            if printf '%s\n' "$CHANGED" | grep -q "^libs/domain/${module}/src/"; then
+              if ! printf '%s\n' "$CHANGED" | grep -Fxq "$rules_file"; then
+                echo "::error file=${rules_file}::This PR changes libs/domain/${module}/src/** but does not update ${rules_file}. Add the corresponding business rule there in this same PR -- see the table in CLAUDE.md ('Reglas de negocio: documentacion obligatoria')."
+                fail=1
+              fi
+              if [ -n "$diagram_file" ] && ! printf '%s\n' "$CHANGED" | grep -Fxq "$diagram_file"; then
+                echo "::error file=${diagram_file}::This PR changes libs/domain/${module}/src/** but does not update its diagram at ${diagram_file}. See CLAUDE.md."
+                fail=1
+              fi
+            fi
+          done
+
+          # Non-blocking heads-up for a domain module with no row in CLAUDE.md
+          # yet (a new Phase 2/3 module, for instance): the strict check above
+          # cannot know whether it needs a docs file, so this only asks the
+          # author to check, rather than failing the build over a judgment
+          # call the guard cannot make.
+          KNOWN_MODULES="trips costing reservations payments notifications rbac"
+          for dir in $(printf '%s\n' "$CHANGED" | grep -oE '^libs/domain/[^/]+' | sort -u); do
+            mod=$(basename "$dir")
+            case " $KNOWN_MODULES " in
+              *" $mod "*) ;;
+              *)
+                echo "::warning::libs/domain/${mod} changed and has no docs/business-rules mapping in CLAUDE.md yet. If this adds or changes a business rule, add docs/business-rules/${mod}.md and map it in CLAUDE.md and docs/business-rules/README.md."
+                ;;
+            esac
+          done
+
+          exit $fail

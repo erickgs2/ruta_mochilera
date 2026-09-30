@@ -1,0 +1,64 @@
+# Next.js API app (apps/api). Built with `docker buildx build --platform
+# linux/amd64,linux/arm64` from the same file: dev runs on a Raspberry Pi
+# (arm64), qa and production run on EC2 (amd64). Build context is the repo
+# root, e.g.:
+#   docker buildx build -f infra/docker/Dockerfile.api -t rm-api:latest .
+#
+# This app does not set `output: "standalone"` in next.config.js, so `next
+# build` does not produce a self-contained server.js -- the deployment target
+# is `next start`, exactly as `nx run api:start` runs it locally. The runtime
+# stage below therefore mirrors the workspace layout (root node_modules plus
+# the built app) instead of a pruned standalone bundle.
+FROM node:24-alpine AS builder
+WORKDIR /app
+RUN corepack enable
+
+# Installing from the lockfile before copying the rest of the source keeps
+# this layer cached across source-only changes.
+COPY pnpm-lock.yaml package.json pnpm-workspace.yaml prisma.config.ts ./
+RUN pnpm fetch
+COPY . .
+RUN pnpm install --offline --frozen-lockfile
+
+# Prisma 7 generates its client into libs/db/src/generated, a gitignored
+# directory rebuilt by `pnpm db:generate` (also wired as this workspace's
+# `postinstall`, but `pnpm install --offline` here runs before `.npmrc`/lockfile
+# scripts are guaranteed to have network access, so this is spelled out
+# explicitly rather than relied upon). Skipping this step lets the build
+# succeed and the container fail at runtime instead -- @rm/db does not exist
+# without it.
+RUN pnpm db:generate
+
+# apps/api/project.json forces NODE_ENV=production on its own `build` target
+# (see the comment there): Nx auto-loads the workspace-root .env, which sets
+# NODE_ENV=development for local convenience, and `next build` run with
+# NODE_ENV=development crashes prerendering the synthetic /_global-error
+# route. Nothing extra is needed here as a result -- a plain `nx build api`
+# already runs with the override in place.
+RUN pnpm nx build api --skip-nx-cache
+
+FROM node:24-alpine AS runner
+WORKDIR /app
+ENV NODE_ENV=production
+RUN corepack enable \
+ && addgroup -S rm && adduser -S rm -G rm
+
+# The full workspace `node_modules` is copied rather than a pruned subset:
+# the Prisma client generated at libs/db/src/generated is a project-owned
+# directory (not a published npm package) that Prisma's generated code reads
+# relative to its own file location at runtime rather than through a
+# bundler-visible `require` -- see libs/db/src/index.ts. Copying only
+# apps/api's traced output risks silently losing that. This trades image
+# size for certainty; revisit once this image can actually be built and run
+# (no Docker daemon was available while writing it -- see the task report).
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/package.json ./package.json
+COPY --from=builder /app/libs ./libs
+COPY --from=builder /app/apps/api/.next ./apps/api/.next
+COPY --from=builder /app/apps/api/public ./apps/api/public
+COPY --from=builder /app/apps/api/next.config.js ./apps/api/next.config.js
+
+USER rm
+WORKDIR /app/apps/api
+EXPOSE 3000
+CMD ["/app/node_modules/.bin/next", "start", "-p", "3000"]

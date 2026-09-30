@@ -1,0 +1,64 @@
+# QA and production stack for the EC2 (amd64) host. Unlike compose.dev.yml
+# and compose.test.yml (Postgres-only, dev/test run against a native
+# Postgres locally), this file runs the full stack in containers: nginx,
+# the Next.js api and Postgres itself, built from infra/docker/Dockerfile.api
+# and Dockerfile.web.
+#
+# Run from the repo root so both `${VAR}` substitution below and `env_file`
+# resolve against the root .env:
+#   docker compose -f infra/compose/compose.prod.yml --env-file .env up -d --build
+#
+# There is no volume for STORAGE_LOCAL_ROOT here: qa and production use
+# STORAGE_DRIVER=s3, so there is no local upload directory to persist (see
+# compose.dev.yml for the local-driver case).
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: rm-postgres-prod
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-rm}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-rm_prod}
+    volumes:
+      - rm-pgdata-prod:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-rm} -d ${POSTGRES_DB:-rm_prod}']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: ../..
+      dockerfile: infra/docker/Dockerfile.api
+    image: ruta-mochilera/api:latest
+    container_name: rm-api-prod
+    restart: unless-stopped
+    env_file:
+      - ../../.env
+    environment:
+      # Overrides the .env value (which points at this host's own
+      # localhost, for native/dev use) so the containerized api reaches the
+      # containerized Postgres by its compose service name.
+      DATABASE_URL: postgresql://${POSTGRES_USER:-rm}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-rm_prod}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    expose:
+      - '3000'
+
+  nginx:
+    build:
+      context: ../..
+      dockerfile: infra/docker/Dockerfile.web
+    image: ruta-mochilera/web:latest
+    container_name: rm-nginx-prod
+    restart: unless-stopped
+    depends_on:
+      - api
+    ports:
+      - '80:80'
+
+volumes:
+  rm-pgdata-prod:

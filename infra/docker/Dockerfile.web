@@ -1,0 +1,19 @@
+# Static admin panel (apps/admin) served by Nginx. Same multi-arch build as
+# Dockerfile.api: dev on the Raspberry Pi (arm64), qa/production on EC2
+# (amd64). Build context is the repo root:
+#   docker buildx build -f infra/docker/Dockerfile.web -t rm-web:latest .
+FROM node:24-alpine AS builder
+WORKDIR /app
+RUN corepack enable
+COPY pnpm-lock.yaml package.json pnpm-workspace.yaml ./
+RUN pnpm fetch
+COPY . .
+RUN pnpm install --offline --frozen-lockfile \
+ && pnpm nx build admin --skip-nx-cache
+
+FROM nginx:1.27-alpine
+COPY infra/nginx/nginx.conf /etc/nginx/conf.d/default.conf
+# @angular/build:application emits the browser bundle under a `browser/`
+# subdirectory of the configured outputPath (dist/apps/admin) -- see
+# apps/admin/project.json's build target.
+COPY --from=builder /app/dist/apps/admin/browser /usr/share/nginx/html/admin

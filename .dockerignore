@@ -1,0 +1,28 @@
+### Docker build context exclusions.
+### Without this file, `COPY . .` in infra/docker/Dockerfile.* would bake
+### local secrets (.env) and multi-gigabyte local artifacts into the build
+### context and image layers.
+
+.git
+.github
+
+node_modules
+dist
+tmp
+.nx
+.angular
+coverage
+
+# Next.js
+.next
+out
+
+# Local uploads (STORAGE_DRIVER=local) and env files -- never belong in an image;
+# runtime configuration is injected via compose `env_file`/`environment`.
+/storage/
+.env
+.env.local
+.env.*.local
+
+.DS_Store
+.superpowers

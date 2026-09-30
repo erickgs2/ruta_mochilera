@@ -18,3 +18,15 @@ valores y fórmulas exactos que implementa `libs/domain`.
 - Todo umbral configurable indica su clave en `SystemSetting`.
 - Cuando una regla cambia, este archivo y su diagrama se actualizan **en el mismo
   commit** que el código. Ver `CLAUDE.md`.
+
+## Cumplimiento automático
+
+`.github/workflows/docs-guard.yml` hace cumplir la tabla de arriba en cada
+pull request: si el diff toca `libs/domain/<módulo>/src/**` para alguno de
+`trips`, `costing`, `reservations`, `payments`, `notifications` o `rbac`,
+exige que el mismo PR también toque el archivo de `docs/business-rules/`
+correspondiente (y, para `trips`, `costing` y `reservations`, su diagrama en
+`docs/diagrams/`). El mensaje de error nombra el archivo exacto que falta, no
+sólo que la regla se incumplió. Un módulo de dominio sin fila en la tabla
+(por ahora `identity`, `staff`, `audit`) no dispara el requisito, pero sí una
+advertencia no bloqueante que invita a revisar si necesita una entrada aquí.
