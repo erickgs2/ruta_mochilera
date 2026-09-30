@@ -68,3 +68,13 @@
   font-size: 0.85rem;
   margin: 0;
 }
+
+.trip-costing-row--unsaved {
+  background: color-mix(in srgb, var(--mat-sys-error, #b00020) 8%, transparent);
+}
+
+.trip-costing-row-error {
+  color: var(--mat-sys-error, #b00020);
+  font-size: 0.75rem;
+  margin-top: 0.15rem;
+}

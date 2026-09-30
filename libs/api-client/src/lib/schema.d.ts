@@ -1746,6 +1746,7 @@ export interface components {
                 position: number;
                 isCover: boolean;
                 altText: string | null;
+                url: string;
             }[];
         };
         CreateTripRequest: {
@@ -1815,9 +1816,9 @@ export interface components {
             position: number;
             isCover: boolean;
             altText: string | null;
+            url: string;
             /** Format: uuid */
             tripId: string;
-            url: string;
         };
         TripCosting: {
             /** Format: uuid */

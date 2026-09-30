@@ -16,46 +16,38 @@
         <table mat-table [dataSource]="costing()!.items" class="trip-costing-table">
           <ng-container matColumnDef="concept">
             <th mat-header-cell *matHeaderCellDef>{{ 'costing.columns.concept' | translate }}</th>
-            <td mat-cell *matCellDef="let item">
-              <input
-                matInput
-                [ngModel]="item.concept"
-                (ngModelChange)="updateItemField(item, { concept: $event })"
-              />
+            <td mat-cell *matCellDef="let item" [formGroup]="itemForm(item)">
+              <input matInput formControlName="concept" (blur)="commitItem(item.id)" />
+              @if (itemForm(item).controls.concept.hasError('server')) {
+                <div class="trip-costing-row-error">{{ itemForm(item).controls.concept.errors!['server'] | rmErrorCode }}</div>
+              }
             </td>
           </ng-container>
 
           <ng-container matColumnDef="supplier">
             <th mat-header-cell *matHeaderCellDef>{{ 'costing.columns.supplier' | translate }}</th>
-            <td mat-cell *matCellDef="let item">
-              <input
-                matInput
-                [ngModel]="item.supplier ?? ''"
-                (ngModelChange)="updateItemField(item, { supplier: $event })"
-              />
+            <td mat-cell *matCellDef="let item" [formGroup]="itemForm(item)">
+              <input matInput formControlName="supplier" (blur)="commitItem(item.id)" />
             </td>
           </ng-container>
 
           <ng-container matColumnDef="quantity">
             <th mat-header-cell *matHeaderCellDef>{{ 'costing.columns.quantity' | translate }}</th>
-            <td mat-cell *matCellDef="let item">
-              <input
-                matInput
-                type="number"
-                min="1"
-                [ngModel]="item.quantity"
-                (ngModelChange)="updateItemField(item, { quantity: $event })"
-              />
+            <td mat-cell *matCellDef="let item" [formGroup]="itemForm(item)">
+              <input matInput type="number" min="1" formControlName="quantity" (blur)="commitItem(item.id)" />
+              @if (itemForm(item).controls.quantity.hasError('server')) {
+                <div class="trip-costing-row-error">{{ itemForm(item).controls.quantity.errors!['server'] | rmErrorCode }}</div>
+              }
             </td>
           </ng-container>
 
           <ng-container matColumnDef="unitAmount">
             <th mat-header-cell *matHeaderCellDef>{{ 'costing.columns.unitAmount' | translate }}</th>
-            <td mat-cell *matCellDef="let item">
-              <rm-money-input
-                [ngModel]="item.unitAmountCents"
-                (ngModelChange)="updateItemField(item, { unitAmountCents: $event })"
-              ></rm-money-input>
+            <td mat-cell *matCellDef="let item" [formGroup]="itemForm(item)">
+              <rm-money-input formControlName="unitAmountCents" (committed)="commitItem(item.id)"></rm-money-input>
+              @if (itemForm(item).controls.unitAmountCents.hasError('server')) {
+                <div class="trip-costing-row-error">{{ itemForm(item).controls.unitAmountCents.errors!['server'] | rmErrorCode }}</div>
+              }
             </td>
           </ng-container>
 
@@ -67,20 +59,28 @@
           <ng-container matColumnDef="actions">
             <th mat-header-cell *matHeaderCellDef>{{ 'costing.columns.actions' | translate }}</th>
             <td mat-cell *matCellDef="let item">
-              <button
-                mat-icon-button
-                color="warn"
-                type="button"
-                [attr.aria-label]="'common.delete' | translate"
-                (click)="deleteItem(item)"
-              >
-                <mat-icon>delete</mat-icon>
-              </button>
+              @if (savingItemIds().has(item.id)) {
+                <mat-spinner diameter="20"></mat-spinner>
+              } @else {
+                <button
+                  mat-icon-button
+                  color="warn"
+                  type="button"
+                  [attr.aria-label]="'common.delete' | translate"
+                  (click)="deleteItem(item)"
+                >
+                  <mat-icon>delete</mat-icon>
+                </button>
+              }
             </td>
           </ng-container>
 
           <tr mat-header-row *matHeaderRowDef="displayedColumns"></tr>
-          <tr mat-row *matRowDef="let row; columns: displayedColumns"></tr>
+          <tr
+            mat-row
+            *matRowDef="let row; columns: displayedColumns"
+            [class.trip-costing-row--unsaved]="!!itemErrors()[row.id]"
+          ></tr>
         </table>
       </div>
     }
@@ -93,6 +93,9 @@
       <mat-form-field appearance="outline">
         <mat-label>{{ 'costing.conceptLabel' | translate }}</mat-label>
         <input matInput formControlName="concept" />
+        @if (newItemForm.controls.concept.hasError('server')) {
+          <mat-error>{{ newItemForm.controls.concept.errors!['server'] | rmErrorCode }}</mat-error>
+        }
       </mat-form-field>
 
       <mat-form-field appearance="outline">
@@ -103,9 +106,20 @@
       <mat-form-field appearance="outline">
         <mat-label>{{ 'costing.quantityLabel' | translate }}</mat-label>
         <input matInput type="number" min="1" formControlName="quantity" />
+        @if (newItemForm.controls.quantity.hasError('server')) {
+          <mat-error>{{ newItemForm.controls.quantity.errors!['server'] | rmErrorCode }}</mat-error>
+        }
       </mat-form-field>
 
       <rm-money-input [label]="'costing.unitAmountLabel' | translate" formControlName="unitAmountCents"></rm-money-input>
+      @if (newItemForm.controls.unitAmountCents.hasError('server')) {
+        <div class="trip-costing-row-error">{{ newItemForm.controls.unitAmountCents.errors!['server'] | rmErrorCode }}</div>
+      }
+
+      <mat-form-field appearance="outline">
+        <mat-label>{{ 'costing.notesLabel' | translate }}</mat-label>
+        <input matInput formControlName="notes" />
+      </mat-form-field>
 
       <button mat-flat-button color="primary" type="submit" [disabled]="newItemForm.invalid">
         {{ 'costing.addItem' | translate }}
@@ -143,6 +157,9 @@
           <input matInput type="number" min="0" step="0.01" formControlName="marginValue" />
           <span matTextSuffix>{{ marginUnitLabel() | translate }}</span>
           <mat-hint>{{ marginHintKey() | translate }}</mat-hint>
+          @if (marginForm.controls.marginValue.hasError('server')) {
+            <mat-error>{{ marginForm.controls.marginValue.errors!['server'] | rmErrorCode }}</mat-error>
+          }
         </mat-form-field>
       } @else {
         <rm-money-input
@@ -150,6 +167,9 @@
           [hint]="marginHintKey() | translate"
           formControlName="marginValue"
         ></rm-money-input>
+        @if (marginForm.controls.marginValue.hasError('server')) {
+          <div class="trip-costing-row-error">{{ marginForm.controls.marginValue.errors!['server'] | rmErrorCode }}</div>
+        }
       }
     </form>
 
@@ -173,6 +193,11 @@
               [label]="'costing.manualPriceLabel' | translate"
               formControlName="manualPricePerSeatCents"
             ></rm-money-input>
+            @if (priceForm.controls.manualPricePerSeatCents.hasError('server')) {
+              <div class="trip-costing-row-error">
+                {{ priceForm.controls.manualPricePerSeatCents.errors!['server'] | rmErrorCode }}
+              </div>
+            }
             <p class="trip-costing-suggested-reference">
               {{ 'costing.suggestedReferenceNotice' | translate }}: {{ costing()?.suggestedPricePerSeatCents | rmMoney }}
             </p>

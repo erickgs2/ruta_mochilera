@@ -8,6 +8,31 @@ ellos no sale ninguna transición, ni siquiera a `CANCELLED`.
 
 Implementado en `libs/domain/trips/src/lib/trip-status.ts`.
 
+## Permiso para cambiar de estado
+
+`PUT /api/v1/trips/{tripId}/status` exige `trip.publish` como verificación
+general de la ruta (`apps/api/.../trips/[tripId]/status/route.ts`), pero
+**cancelar exige además, específicamente, `trip.cancel`**. La verificación
+precisa vive en `changeTripStatus` (`trip-service.ts`), no en la ruta:
+
+- Transición a `CANCELLED` → requiere `trip.cancel`.
+- Cualquier otra transición (`PUBLISHED`, `IN_PROGRESS`, `COMPLETED`) →
+  requiere `trip.publish`.
+
+Ambos permisos existen en el catálogo de RBAC desde la Tarea 5, pero hasta
+ahora nada distinguía uno del otro: `changeTripStatus` no verificaba ningún
+permiso propio, así que cualquiera que pasara la verificación general de la
+ruta (`trip.publish`) podía cancelar un viaje sin sostener `trip.cancel`. Eso
+es exactamente lo que esta verificación cierra — un administrador con
+`trip.publish` pero sin `trip.cancel` ya no puede cancelar.
+
+La verificación general de la ruta se deja como la más permisiva de las dos
+(`trip.publish`, que cubre tres de las cuatro transiciones) y es la
+verificación de dominio la que decide con precisión — el mismo reparto de
+responsabilidades entre la capa HTTP y el dominio que ya usan las reglas de
+la galería de imágenes (ver más abajo) y el permiso `data.backfill` al crear
+un viaje.
+
 ## Requisitos para publicar
 
 Un viaje sólo pasa a `PUBLISHED` si tiene **al menos una imagen** y un

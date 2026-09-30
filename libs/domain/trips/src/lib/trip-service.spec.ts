@@ -236,6 +236,44 @@ describe('trip service', () => {
     if (!result.ok) expect(result.error.code).toBe('INVALID_STATUS_TRANSITION');
   });
 
+  it('refuses to cancel a trip for an actor holding trip.publish but not trip.cancel', async () => {
+    // This is the exact over-permissive gap the permission split closes: a
+    // publisher must no longer be able to cancel just by virtue of holding
+    // trip.publish -- see docs/business-rules/trips.md.
+    const created = await createTrip(db, actorWith(['trip.create']), baseInput);
+    if (!created.ok) throw new Error('setup failed');
+
+    const result = await changeTripStatus(db, actorWith(['trip.publish']), created.value.id, 'CANCELLED');
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe('PERMISSION_DENIED');
+      expect(result.error.details).toEqual({ permission: 'trip.cancel' });
+    }
+  });
+
+  it('cancels a trip for an actor holding trip.cancel', async () => {
+    const created = await createTrip(db, actorWith(['trip.create']), baseInput);
+    if (!created.ok) throw new Error('setup failed');
+
+    const result = await changeTripStatus(db, actorWith(['trip.cancel']), created.value.id, 'CANCELLED');
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.value.status).toBe('CANCELLED');
+  });
+
+  it('refuses a non-cancel transition for an actor holding only trip.cancel', async () => {
+    // The split cuts both ways: trip.cancel is not a substitute for
+    // trip.publish on any transition other than CANCELLED.
+    const created = await createTrip(db, actorWith(['trip.create']), baseInput);
+    if (!created.ok) throw new Error('setup failed');
+
+    const result = await changeTripStatus(db, actorWith(['trip.cancel']), created.value.id, 'PUBLISHED');
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe('PERMISSION_DENIED');
+      expect(result.error.details).toEqual({ permission: 'trip.publish' });
+    }
+  });
+
   it('replaces translations on update and keeps the slug stable', async () => {
     const created = await createTrip(db, actorWith(['trip.create']), baseInput);
     if (!created.ok) throw new Error('setup failed');

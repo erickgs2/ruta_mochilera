@@ -2,6 +2,7 @@ import { createTripRequestSchema, type CreateTripRequest } from '@rm/contracts';
 import { createTrip, listTrips, type TripStatus } from '@rm/domain-trips';
 import { db } from '../../../../lib/db';
 import { route } from '../../../../lib/http/route';
+import { withImageUrlsResult } from '../../../../lib/http/trip-response';
 
 export const GET = route({
   permission: 'trip.view',
@@ -18,5 +19,5 @@ export const POST = route<CreateTripRequest, unknown>({
   permission: 'trip.create',
   body: createTripRequestSchema,
   successStatus: 201,
-  handler: async ({ actor, body }) => createTrip(db(), actor, body),
+  handler: async ({ actor, body }) => withImageUrlsResult(await createTrip(db(), actor, body)),
 });

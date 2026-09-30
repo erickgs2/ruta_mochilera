@@ -186,10 +186,14 @@ describe('trip endpoints', () => {
   });
 
   describe('PUT /api/v1/trips/:tripId/status', () => {
-    it('succeeds for an actor holding trip.publish', async () => {
+    it('succeeds for an actor holding both trip.publish and trip.cancel when cancelling', async () => {
       const creatorToken = await loginAs(db, 'creator@agency.test', ['trip.create']);
       const created = await createTrip(creatorToken);
-      const token = await loginAs(db, 'publisher@agency.test', ['trip.publish']);
+      // The route's own static permission still requires `trip.publish` as a
+      // coarse pre-check on every call to this endpoint (see the route file
+      // and `docs/business-rules/trips.md`), so cancelling through the real
+      // HTTP path needs both permissions, not `trip.cancel` alone.
+      const token = await loginAs(db, 'canceller@agency.test', ['trip.publish', 'trip.cancel']);
 
       const response = await changeStatusRoute(
         request(`/api/v1/trips/${created.id}/status`, token, { method: 'PUT', body: JSON.stringify({ status: 'CANCELLED' }) }),
@@ -197,6 +201,43 @@ describe('trip endpoints', () => {
       );
       expect(response.status).toBe(200);
       expect((await response.json()).status).toBe('CANCELLED');
+    });
+
+    it('succeeds for an actor holding only trip.publish when the target is not CANCELLED', async () => {
+      const creatorToken = await loginAs(db, 'creator@agency.test', ['trip.create']);
+      const created = await createTrip(creatorToken);
+      // Publishing has its own, unrelated requirements (at least one image
+      // and a positive price -- see TRIP_NOT_PUBLISHABLE); satisfy them here
+      // so this test's 200 is about the permission split, not those.
+      await db.tripImage.create({
+        data: { tripId: created.id, storageKey: 'trips/x/1.jpg', position: 0, isCover: true },
+      });
+      await db.trip.update({ where: { id: created.id }, data: { pricePerSeatCents: 1_500_000 } });
+      const token = await loginAs(db, 'publisher@agency.test', ['trip.publish']);
+
+      const response = await changeStatusRoute(
+        request(`/api/v1/trips/${created.id}/status`, token, { method: 'PUT', body: JSON.stringify({ status: 'PUBLISHED' }) }),
+        withTripId(created.id)
+      );
+      expect(response.status).toBe(200);
+      expect((await response.json()).status).toBe('PUBLISHED');
+    });
+
+    it('returns 403 PERMISSION_DENIED for an actor holding trip.publish but not trip.cancel when cancelling', async () => {
+      // This is the precise check `changeTripStatus` performs (see
+      // `docs/business-rules/trips.md`): `trip.publish` alone is enough to
+      // reach the endpoint, but cancelling a trip is a separate, deliberately
+      // narrower permission an administrator has to hold on top of it.
+      const creatorToken = await loginAs(db, 'creator@agency.test', ['trip.create']);
+      const created = await createTrip(creatorToken);
+      const token = await loginAs(db, 'publisher-only@agency.test', ['trip.publish']);
+
+      const response = await changeStatusRoute(
+        request(`/api/v1/trips/${created.id}/status`, token, { method: 'PUT', body: JSON.stringify({ status: 'CANCELLED' }) }),
+        withTripId(created.id)
+      );
+      expect(response.status).toBe(403);
+      expect((await response.json()).code).toBe('PERMISSION_DENIED');
     });
 
     it('returns 403 PERMISSION_DENIED for an actor holding only trip.update', async () => {

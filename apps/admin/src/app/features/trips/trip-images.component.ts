@@ -4,28 +4,12 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatDialog } from '@angular/material/dialog';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { TranslatePipe, TranslateService } from '@ngx-translate/core';
-import { API_BASE_URL, TripsApi } from '@rm/api-client';
+import { TripsApi } from '@rm/api-client';
 import type { components } from '@rm/api-client';
 import { ConfirmDialogComponent, ErrorCodePipe, ImageUploaderComponent, PageHeaderComponent, type UploaderImage } from '@rm/ui';
 import { concatMap, from, map } from 'rxjs';
 
 type Trip = components['schemas']['Trip'];
-
-/**
- * Builds the public URL for a gallery image from its `storageKey`.
- *
- * `GET /trips/{tripId}` (unlike the upload/delete responses) does not send a
- * computed `url` alongside each image -- only `storageKey`. This reconstructs
- * the same URL `LocalFileStorage.publicUrl` builds server-side
- * (`${appBaseUrl}/api/v1/files/${key}`, see `create-storage.ts`), which is
- * correct for this workspace's `local` storage driver (used in development
- * and, per `docs/`, on the Raspberry Pi deployment target). It would be
- * wrong for the `s3` driver, whose `publicUrl` points at the bucket directly
- * instead of this API -- see the task report for this known gap.
- */
-function fileUrl(apiBaseUrl: string, storageKey: string): string {
-  return `${apiBaseUrl}/api/v1/files/${storageKey}`;
-}
 
 /**
  * Manages one trip's photo gallery: upload (drag-and-drop or file picker),
@@ -50,7 +34,6 @@ function fileUrl(apiBaseUrl: string, storageKey: string): string {
 })
 export class TripImagesComponent {
   private readonly tripsApi = inject(TripsApi);
-  private readonly apiBaseUrl = inject(API_BASE_URL);
   private readonly route = inject(ActivatedRoute);
   private readonly dialog = inject(MatDialog);
   private readonly translate = inject(TranslateService);
@@ -94,10 +77,15 @@ export class TripImagesComponent {
 
   private applyTrip(found: Trip): void {
     this.trip.set(found);
+    // `image.url` is computed server-side (see `withImageUrls` in
+    // `apps/api/src/lib/http/trip-response.ts`): a URL is a transport
+    // concern -- `local` and `s3` storage build one completely differently
+    // -- so the client only ever displays what the API already sends, never
+    // reconstructs one of its own.
     this.images.set(
       found.images.map((image) => ({
         id: image.id,
-        url: fileUrl(this.apiBaseUrl, image.storageKey),
+        url: image.url,
         isCover: image.isCover,
         altText: image.altText,
       }))

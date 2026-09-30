@@ -93,6 +93,12 @@ const tripImageEmbeddedSchema = z.object({
   position: z.number().int().nonnegative(),
   isCover: z.boolean(),
   altText: z.string().nullable(),
+  // Computed at the HTTP boundary (`withImageUrls` in
+  // `apps/api/src/lib/http/trip-response.ts`), never by the domain's read
+  // path -- see that file's doc comment and `_tripSchemaMatchesDto` below,
+  // which accounts for this being the one field `TripDto.images[]` itself
+  // does not carry.
+  url: z.string(),
 });
 
 const tripSchema = z
@@ -136,7 +142,6 @@ const tripSummarySchema = z
 const tripImageSchema = tripImageEmbeddedSchema
   .extend({
     tripId: z.string().uuid(),
-    url: z.string(),
   })
   .meta({ id: 'TripImage' });
 
@@ -207,12 +212,37 @@ type DateToString<T> = T extends Date
       ? { [K in keyof T]: DateToString<T[K]> }
       : T;
 
+/**
+ * The other legitimate difference between `TripDto` and its wire schema:
+ * every image in `.images[]` gains a computed `url` at the HTTP boundary
+ * (`withImageUrls`, see `apps/api/src/lib/http/trip-response.ts`), which the
+ * domain's read path deliberately never computes -- a URL is a transport
+ * concern, and `local` vs. `s3` build one completely differently. Only
+ * `TripDto` itself carries a bare `images[]` array needing this; nested
+ * objects elsewhere in the DTO tree do not, so this does not need to recurse
+ * the way `DateToString` does.
+ *
+ * `WithImageUrl<Img>` (the per-image half) is written as its own
+ * homomorphic mapped type -- not `Img & { url: string }` -- because the
+ * `Equals` check below treats an intersection type and its structurally
+ * identical flattened object type as *not* equal (`{ a: 1 } & { b: 2 }`
+ * fails `Equals<..., { a: 1; b: 2 }>` even though each is assignable to the
+ * other): `Equals`'s point is to catch every divergence, including ones a
+ * normal assignability check would consider harmless, so the fix is to
+ * avoid the intersection entirely rather than to loosen the check.
+ */
+type WithImageUrl<Img> = { [K in keyof Img | 'url']: K extends 'url' ? string : Img[K & keyof Img] };
+
+type WithImageUrls<T extends { images: readonly { storageKey: string }[] }> = {
+  [K in keyof T]: K extends 'images' ? WithImageUrl<T['images'][number]>[] : T[K];
+};
+
 type Equals<X, Y> = (<T>() => T extends X ? 1 : 2) extends <T>() => T extends Y ? 1 : 2 ? true : false;
 
 /** Fails to compile (`Type 'false' does not satisfy the constraint 'true'`) when `Actual` and `Expected` diverge. */
 type Expect<Actual extends true> = Actual;
 
-type _tripSchemaMatchesDto = Expect<Equals<z.infer<typeof tripSchema>, DateToString<TripDto>>>;
+type _tripSchemaMatchesDto = Expect<Equals<z.infer<typeof tripSchema>, WithImageUrls<DateToString<TripDto>>>>;
 type _tripSummarySchemaMatchesDto = Expect<Equals<z.infer<typeof tripSummarySchema>, DateToString<TripSummaryDto>>>;
 type _tripImageSchemaMatchesDto = Expect<Equals<z.infer<typeof tripImageSchema>, DateToString<TripImageDto>>>;
 type _budgetItemSchemaMatchesDto = Expect<Equals<z.infer<typeof budgetItemSchema>, DateToString<BudgetItemDto>>>;

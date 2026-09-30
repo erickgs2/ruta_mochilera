@@ -29,7 +29,7 @@ const trip = {
   publishedAt: null,
   isBackfilled: false,
   translations: [{ locale: 'es', name: 'Oaxaca Mágica', description: 'd', itinerary: 'i', includes: 'inc', excludes: 'exc' }],
-  images: [] as { id: string; storageKey: string; position: number; isCover: boolean; altText: string | null }[],
+  images: [] as { id: string; storageKey: string; position: number; isCover: boolean; altText: string | null; url: string }[],
 };
 
 let dialogOpen: jest.Mock;
@@ -62,7 +62,12 @@ function fileOf(name: string): File {
 }
 
 describe('TripImagesComponent', () => {
-  it('loads the trip and maps its images to gallery entries with a reconstructed URL', () => {
+  it('loads the trip and maps its images to gallery entries, using the URL the API already computed', () => {
+    // The server (not this component) is responsible for turning a
+    // `storageKey` into a URL, since that mapping differs completely between
+    // the `local` and `s3` storage drivers -- see `withImageUrls` in
+    // `apps/api/src/lib/http/trip-response.ts`. This asserts the component
+    // passes `image.url` straight through rather than reconstructing one.
     configure();
     const fixture = TestBed.createComponent(TripImagesComponent);
     fixture.detectChanges();
@@ -71,11 +76,13 @@ describe('TripImagesComponent', () => {
       .expectOne('/api/v1/trips/trip-1')
       .flush({
         ...trip,
-        images: [{ id: 'img-1', storageKey: 'trips/trip-1/a.jpg', position: 0, isCover: true, altText: null }],
+        images: [
+          { id: 'img-1', storageKey: 'trips/trip-1/a.jpg', position: 0, isCover: true, altText: null, url: 'https://cdn.example.test/trips/trip-1/a.jpg' },
+        ],
       });
 
     expect(fixture.componentInstance.images()).toEqual([
-      { id: 'img-1', url: '/api/v1/files/trips/trip-1/a.jpg', isCover: true, altText: null },
+      { id: 'img-1', url: 'https://cdn.example.test/trips/trip-1/a.jpg', isCover: true, altText: null },
     ]);
   });
 
@@ -112,7 +119,7 @@ describe('TripImagesComponent', () => {
     const httpMock = TestBed.inject(HttpTestingController);
     httpMock
       .expectOne('/api/v1/trips/trip-1')
-      .flush({ ...trip, images: [{ id: 'img-1', storageKey: 'k1', position: 0, isCover: true, altText: null }] });
+      .flush({ ...trip, images: [{ id: 'img-1', storageKey: 'k1', position: 0, isCover: true, altText: null, url: '/api/v1/files/k1' }] });
 
     fixture.componentInstance.onDeleteRequested('img-1');
     expect(dialogOpen).toHaveBeenCalled();

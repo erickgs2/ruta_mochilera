@@ -241,4 +241,145 @@ describe('TripCostingComponent', () => {
 
     expect(component.costing()?.items).toHaveLength(3);
   });
+
+  describe('editing an existing budget item', () => {
+    it('commits an edit as a single request on blur, not one per keystroke', () => {
+      const component = load().componentInstance;
+      const httpMock = TestBed.inject(HttpTestingController);
+      const row = component.itemForm(costing.items[0]);
+
+      // Simulates typing: only the final `commitItem` (the blur handler) may
+      // produce a request -- intermediate value changes on their own must not.
+      // Programmatic `setValue` does not mark a control dirty on its own --
+      // only a genuine view-to-model update from a real `<input>` does --
+      // so `markAsDirty()` here stands in for "the user actually typed
+      // something", the same as Angular's own form directives do for a real
+      // keystroke.
+      row.controls.concept.setValue('B');
+      row.controls.concept.setValue('Bu');
+      row.controls.concept.setValue('Bus VIP');
+      row.controls.concept.markAsDirty();
+      httpMock.expectNone('/api/v1/trips/t1/costing/items/i1');
+
+      component.commitItem('i1');
+
+      const request = httpMock.expectOne('/api/v1/trips/t1/costing/items/i1');
+      expect(request.request.method).toBe('PUT');
+      expect(request.request.body.concept).toBe('Bus VIP');
+      request.flush({
+        ...costing,
+        items: [{ ...costing.items[0], concept: 'Bus VIP' }, costing.items[1]],
+      });
+
+      expect(component.costing()?.items[0].concept).toBe('Bus VIP');
+      expect(row.pristine).toBe(true);
+    });
+
+    it('does not send a request when the row was not actually changed', () => {
+      const component = load().componentInstance;
+      const httpMock = TestBed.inject(HttpTestingController);
+
+      component.commitItem('i1');
+
+      httpMock.expectNone('/api/v1/trips/t1/costing/items/i1');
+    });
+
+    it('does not send a second request for the same row while its first edit is still in flight', () => {
+      const component = load().componentInstance;
+      const httpMock = TestBed.inject(HttpTestingController);
+      const row = component.itemForm(costing.items[0]);
+
+      row.controls.concept.setValue('Bus VIP');
+      row.controls.concept.markAsDirty();
+      component.commitItem('i1');
+      httpMock.expectOne('/api/v1/trips/t1/costing/items/i1');
+
+      // A second blur before the first request resolves must be a no-op.
+      component.commitItem('i1');
+      httpMock.expectNone('/api/v1/trips/t1/costing/items/i1');
+    });
+
+    it('keeps a failed edit visible and marked, instead of discarding it when an unrelated row saves successfully afterwards', () => {
+      const component = load().componentInstance;
+      const httpMock = TestBed.inject(HttpTestingController);
+      const busRow = component.itemForm(costing.items[0]);
+      const hotelRow = component.itemForm(costing.items[1]);
+
+      busRow.controls.concept.setValue('');
+      busRow.controls.concept.markAsDirty();
+      component.commitItem('i1');
+      httpMock
+        .expectOne('/api/v1/trips/t1/costing/items/i1')
+        .flush({ code: 'VALIDATION_FAILED', details: { field: 'concept' } }, { status: 422, statusText: 'Unprocessable Entity' });
+
+      expect(busRow.controls.concept.hasError('server')).toBe(true);
+      expect(busRow.controls.concept.value).toBe('');
+
+      // A different row's edit succeeds and refreshes `costing()` with a
+      // full server snapshot -- one that still shows i1's *original*,
+      // unedited concept, since the server never accepted the bad edit.
+      hotelRow.controls.quantity.setValue(25);
+      hotelRow.controls.quantity.markAsDirty();
+      component.commitItem('i2');
+      httpMock
+        .expectOne('/api/v1/trips/t1/costing/items/i2')
+        .flush({ ...costing, items: [costing.items[0], { ...costing.items[1], quantity: 25 }] });
+
+      // The failed row must still show what the administrator typed, not
+      // the server's last-known value for it.
+      expect(busRow.controls.concept.value).toBe('');
+      expect(busRow.controls.concept.hasError('server')).toBe(true);
+    });
+  });
+
+  describe('server-side error mapping', () => {
+    it('lands a VALIDATION_FAILED response for a new item onto the matching newItemForm control', () => {
+      const component = load().componentInstance;
+      const httpMock = TestBed.inject(HttpTestingController);
+
+      // Valid on the client (so the request actually fires); the server
+      // rejection below is contrived purely to exercise the mapping code,
+      // the same way `trip-form.component.spec.ts`'s equivalent test does.
+      component.newItemForm.setValue({ concept: 'Guide', supplier: '', quantity: 1, unitAmountCents: 100, notes: '' });
+      component.addItem();
+
+      httpMock
+        .expectOne('/api/v1/trips/t1/costing/items')
+        .flush({ code: 'VALIDATION_FAILED', details: { field: 'concept' } }, { status: 422, statusText: 'Unprocessable Entity' });
+
+      expect(component.newItemForm.controls.concept.hasError('server')).toBe(true);
+    });
+
+    it('lands a VALIDATION_FAILED response for the margin value onto marginForm, not a page-level toast', () => {
+      const component = load().componentInstance;
+      const httpMock = TestBed.inject(HttpTestingController);
+
+      component.marginForm.controls.marginValue.setValue(-5);
+      component.savePricingPolicy();
+
+      httpMock
+        .expectOne('/api/v1/trips/t1/costing')
+        .flush({ code: 'VALIDATION_FAILED', details: { field: 'marginValue' } }, { status: 422, statusText: 'Unprocessable Entity' });
+
+      expect(component.marginForm.controls.marginValue.hasError('server')).toBe(true);
+    });
+
+    it('lands a VALIDATION_FAILED response for the manual price onto priceForm', () => {
+      const component = load().componentInstance;
+      const httpMock = TestBed.inject(HttpTestingController);
+
+      component.priceForm.controls.priceMode.setValue('MANUAL');
+      component.priceForm.controls.manualPricePerSeatCents.setValue(0);
+      component.savePricingPolicy();
+
+      httpMock
+        .expectOne('/api/v1/trips/t1/costing')
+        .flush(
+          { code: 'VALIDATION_FAILED', details: { field: 'manualPricePerSeatCents' } },
+          { status: 422, statusText: 'Unprocessable Entity' }
+        );
+
+      expect(component.priceForm.controls.manualPricePerSeatCents.hasError('server')).toBe(true);
+    });
+  });
 });

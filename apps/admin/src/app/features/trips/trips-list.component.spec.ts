@@ -1,9 +1,11 @@
+import { BreakpointObserver } from '@angular/cdk/layout';
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { provideRouter } from '@angular/router';
 import { provideTranslateService } from '@ngx-translate/core';
+import { of } from 'rxjs';
 import { API_BASE_URL } from '@rm/api-client';
 import { AuthService, type SessionUser } from '@rm/auth-web';
 import { TripsListComponent } from './trips-list.component';
@@ -45,6 +47,22 @@ function configure(): void {
       provideNoopAnimations(),
       provideTranslateService({ lang: 'es', fallbackLang: 'es' }),
       { provide: API_BASE_URL, useValue: '' },
+    ],
+  });
+}
+
+/** Same as `configure()`, but forces `BreakpointObserver` to report the handset breakpoint as matched. */
+function configureHandset(): void {
+  TestBed.configureTestingModule({
+    imports: [TripsListComponent],
+    providers: [
+      provideHttpClient(),
+      provideHttpClientTesting(),
+      provideRouter([{ path: 'trips/new', children: [] }]),
+      provideNoopAnimations(),
+      provideTranslateService({ lang: 'es', fallbackLang: 'es' }),
+      { provide: API_BASE_URL, useValue: '' },
+      { provide: BreakpointObserver, useValue: { observe: () => of({ matches: true, breakpoints: {} }) } },
     ],
   });
 }
@@ -112,5 +130,20 @@ describe('TripsListComponent', () => {
     const fixture = TestBed.createComponent(TripsListComponent);
     expect(fixture.componentInstance.statusColor('CANCELLED')).toBe('warn');
     expect(fixture.componentInstance.statusColor('DRAFT')).toBeUndefined();
+  });
+
+  it('renders the stacked card layout instead of the table under the handset breakpoint', () => {
+    configureHandset();
+    const fixture = TestBed.createComponent(TripsListComponent);
+    fixture.detectChanges();
+    TestBed.inject(HttpTestingController).expectOne((req) => req.url === '/api/v1/trips').flush(trips);
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.isHandset()).toBe(true);
+    const html = fixture.nativeElement as HTMLElement;
+    expect(html.querySelector('.trips-cards')).not.toBeNull();
+    expect(html.querySelector('.trips-table')).toBeNull();
+    expect(html.querySelectorAll('.trips-card')).toHaveLength(2);
+    expect(html.textContent).toContain('Oaxaca Mágica');
   });
 });

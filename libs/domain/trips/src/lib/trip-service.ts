@@ -423,12 +423,32 @@ export async function updateTrip(
   return ok(await toDto(db, tripId));
 }
 
+/**
+ * Cancelling a trip is gated on its own permission, separate from every
+ * other transition: `trip.publish` covers PUBLISHED/IN_PROGRESS/COMPLETED,
+ * `trip.cancel` alone covers CANCELLED. Both permissions were defined in the
+ * RBAC catalog from the start, but nothing enforced the split until now --
+ * see `docs/business-rules/trips.md`. The route's own static permission
+ * (`apps/api/.../trips/[tripId]/status/route.ts`) still requires
+ * `trip.publish` as a coarse pre-check on every call to this endpoint; this
+ * is the precise check that actually decides whether *this* transition is
+ * allowed, the same division of labour `createTrip`'s `data.backfill` check
+ * and the image gallery rules (Task 14) already use between the HTTP layer
+ * and the domain.
+ */
+function statusChangePermission(status: TripStatus): 'trip.publish' | 'trip.cancel' {
+  return status === 'CANCELLED' ? 'trip.cancel' : 'trip.publish';
+}
+
 export async function changeTripStatus(
   db: Db,
   actor: Actor,
   tripId: string,
   status: TripStatus
 ): Promise<Result<TripDto>> {
+  const allowed = requirePermission(actor, statusChangePermission(status));
+  if (!allowed.ok) return allowed;
+
   const trip = await db.trip.findUnique({ where: { id: tripId }, include: { images: true } });
   if (!trip) return fail('NOT_FOUND');
   if (!canTransition(trip.status, status)) {

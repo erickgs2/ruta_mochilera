@@ -44,6 +44,10 @@ describe('MoneyInputComponent', () => {
     let emitted: number | null = null;
     fixture.componentInstance.registerOnChange((value: number) => (emitted = value));
     fixture.componentInstance.onUserInput('0.015');
+    // $0.015 rounds to the nearest cent (2), not just "some integer" -- an
+    // exact assertion here, not merely `Number.isInteger`, so a rounding
+    // regression that still happens to land on a whole number cannot pass.
+    expect(emitted).toBe(2);
     expect(Number.isInteger(emitted)).toBe(true);
   });
 
@@ -53,22 +57,37 @@ describe('MoneyInputComponent', () => {
     expect(fixture.componentInstance.displayValue()).toBe('0.00');
   });
 
-  it('never emits a negative amount, even if the user types a minus sign', () => {
+  it('rejects a value that starts with a minus sign, as zero -- not as the positive magnitude', () => {
     const fixture = TestBed.createComponent(MoneyInputComponent);
     let emitted: number | null = null;
     fixture.componentInstance.registerOnChange((value: number) => (emitted = value));
 
-    // A stray minus sign must never reach `roundUpToPeso` downstream, which
-    // rounds a negative amount toward zero instead of away from it.
+    // Stripping the `-` and keeping "1250.50" would satisfy a bound check
+    // like `emitted >= 0` while silently turning a typo into the *opposite*,
+    // larger amount -- exactly the regression this exact assertion (not a
+    // `>= 0` bound either value would satisfy) is here to catch.
     fixture.componentInstance.onUserInput('-1,250.50');
 
-    expect(emitted).not.toBeLessThan(0);
-    expect(emitted).toBeGreaterThanOrEqual(0);
+    expect(emitted).toBe(0);
   });
 
   it('respects the disabled state set by the form', () => {
     const fixture = TestBed.createComponent(MoneyInputComponent);
     fixture.componentInstance.setDisabledState(true);
     expect(fixture.componentInstance.disabled()).toBe(true);
+  });
+
+  it('emits committed and calls onTouched when the field is blurred', () => {
+    const fixture = TestBed.createComponent(MoneyInputComponent);
+    const component = fixture.componentInstance;
+    const touched = jest.fn();
+    let committedCount = 0;
+    component.registerOnTouched(touched);
+    component.committed.subscribe(() => committedCount++);
+
+    component.onBlur();
+
+    expect(touched).toHaveBeenCalledTimes(1);
+    expect(committedCount).toBe(1);
   });
 });
