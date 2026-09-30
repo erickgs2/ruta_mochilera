@@ -54,7 +54,7 @@ jobs:
 
             if printf '%s\n' "$CHANGED" | grep -q "^libs/domain/${module}/src/"; then
               if ! printf '%s\n' "$CHANGED" | grep -Fxq "$rules_file"; then
-                echo "::error file=${rules_file}::This PR changes libs/domain/${module}/src/** but does not update ${rules_file}. Add the corresponding business rule there in this same PR -- see the table in CLAUDE.md ('Reglas de negocio: documentacion obligatoria')."
+                echo "::error file=${rules_file}::This PR changes libs/domain/${module}/src/** but does not update ${rules_file}. Add the corresponding business rule there in this same PR -- see the table in CLAUDE.md ('Reglas de negocio: documentación obligatoria')."
                 fail=1
               fi
               if [ -n "$diagram_file" ] && ! printf '%s\n' "$CHANGED" | grep -Fxq "$diagram_file"; then

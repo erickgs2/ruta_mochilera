@@ -4,6 +4,7 @@ tmp/
 .nx/
 .env
 .env.local
+.env.prod
 /storage/
 .DS_Store
 .superpowers/

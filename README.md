@@ -44,7 +44,9 @@ para la arquitectura completa.
 
 - Node.js 24 (fijado en `.nvmrc`)
 - pnpm (vía `corepack enable`)
-- PostgreSQL 16 — nativo en desarrollo, o en contenedor con `infra/compose/`
+- PostgreSQL 15 nativo para desarrollo (ver «Postgres en esta máquina» en
+  `CLAUDE.md`). Los contenedores (`infra/compose/`) usan PostgreSQL 16; para
+  desarrollo nativo instala 15, no 16.
 - Docker, sólo para construir/ejecutar las imágenes de `infra/docker/` y para
   `compose.test.yml` si no se usa un PostgreSQL nativo
 
@@ -104,3 +106,11 @@ respectivamente, la API y el panel administrativo servido por Nginx;
 `infra/compose/compose.prod.yml` levanta ambos junto con PostgreSQL para qa y
 producción (EC2, `amd64`). El desarrollo corre en una Raspberry Pi (`arm64`);
 ambas imágenes se construyen multi-arquitectura desde el mismo Dockerfile.
+
+`compose.prod.yml` lee su configuración de `.env.prod` (ver
+`.env.prod.example`), nunca del `.env` del desarrollador — no comparten
+secretos ni `NODE_ENV`. Se levanta con:
+
+```bash
+docker compose -f infra/compose/compose.prod.yml --env-file .env.prod up -d --build
+```

@@ -24,6 +24,15 @@ esté actualizado **en el mismo commit**.
 Los diagramas se escriben en **Mermaid dentro de archivos Markdown**, nunca como
 imágenes: se versionan como texto y un diff muestra qué cambió en la regla.
 
+`.github/workflows/docs-guard.yml` hace cumplir esta tabla en cada pull
+request. Por diseño comprueba `libs/domain/<módulo>/src/**`, no
+`libs/domain/<módulo>/**` como dice la tabla literalmente: se probó contra
+las 40 commits de la Fase 1 y una comprobación sobre el directorio completo
+daba un falso positivo en un commit que sólo tocaba `project.json`/
+`tsconfig.typecheck.json` de varias librerías de dominio, sin lógica de
+negocio. Si añades un archivo con reglas fuera de `src/` en algún módulo,
+ten presente que el guard no lo ve.
+
 ## Arquitectura: la regla que no se rompe
 
 `libs/domain` **no sabe que existe HTTP**. No importa nada de `next/*`, de

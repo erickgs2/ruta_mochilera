@@ -5,8 +5,11 @@
 # and Dockerfile.web.
 #
 # Run from the repo root so both `${VAR}` substitution below and `env_file`
-# resolve against the root .env:
-#   docker compose -f infra/compose/compose.prod.yml --env-file .env up -d --build
+# resolve against .env.prod (see .env.prod.example) -- deliberately NOT the
+# developer's own .env, which carries NODE_ENV=development, a local
+# JWT_SECRET and localhost-only defaults that have no business running in a
+# container:
+#   docker compose -f infra/compose/compose.prod.yml --env-file .env.prod up -d --build
 #
 # There is no volume for STORAGE_LOCAL_ROOT here: qa and production use
 # STORAGE_DRIVER=s3, so there is no local upload directory to persist (see
@@ -36,11 +39,17 @@ services:
     container_name: rm-api-prod
     restart: unless-stopped
     env_file:
-      - ../../.env
+      - ../../.env.prod
     environment:
-      # Overrides the .env value (which points at this host's own
-      # localhost, for native/dev use) so the containerized api reaches the
-      # containerized Postgres by its compose service name.
+      # Belt-and-suspenders: the Dockerfile already sets ENV NODE_ENV=production
+      # in the runner stage, but `environment:` here takes precedence over both
+      # the image's ENV and env_file, so a stray NODE_ENV=development in
+      # .env.prod (e.g. from copy-pasting the dev .env by mistake) can never
+      # silently override it again at the container level.
+      NODE_ENV: production
+      # Overrides .env.prod's own DATABASE_URL (a placeholder there only for
+      # `docker compose config` to validate) so the containerized api reaches
+      # the containerized Postgres by its compose service name.
       DATABASE_URL: postgresql://${POSTGRES_USER:-rm}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-rm_prod}
     depends_on:
       postgres:

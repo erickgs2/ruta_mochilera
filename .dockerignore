@@ -22,6 +22,7 @@ out
 /storage/
 .env
 .env.local
+.env.prod
 .env.*.local
 
 .DS_Store
