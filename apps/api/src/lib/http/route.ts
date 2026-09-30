@@ -1,4 +1,4 @@
-import { requirePermission, type Actor, type PermissionKey } from '@rm/domain-rbac';
+import { requireAnyPermission, requirePermission, type Actor, type PermissionKey } from '@rm/domain-rbac';
 import { fail, ok, type Result } from '@rm/shared-utils';
 import type { ZodType } from 'zod';
 import { getActor } from './actor';
@@ -31,8 +31,31 @@ export interface PublicRouteOptions<TBody, TResult> {
 /** A route that requires an authenticated caller. This is the default when `auth` is omitted. */
 export interface AuthenticatedRouteOptions<TBody, TResult> {
   auth?: 'required';
-  /** When set, the actor must hold this permission. */
+  /**
+   * When set, the actor must hold this permission. Mutually exclusive with
+   * `anyPermission` in practice (a route needs one shape of check or the
+   * other), though both are independent optional fields rather than a
+   * further discriminated union -- see `anyPermission`'s own doc comment for
+   * why that extra type-level ceremony was not worth it here.
+   */
   permission?: PermissionKey;
+  /**
+   * When set, the actor must hold at least one of these permissions. This is
+   * the coarse entry gate for a route whose *exact* authorization a deeper
+   * layer -- almost always the domain service the handler delegates to --
+   * decides per request, the same way `PUT /trips/{tripId}/status` lets
+   * anyone holding `trip.publish` or `trip.cancel` reach `changeTripStatus`,
+   * which then requires `trip.cancel` specifically for a transition to
+   * `CANCELLED` and `trip.publish` for every other one (see
+   * `docs/business-rules/trips.md`).
+   *
+   * Kept as a sibling field to `permission`, not folded into it as
+   * `PermissionKey | PermissionKey[]`: that shape is ambiguous about whether
+   * an array means "all of" or "any of", and would have changed `permission`
+   * itself for the ~20 endpoints that already use the single form. A second,
+   * explicitly-named field changes nothing about those call sites.
+   */
+  anyPermission?: readonly PermissionKey[];
   /** Zod schema for the JSON request body. Omit for GET and DELETE. */
   body?: ZodType<TBody>;
   /** HTTP status on success. Defaults to 200. */
@@ -95,9 +118,10 @@ function toResponse<TResult>(result: Result<TResult>, successStatus: number | un
  *
  * The default is closed: omitting `auth` requires an authenticated caller
  * (`auth: 'public'` must be opted into explicitly), and a route is never
- * reachable with an unresolved permission check — `permission`, when given,
- * is verified before the handler runs; when omitted, the route still gates
- * on authentication alone rather than falling through open.
+ * reachable with an unresolved permission check — `permission` and
+ * `anyPermission`, when given, are each verified before the handler runs
+ * (both, if both are somehow set); when neither is given, the route still
+ * gates on authentication alone rather than falling through open.
  *
  * Identity is established before the permission is checked, and the two map
  * to different status codes: a caller with no valid token is 401
@@ -130,6 +154,10 @@ export function route<TBody = undefined, TResult = unknown>(
 
       if (options.permission) {
         const allowed = requirePermission(actor, options.permission);
+        if (!allowed.ok) return problemResponse(allowed.error);
+      }
+      if (options.anyPermission) {
+        const allowed = requireAnyPermission(actor, options.anyPermission);
         if (!allowed.ok) return problemResponse(allowed.error);
       }
 

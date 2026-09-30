@@ -13,6 +13,46 @@
 - Los clientes (`User.type = CUSTOMER`) **no tienen roles**: su tipo implica sus
   permisos, y las rutas de cliente nunca consultan la tabla de permisos.
 
+## Verificación de permisos en `route()`
+
+`apps/api/src/lib/http/route.ts` ofrece dos formas de exigir permiso en una
+ruta, ambas evaluadas -- antes de que el handler se ejecute -- por las
+funciones homónimas en `libs/domain/rbac/src/lib/access.ts`:
+
+- `permission: 'clave'` (→ `requirePermission`) — la forma que usa casi todo
+  el catálogo de endpoints: el actor debe sostener exactamente esa clave.
+- `anyPermission: ['clave1', 'clave2', …]` (→ `requireAnyPermission`) — el
+  actor debe sostener **al menos una** de las claves listadas. Existe para
+  una ruta cuya verificación exacta no puede resolverse con un solo permiso
+  porque depende de datos de la propia solicitud — por ejemplo, a qué estado
+  se está transicionando un viaje. En ese caso la ruta sólo responde "¿tiene
+  algún motivo legítimo para llegar aquí?"; es el servicio de dominio al que
+  delega quien decide con precisión cuál de los permisos listados hacía
+  falta para *esta* solicitud en particular. `PUT
+  /api/v1/trips/{tripId}/status` es el primer uso —
+  `anyPermission: ['trip.publish', 'trip.cancel']`, con `changeTripStatus`
+  exigiendo el que corresponda según el estado destino — ver
+  `docs/business-rules/trips.md`.
+
+Los dos campos son independientes, no una unión discriminada: nada impide
+declarar ambos a la vez (se exigirían los dos), aunque ningún endpoint lo
+necesita hoy — se eligió así en vez de una forma única
+`permission: PermissionKey | PermissionKey[]` porque un arreglo ahí sería
+ambiguo entre "todos" y "cualquiera", y habría cambiado la forma del campo
+para los ~20 endpoints que ya usan `permission` con una sola clave.
+
+Ambas formas respetan la misma separación 401/403 que el resto de `route()`:
+identidad primero, así que un token ausente o inválido siempre es
+`401 TOKEN_INVALID`, evaluado antes que cualquiera de las dos verificaciones
+de permiso; sólo un actor ya identificado que no sostiene lo requerido
+recibe `403 PERMISSION_DENIED`.
+
+Una ruta pública (`auth: 'public'`) no puede declarar ninguna de las dos: no
+hay actor contra el cual verificar un permiso, y `PublicRouteOptions` no
+declara ninguno de los dos campos — declararlos en una ruta pública falla en
+tiempo de compilación (`route.spec.ts` tiene una prueba `@ts-expect-error`
+por cada una), no en producción.
+
 ## Sesiones
 
 `RefreshToken.session_id` agrupa toda la cadena de tokens de una misma sesión.
@@ -126,7 +166,7 @@ de sistema sin usuario real (por ejemplo, un job programado) debe omitir
 
 1. Agregar la entrada a `libs/domain/rbac/src/lib/permissions.ts`.
 2. Correr `pnpm db:seed` (es idempotente y sincroniza la tabla).
-3. Usarlo en el Route Handler correspondiente vía `route({ permission: '…' })`.
+3. Usarlo en el Route Handler correspondiente vía `route({ permission: '…' })` — o `route({ anyPermission: ['…', '…'] })` si la ruta debe aceptar más de un permiso y es el dominio quien decide cuál hacía falta para la solicitud (ver "Verificación de permisos en `route()`" arriba).
 4. Documentarlo en la tabla de arriba **en el mismo commit**.
 
 ## Reglas de sesión

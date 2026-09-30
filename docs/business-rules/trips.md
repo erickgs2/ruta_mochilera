@@ -10,28 +10,36 @@ Implementado en `libs/domain/trips/src/lib/trip-status.ts`.
 
 ## Permiso para cambiar de estado
 
-`PUT /api/v1/trips/{tripId}/status` exige `trip.publish` como verificación
-general de la ruta (`apps/api/.../trips/[tripId]/status/route.ts`), pero
-**cancelar exige además, específicamente, `trip.cancel`**. La verificación
-precisa vive en `changeTripStatus` (`trip-service.ts`), no en la ruta:
+`PUT /api/v1/trips/{tripId}/status` exige, como verificación general de la
+ruta, **cualquiera** de `trip.publish` o `trip.cancel`
+(`anyPermission: ['trip.publish', 'trip.cancel']` en
+`apps/api/.../trips/[tripId]/status/route.ts` — ver
+`docs/business-rules/rbac.md` para el mecanismo genérico). Esa verificación
+sólo decide si la solicitud llega al dominio; la verificación **precisa**
+vive en `changeTripStatus` (`trip-service.ts`):
 
 - Transición a `CANCELLED` → requiere `trip.cancel`.
 - Cualquier otra transición (`PUBLISHED`, `IN_PROGRESS`, `COMPLETED`) →
   requiere `trip.publish`.
 
-Ambos permisos existen en el catálogo de RBAC desde la Tarea 5, pero hasta
-ahora nada distinguía uno del otro: `changeTripStatus` no verificaba ningún
-permiso propio, así que cualquiera que pasara la verificación general de la
-ruta (`trip.publish`) podía cancelar un viaje sin sostener `trip.cancel`. Eso
-es exactamente lo que esta verificación cierra — un administrador con
-`trip.publish` pero sin `trip.cancel` ya no puede cancelar.
+Ambos permisos existen en el catálogo de RBAC desde la Tarea 5, pero hasta la
+Tarea 18 nada distinguía uno del otro: `changeTripStatus` no verificaba ningún
+permiso propio y la ruta exigía sólo `trip.publish`, así que (a) cualquiera
+que sostuviera `trip.publish` podía cancelar un viaje sin sostener
+`trip.cancel`, y (b) alguien con `trip.cancel` pero sin `trip.publish` nunca
+llegaba siquiera al dominio — la ruta lo rechazaba antes. La primera ronda de
+esta corrección resolvió (a) pero dejó (b) abierto, porque en ese momento la
+ruta sólo sabía exigir un permiso único; `anyPermission` (ver
+`docs/business-rules/rbac.md`) es lo que cierra (b): un administrador que
+sólo tiene `trip.cancel` ahora sí llega a `changeTripStatus`, que lo deja
+cancelar y le niega cualquier otra transición — el espejo exacto de lo que ya
+pasaba con `trip.publish`.
 
-La verificación general de la ruta se deja como la más permisiva de las dos
-(`trip.publish`, que cubre tres de las cuatro transiciones) y es la
-verificación de dominio la que decide con precisión — el mismo reparto de
-responsabilidades entre la capa HTTP y el dominio que ya usan las reglas de
-la galería de imágenes (ver más abajo) y el permiso `data.backfill` al crear
-un viaje.
+La ruta es la verificación gruesa ("¿tiene algún motivo para tocar el estado
+de este viaje?"); el dominio es quien decide con precisión — el mismo
+reparto de responsabilidades entre la capa HTTP y el dominio que ya usan las
+reglas de la galería de imágenes (ver más abajo) y el permiso `data.backfill`
+al crear un viaje.
 
 ## Requisitos para publicar
 

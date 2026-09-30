@@ -174,4 +174,64 @@ describe('route', () => {
     // @ts-expect-error -- a public route has no actor, so it can never satisfy a permission check
     route({ auth: 'public', permission: 'trip.view', handler: async () => ok(null) });
   });
+
+  it('rejects at compile time: a public route cannot declare anyPermission either', () => {
+    // Same guard as above, for the "any of" form added alongside `permission`:
+    // a public route has no actor for either shape of permission check to
+    // run against.
+    // @ts-expect-error -- a public route has no actor, so it can never satisfy a permission check
+    route({ auth: 'public', anyPermission: ['trip.view', 'trip.create'], handler: async () => ok(null) });
+  });
+
+  describe('anyPermission', () => {
+    it('allows an actor holding only the first listed permission', async () => {
+      mockedGetActor.mockResolvedValue(staffActor(['trip.publish']));
+      const handler = vi.fn(async () => ok('granted'));
+      const endpoint = route({ anyPermission: ['trip.publish', 'trip.cancel'], handler });
+
+      const response = await endpoint(new Request('http://localhost/x'));
+
+      expect(response.status).toBe(200);
+      expect(await response.json()).toBe('granted');
+      expect(handler).toHaveBeenCalledTimes(1);
+    });
+
+    it('allows an actor holding only the second listed permission', async () => {
+      mockedGetActor.mockResolvedValue(staffActor(['trip.cancel']));
+      const handler = vi.fn(async () => ok('granted'));
+      const endpoint = route({ anyPermission: ['trip.publish', 'trip.cancel'], handler });
+
+      const response = await endpoint(new Request('http://localhost/x'));
+
+      expect(response.status).toBe(200);
+      expect(await response.json()).toBe('granted');
+    });
+
+    it('denies an actor holding neither listed permission, with 403', async () => {
+      mockedGetActor.mockResolvedValue(staffActor(['trip.view']));
+      const handler = vi.fn(async () => ok('unreachable'));
+      const endpoint = route({ anyPermission: ['trip.publish', 'trip.cancel'], handler });
+
+      const response = await endpoint(new Request('http://localhost/x'));
+
+      expect(response.status).toBe(403);
+      expect((await response.json()).code).toBe('PERMISSION_DENIED');
+      expect(handler).not.toHaveBeenCalled();
+    });
+
+    it('returns 401 TOKEN_INVALID, not 403, for an unauthenticated caller even when anyPermission is set', async () => {
+      // Same split `permission` already preserves (see the test above this
+      // block): identity is established before either shape of permission
+      // check runs, so a missing/invalid token is always 401, never 403.
+      mockedGetActor.mockResolvedValue(null);
+      const handler = vi.fn(async () => ok('unreachable'));
+      const endpoint = route({ anyPermission: ['trip.publish', 'trip.cancel'], handler });
+
+      const response = await endpoint(new Request('http://localhost/x'));
+
+      expect(response.status).toBe(401);
+      expect((await response.json()).code).toBe('TOKEN_INVALID');
+      expect(handler).not.toHaveBeenCalled();
+    });
+  });
 });

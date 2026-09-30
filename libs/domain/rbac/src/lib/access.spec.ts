@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { requirePermission, type Actor } from './access';
+import { requireAnyPermission, requirePermission, type Actor } from './access';
 
 const staff = (permissions: Actor['permissions']): Actor => ({
   userId: 'user-1',
@@ -29,6 +29,42 @@ describe('requirePermission', () => {
   it('denies a customer regardless of the permission list', () => {
     const customer: Actor = { userId: 'u', type: 'CUSTOMER', locale: 'es', permissions: ['trip.view'] };
     const result = requirePermission(customer, 'trip.view');
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.code).toBe('PERMISSION_DENIED');
+  });
+});
+
+describe('requireAnyPermission', () => {
+  it('allows an actor holding only the first listed permission', () => {
+    const result = requireAnyPermission(staff(['trip.publish']), ['trip.publish', 'trip.cancel']);
+    expect(result.ok).toBe(true);
+  });
+
+  it('allows an actor holding only the second listed permission', () => {
+    const result = requireAnyPermission(staff(['trip.cancel']), ['trip.publish', 'trip.cancel']);
+    expect(result.ok).toBe(true);
+  });
+
+  it('allows an actor holding both listed permissions', () => {
+    const result = requireAnyPermission(staff(['trip.publish', 'trip.cancel']), ['trip.publish', 'trip.cancel']);
+    expect(result.ok).toBe(true);
+  });
+
+  it('denies an actor holding neither listed permission', () => {
+    const result = requireAnyPermission(staff(['trip.view']), ['trip.publish', 'trip.cancel']);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.code).toBe('PERMISSION_DENIED');
+  });
+
+  it('denies an anonymous actor', () => {
+    const result = requireAnyPermission(null, ['trip.publish', 'trip.cancel']);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.code).toBe('PERMISSION_DENIED');
+  });
+
+  it('denies a customer regardless of the permission list', () => {
+    const customer: Actor = { userId: 'u', type: 'CUSTOMER', locale: 'es', permissions: ['trip.publish', 'trip.cancel'] };
+    const result = requireAnyPermission(customer, ['trip.publish', 'trip.cancel']);
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.error.code).toBe('PERMISSION_DENIED');
   });

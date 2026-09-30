@@ -53,3 +53,20 @@ export function requirePermission(actor: Actor | null, permission: PermissionKey
   }
   return ok(actor);
 }
+
+/**
+ * The "any of" counterpart to `requirePermission`, for a route whose coarse
+ * entry gate is deliberately broader than the exact rule some deeper layer
+ * (usually the domain) applies per request -- e.g. `PUT
+ * /trips/{tripId}/status` accepts anyone holding `trip.publish` OR
+ * `trip.cancel`, and `changeTripStatus` then decides, per transition target,
+ * which of the two this particular call actually needed. Denying here means
+ * "holds none of the listed permissions"; it says nothing about which one a
+ * deeper check will go on to require.
+ */
+export function requireAnyPermission(actor: Actor | null, permissions: readonly PermissionKey[]): Result<Actor> {
+  if (!actor || actor.type !== 'STAFF' || !permissions.some((permission) => actor.permissions.includes(permission))) {
+    return fail('PERMISSION_DENIED', { permissions });
+  }
+  return ok(actor);
+}
