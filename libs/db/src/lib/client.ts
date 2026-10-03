@@ -48,11 +48,38 @@ export type DbTransactionClient = Prisma.TransactionClient;
 
 export interface CreatePrismaClientOptions {
   /**
-   * PostgreSQL schema every generated query is qualified with. Defaults to
-   * `public`. The integration test helpers use it to give each Vitest worker
-   * its own isolated copy of the schema inside the same test database.
+   * PostgreSQL schema every query is resolved against. Defaults to `public`.
+   * The integration test helpers use it to give each Vitest worker its own
+   * isolated copy of the schema inside the same test database.
    */
   schema?: string;
+}
+
+/**
+ * Builds the libpq startup option that puts `schema` on the connection's
+ * `search_path`.
+ *
+ * The driver adapter's own `schema` option only qualifies the SQL Prisma
+ * *generates*; a `$queryRaw` naming a table without a schema is resolved by
+ * the server's `search_path`, which otherwise stays `public`. Domain code
+ * does issue such raw statements -- `lockTripForCapacity`'s
+ * `SELECT ... FOR UPDATE` is the first -- and a test pointed at a worker
+ * schema would have quietly read and locked rows in `public` instead, which
+ * is the worst possible failure mode for a lock: silent, and green.
+ *
+ * The name is interpolated into a startup string, so it is validated rather
+ * than escaped: anything outside `[A-Za-z0-9_]` is rejected. Every schema
+ * name this workspace produces is already of that shape.
+ *
+ * Exported so the test harness's query-counting client, which builds its own
+ * adapter to wire up Prisma's `log` events, resolves raw SQL against the
+ * same schema as every other client instead of restating the string.
+ */
+export function searchPathStartupOption(schema: string): string {
+  if (!/^[A-Za-z0-9_]+$/.test(schema)) {
+    throw new Error(`Refusing to use "${schema}" as a schema name: expected [A-Za-z0-9_]+`);
+  }
+  return `-c search_path=${schema}`;
 }
 
 /**
@@ -67,7 +94,10 @@ export function createPrismaClient(
   options: CreatePrismaClientOptions = {}
 ): Db {
   const adapter = new PrismaPg(
-    { connectionString: databaseUrl },
+    {
+      connectionString: databaseUrl,
+      ...(options.schema === undefined ? {} : { options: searchPathStartupOption(options.schema) }),
+    },
     options.schema === undefined ? undefined : { schema: options.schema }
   );
   return new PrismaClient({ adapter });

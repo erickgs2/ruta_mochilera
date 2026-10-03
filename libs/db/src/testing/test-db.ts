@@ -1,7 +1,9 @@
 import { execFileSync } from 'node:child_process';
 import { existsSync, readdirSync, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { createPrismaClient, type Db } from '../lib/client';
+import { PrismaPg } from '@prisma/adapter-pg';
+import { PrismaClient } from '../generated/prisma/client';
+import { createPrismaClient, searchPathStartupOption, type Db } from '../lib/client';
 
 const DEFAULT_TEST_DATABASE_URL = 'postgresql://rm:rm@localhost:5432/rm_test';
 
@@ -81,6 +83,43 @@ export async function resetDatabase(db: Db): Promise<void> {
   if (tables.length === 0) return;
   const list = tables.map((t) => `"${TEST_SCHEMA}"."${t.tablename}"`).join(', ');
   await db.$executeRawUnsafe(`TRUNCATE TABLE ${list} RESTART IDENTITY CASCADE`);
+}
+
+/**
+ * Runs `run` against a throwaway client on this worker's schema that counts
+ * every SQL statement it sends to PostgreSQL, and returns what `run` returns.
+ *
+ * Exists so a suite can assert that an operation's query count does not grow
+ * with the size of its input -- an N+1 regression. Counting at the client is
+ * the only place the difference is observable: a service that loops and a
+ * service that batches are identical from the outside, and `vi.mock(module,
+ * { spy: true })` does not intercept a module calling its own function in
+ * ESM, so spying on the inner helper proves nothing.
+ *
+ * It is a second client rather than the shared one because query events need
+ * `log` wired up at construction. It sees the same committed rows, so a test
+ * seeds through `withTestDb()` as usual and only runs the measured call in
+ * here. The client is disconnected on the way out, including on failure:
+ * `pg` keeps a pool per client and the suites run in parallel against one
+ * PostgreSQL.
+ */
+export async function withQueryCountingDb<T>(
+  run: (db: Db, queryCount: () => number) => Promise<T>
+): Promise<T> {
+  const adapter = new PrismaPg(
+    { connectionString: TEST_DATABASE_URL, options: searchPathStartupOption(TEST_SCHEMA) },
+    { schema: TEST_SCHEMA }
+  );
+  const client = new PrismaClient({ adapter, log: [{ emit: 'event', level: 'query' }] });
+  let queries = 0;
+  client.$on('query', () => {
+    queries += 1;
+  });
+  try {
+    return await run(client, () => queries);
+  } finally {
+    await client.$disconnect();
+  }
 }
 
 /**

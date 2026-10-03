@@ -6,11 +6,96 @@
 (un apartado cuyo `hold_expires_at` pasó sin que se cubriera el depósito
 mínimo). `CANCELLED` y `EXPIRED` son terminales.
 
-Implementado en el modelo `Reservation` (`libs/db/prisma/schema.prisma`). La
-Tarea 3 añade `libs/domain/reservations` con las transiciones y las reglas
-de apartado, depósito y cancelación (§5.2–§5.6 de
-`docs/superpowers/specs/2026-10-03-fase-2a-reservas-y-pagos-diseno.md`); este
-archivo documenta por ahora sólo lo que ya existe en el esquema.
+Implementado en el modelo `Reservation` (`libs/db/prisma/schema.prisma`).
+`libs/domain/reservations` ya existe y contiene el cálculo del cupo y su
+bloqueo (abajo); las transiciones y las reglas de apartado, depósito y
+cancelación (§5.2–§5.6 de
+`docs/superpowers/specs/2026-10-03-fase-2a-reservas-y-pagos-diseno.md`)
+llegan con las tareas siguientes.
+
+## Cupo disponible
+
+```
+available_seats = total_capacity − pre_sold_seats
+                − COUNT(reservas ACTIVE)
+                − COUNT(reservas HELD con hold_expires_at > ahora)
+```
+
+**Nunca se almacena.** Un contador mutable es exactamente donde aparece la
+sobreventa cuando dos personas reservan el último lugar en el mismo segundo:
+el contador se lee, se decide y se escribe, y entre la lectura y la escritura
+cabe otra reserva. Derivarlo de las filas de `reservations` en cada lectura
+elimina esa ventana a cambio de una consulta.
+
+Una reserva `CANCELLED`, una `EXPIRED` y un apartado `HELD` cuyo
+`hold_expires_at` ya pasó **no ocupan lugar**: el lugar vuelve al cupo sin que
+nadie tenga que tocar un contador. Por eso la expiración de un apartado no
+necesita ninguna escritura para liberar el asiento; el job que marca `EXPIRED`
+(§5.3 de la spec) sólo existe para cerrar el Payment Intent y dejar constancia.
+
+El cálculo vive en `availableSeats` (`@rm/domain-trips`, la fórmula pura) y los
+conteos en `libs/domain/reservations/src/lib/capacity.ts`:
+
+| Función | Para qué |
+|---|---|
+| `countCommittedSeats(db, tripId)` | Conteo de un viaje, en una sola consulta agrupada. |
+| `countCommittedSeatsForTrips(db, tripIds)` | Lo mismo para varios viajes en **una** consulta; devuelve un mapa con ceros para los viajes sin reservas, nunca con entradas ausentes. |
+| `lockTripForCapacity(tx, tripId)` | `SELECT id FROM trips WHERE id = $1 FOR UPDATE`. |
+
+El corte del apartado se compara contra el reloj de la aplicación y no contra
+el `now()` de PostgreSQL: dentro de una transacción, `now()` es la hora en que
+la transacción empezó, que en una transacción interactiva larga puede ser
+notablemente anterior.
+
+## Por qué el cálculo exige el bloqueo
+
+Leer el cupo para **escribir** (tomar un lugar, o reducir `total_capacity`)
+obliga a bloquear antes la fila del viaje:
+
+```
+BEGIN
+SELECT id FROM trips WHERE id = $1 FOR UPDATE   -- lockTripForCapacity
+  (conteo)                                      -- countCommittedSeats
+  (decisión: ¿queda lugar?)
+  (INSERT de la reserva)
+COMMIT
+```
+
+Sin ese `FOR UPDATE`, dos transacciones simultáneas leen el mismo conteo,
+las dos encuentran libre el último lugar y las dos insertan. Con él, y bajo
+`READ COMMITTED` —el nivel por omisión de PostgreSQL y el que usan las
+transacciones interactivas de Prisma—, la segunda transacción se queda
+esperando en el `SELECT ... FOR UPDATE` hasta que la primera hace COMMIT, y el
+conteo que lee después **ya incluye** la reserva de la primera. La segunda
+recibe `TRIP_SOLD_OUT`.
+
+Es un bloqueo **de fila, no de tabla**: dos reservas a viajes distintos no se
+estorban. `capacity.spec.ts` lo comprueba con una prueba que completa una
+reserva a otro viaje mientras la primera transacción sigue con su bloqueo
+tomado.
+
+El bloqueo debe tomarse **dentro** de una transacción. Un `FOR UPDATE` fuera
+de una transacción libera el candado al terminar la sentencia, y el resultado
+es código que parece protegido y no lo está.
+
+`updateTrip` (`@rm/domain-trips`) toma el mismo bloqueo antes de comprobar
+`CAPACITY_BELOW_COMMITTED`, por la misma razón: reducir el cupo es decidir
+contra un conteo que otra reserva puede estar a punto de invalidar.
+
+### El índice parcial no sustituye al bloqueo
+
+El índice único parcial de la sección siguiente impide que **un mismo cliente**
+tenga dos reservas vivas en un viaje. No dice nada sobre el cupo: dos clientes
+**distintos** pidiendo el último lugar pasan ambos ese índice. Son dos reglas
+distintas y cada una necesita su propio mecanismo.
+
+## El listado no hace N+1
+
+`listTrips` resuelve el cupo de toda la página con una sola llamada a
+`countCommittedSeatsForTrips`, no con una por viaje. Está medido:
+`trip-service.spec.ts` cuenta las consultas que emite el cliente de base de
+datos y comprueba que listar cinco viajes cuesta lo mismo que listar uno
+(3 consultas en ambos casos; con un conteo por viaje serían 7 para cinco).
 
 ## Una reserva viva por cliente y viaje
 

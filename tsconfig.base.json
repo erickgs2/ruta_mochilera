@@ -32,6 +32,7 @@
       "@rm/domain-rbac": ["./libs/domain/rbac/src/index.ts"],
       "@rm/domain-staff": ["./libs/domain/staff/src/index.ts"],
       "@rm/domain-trips": ["./libs/domain/trips/src/index.ts"],
+      "@rm/domain-reservations": ["./libs/domain/reservations/src/index.ts"],
       "@rm/domain-costing": ["./libs/domain/costing/src/index.ts"],
       "@rm/domain-audit": ["./libs/domain/audit/src/index.ts"],
       "@rm/ui": ["./libs/ui/src/index.ts"]

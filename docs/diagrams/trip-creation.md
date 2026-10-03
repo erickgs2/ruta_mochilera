@@ -47,7 +47,9 @@ stateDiagram-v2
 ids de la página y los resuelve en una sola llamada a
 `committedSeatsForTrips`, la variante agrupada de `committedSeats` (ver
 `docs/business-rules/trips.md`, sección «Cupo disponible»). El detalle de un
-viaje sigue usando la variante de un solo id.
+viaje sigue usando la variante de un solo id. Ambas delegan en
+`libs/domain/reservations`; el conteo real se documenta en
+`docs/diagrams/trip-reservation.md`.
 
 ```mermaid
 flowchart TD
@@ -55,4 +57,23 @@ flowchart TD
     B --> C["committedSeatsForTrips(db, ids)<br/>una sola llamada"]
     C --> D[Mapa id → comprometido]
     D --> E["Para cada viaje:<br/>availableSeats = cupo − pre-vendido − comprometido"]
+```
+
+Medido: 3 consultas para un viaje y 3 para cinco. Un conteo por viaje daría 7
+para cinco.
+
+## Editar el cupo bloquea la fila del viaje
+
+```mermaid
+flowchart TD
+    A[updateTrip] --> B[(BEGIN)]
+    B --> C["lockTripForCapacity (FOR UPDATE)"]
+    C --> D["committedSeats: reservas ACTIVE + apartados vigentes"]
+    D --> E{"¿total_capacity nuevo ≥<br/>pre-vendido + comprometido?"}
+    E -- No --> F["CAPACITY_BELOW_COMMITTED<br/>details.alreadyTaken"]
+    E -- Sí --> G[Actualiza viaje y traducciones]
+    G --> H{"¿Cambió total_capacity?"}
+    H -- Sí --> I["repriceTrip (ver trip-costing.md)"]
+    H -- No --> J[(COMMIT)]
+    I --> J
 ```

@@ -92,30 +92,37 @@ available_seats = total_capacity − pre_sold_seats − reservas ACTIVE − apar
 ```
 
 **Nunca se almacena.** Un contador mutable es donde aparece la sobreventa cuando
-dos personas reservan el último lugar en el mismo segundo. En la Fase 2, el
-cálculo ocurre dentro de una transacción que bloquea la fila del viaje; hoy,
-con `committedSeats` siempre en cero, no hay nada que ese bloqueo protegería
-todavía, así que no existe (ver más abajo).
+dos personas reservan el último lugar en el mismo segundo.
 
 `pre_sold_seats` son los lugares vendidos fuera del sistema durante el arranque
 en caliente, que la agencia no quiso capturar uno por uno.
 
-En la Fase 1 todavía no existe el modelo `Reservation`, así que las reservas
-activas y los apartados vigentes se calculan con un stub (`committedSeats` en
-`trip-service.ts`) que siempre regresa cero. **Los tres puntos donde se calcula
-el cupo** — el detalle de un viaje, el listado (`listTrips`) y la validación de
-cupo al editar — pasan por este mismo stub, así que los tres cambian en
-conjunto el día que la Fase 2 lo sustituya por las consultas reales contra
-`Reservation`; ninguno calcula por su cuenta.
+Las reservas activas y los apartados vigentes se cuentan en
+`libs/domain/reservations` (`countCommittedSeats` y su forma agrupada), que es
+donde viven las reglas del modelo `Reservation`. **Los tres puntos donde se
+calcula el cupo** — el detalle de un viaje, el listado (`listTrips`) y la
+validación de cupo al editar — pasan por los mismos dos ayudantes de
+`trip-service.ts` (`committedSeats` y `committedSeatsForTrips`), que no hacen
+más que delegar ahí; ninguno cuenta por su cuenta.
 
-`listTrips` no llama a `committedSeats` una vez por viaje: usa una variante
+`listTrips` no llama a `committedSeats` una vez por viaje: usa la variante
 agrupada, `committedSeatsForTrips(db, tripIds)`, que recibe todos los ids de la
-página y devuelve un mapa. Hoy, con el stub devolviendo cero para cada id, esto
-no cambia ninguna consulta — pero en cuanto la Fase 2 rellene ambas variantes
-con consultas reales contra `Reservation`, la forma agrupada evita que el
-listado emita una consulta por viaje (un N+1 por el tamaño de la página). El
-detalle de un viaje (`toDto`) y la validación de cupo al editar (`updateTrip`)
-siguen usando la variante de un solo viaje, porque ahí sólo hace falta un id.
+página y devuelve un mapa, de modo que el listado no emite una consulta por
+viaje (un N+1 por el tamaño de la página). Está medido en
+`trip-service.spec.ts`, contando las consultas del cliente de base de datos:
+listar cinco viajes cuesta las mismas 3 consultas que listar uno; con un conteo
+por viaje serían 7. El detalle de un viaje (`toDto`) y la validación de cupo al
+editar (`updateTrip`) usan la variante de un solo viaje, porque ahí sólo hace
+falta un id.
+
+**Escribir contra el cupo exige bloquear la fila del viaje.** `updateTrip` toma
+`lockTripForCapacity` antes de comprobar `CAPACITY_BELOW_COMMITTED`, igual que
+lo hace una reserva antes de tomar un lugar: sin el bloqueo, una edición de
+cupo y una reserva simultáneas leen cada una un conteo que la otra está a punto
+de invalidar. El porqué completo está en
+`docs/business-rules/reservations.md`, sección «Por qué el cálculo exige el
+bloqueo». Leer el cupo sólo para mostrarlo (`toDto`, `listTrips`) no necesita
+bloqueo: es un número que por naturaleza es una foto del momento.
 
 ## Validaciones al crear y editar
 
