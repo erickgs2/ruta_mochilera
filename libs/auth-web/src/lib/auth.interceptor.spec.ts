@@ -35,20 +35,22 @@ describe('authInterceptor', () => {
   });
 
   it('attaches the bearer token when a session exists', () => {
-    auth.setSessionForTesting('access-1', 'refresh-1');
+    auth.setSessionForTesting('access-1');
     http.get('/api/v1/trips').subscribe();
     expect(controller.expectOne('/api/v1/trips').request.headers.get('Authorization')).toBe('Bearer access-1');
   });
 
   it('refreshes once on 401 and retries the original request', () => {
-    auth.setSessionForTesting('expired', 'refresh-1');
+    auth.setSessionForTesting('expired', { id: 'u1', email: 'a@b.test', type: 'STAFF', locale: 'es', fullName: 'Ana', permissions: [] });
     let body: unknown;
     http.get('/api/v1/trips').subscribe((response) => (body = response));
 
     controller.expectOne('/api/v1/trips').flush(null, { status: 401, statusText: 'Unauthorized' });
+    // No body in the refresh request: the token travels via the (mocked,
+    // invisible-to-the-test) refresh-token cookie, not JSON.
     controller.expectOne('/api/v1/auth/refresh').flush({
       user: { id: 'u1', email: 'a@b.test', type: 'STAFF', locale: 'es', fullName: 'Ana', permissions: [] },
-      tokens: { accessToken: 'access-2', refreshToken: 'refresh-2', expiresInSeconds: 900 },
+      tokens: { accessToken: 'access-2', expiresInSeconds: 900 },
     });
 
     const retried = controller.expectOne('/api/v1/trips');
@@ -58,7 +60,7 @@ describe('authInterceptor', () => {
   });
 
   it('a burst of parallel 401s triggers exactly one refresh call', () => {
-    auth.setSessionForTesting('expired', 'refresh-1');
+    auth.setSessionForTesting('expired', { id: 'u1', email: 'a@b.test', type: 'STAFF', locale: 'es', fullName: 'Ana', permissions: [] });
     const bodies: unknown[] = [];
     for (let i = 0; i < 5; i += 1) {
       http.get(`/api/v1/trips?i=${i}`).subscribe((response) => bodies.push(response));
@@ -73,7 +75,7 @@ describe('authInterceptor', () => {
     // more than one match, which is what makes this assertion meaningful.
     controller.expectOne('/api/v1/auth/refresh').flush({
       user: { id: 'u1', email: 'a@b.test', type: 'STAFF', locale: 'es', fullName: 'Ana', permissions: [] },
-      tokens: { accessToken: 'access-2', refreshToken: 'refresh-2', expiresInSeconds: 900 },
+      tokens: { accessToken: 'access-2', expiresInSeconds: 900 },
     });
 
     // All five losers retry with the new token.
@@ -86,15 +88,24 @@ describe('authInterceptor', () => {
   });
 
   it('does not try to refresh the refresh call itself', () => {
-    auth.setSessionForTesting('expired', 'refresh-1');
+    auth.setSessionForTesting('expired', { id: 'u1', email: 'a@b.test', type: 'STAFF', locale: 'es', fullName: 'Ana', permissions: [] });
     http.post('/api/v1/auth/refresh', {}).subscribe({ error: () => undefined });
 
     controller.expectOne('/api/v1/auth/refresh').flush(null, { status: 401, statusText: 'Unauthorized' });
     controller.verify(); // no additional call was made
   });
 
+  it('does not attempt a refresh at all when there is no local session', () => {
+    // No cookie is visible to this test either way, but the point here is
+    // that an anonymous caller (never logged in on this device) must not
+    // even try: there is nothing for a successful refresh to attach to.
+    http.get('/api/v1/trips').subscribe({ error: () => undefined });
+    controller.expectOne('/api/v1/trips').flush(null, { status: 401, statusText: 'Unauthorized' });
+    controller.verify(); // no refresh call was made
+  });
+
   it('logs the user out and routes to /login when the refresh call itself fails', () => {
-    auth.setSessionForTesting('expired', 'refresh-1', {
+    auth.setSessionForTesting('expired', {
       id: 'u1',
       email: 'a@b.test',
       type: 'STAFF',
@@ -108,7 +119,7 @@ describe('authInterceptor', () => {
     http.get('/api/v1/trips').subscribe({ error: (error) => (receivedError = error) });
 
     controller.expectOne('/api/v1/trips').flush(null, { status: 401, statusText: 'Unauthorized' });
-    // The refresh token is itself invalid/expired -- the refresh call fails too.
+    // The refresh token itself is invalid/expired -- the refresh call fails too.
     controller.expectOne('/api/v1/auth/refresh').flush(null, {
       status: 401,
       statusText: 'Unauthorized',
@@ -118,7 +129,6 @@ describe('authInterceptor', () => {
     //    the user looking signed in.
     expect(auth.isAuthenticated()).toBe(false);
     expect(auth.accessToken()).toBeNull();
-    expect(auth.refreshToken()).toBeNull();
 
     // 2. The user is routed to the login screen.
     expect(navigateSpy).toHaveBeenCalledWith(['/login']);

@@ -38,8 +38,12 @@ export const authInterceptor: HttpInterceptorFn = (request, next) => {
   return next(authorized).pipe(
     catchError((error: unknown) => {
       const isUnauthorized = error instanceof HttpErrorResponse && error.status === 401;
-      // Never attempt to refresh the refresh call itself: that would be an infinite loop.
-      if (!isUnauthorized || request.url.includes(REFRESH_PATH) || !auth.refreshToken()) {
+      // Never attempt to refresh the refresh call itself: that would be an
+      // infinite loop. The refresh token itself is no longer readable here
+      // (it lives in an httpOnly cookie) so "was there ever a session" is now
+      // judged from `isAuthenticated()` -- a visitor who never logged in on
+      // this device has no local session to refresh, cookie or not.
+      if (!isUnauthorized || request.url.includes(REFRESH_PATH) || !auth.isAuthenticated()) {
         return throwError(() => error);
       }
 
@@ -57,11 +61,15 @@ export const authInterceptor: HttpInterceptorFn = (request, next) => {
   );
 };
 
-/** Starts a refresh call if none is in flight, otherwise returns the one already running. */
+/**
+ * Starts a refresh call if none is in flight, otherwise returns the one
+ * already running. Takes no refresh token argument: `ApiClient`'s
+ * `withCredentials` attaches the httpOnly cookie automatically.
+ */
 function refreshOnce(auth: AuthService, api: AuthApi): Observable<boolean> {
-  inFlightRefresh ??= api.refresh(auth.refreshToken()!).pipe(
+  inFlightRefresh ??= api.refresh().pipe(
     map((response) => {
-      auth.applyRefreshedSession(response.tokens.accessToken, response.tokens.refreshToken, response.user as SessionUser);
+      auth.applyRefreshedSession(response.tokens.accessToken, response.user as SessionUser);
       return true;
     }),
     catchError(() => of(false)),

@@ -93,7 +93,7 @@ describe('StaffListComponent', () => {
   it('shows the "new administrator" action to a user with staff.manage', () => {
     configure();
     const auth = TestBed.inject(AuthService);
-    auth.setSessionForTesting('access', 'refresh', userWith(['staff.manage']));
+    auth.setSessionForTesting('access', userWith(['staff.manage']));
 
     const fixture = TestBed.createComponent(StaffListComponent);
     fixture.detectChanges();
@@ -107,7 +107,7 @@ describe('StaffListComponent', () => {
   it('hides the "new administrator" action from a user without staff.manage', () => {
     configure();
     const auth = TestBed.inject(AuthService);
-    auth.setSessionForTesting('access', 'refresh', userWith(['staff.view']));
+    auth.setSessionForTesting('access', userWith(['staff.view']));
 
     const fixture = TestBed.createComponent(StaffListComponent);
     fixture.detectChanges();

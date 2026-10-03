@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type { Db, DbTransactionClient } from '@rm/db';
 import { loadActorPermissions } from '@rm/domain-rbac';
 import { fail, ok, type Result } from '@rm/shared-utils';
+import { clearLoginRateLimit, isLoginRateLimited, recordFailedLoginAttempt } from './login-rate-limiter';
 import { verifyPassword } from './password';
 import { generateRefreshToken, hashRefreshToken, signAccessToken } from './tokens';
 
@@ -108,10 +109,21 @@ export async function describeUser(db: Db, userId: string): Promise<Authenticate
 export async function login(
   db: Db,
   config: AuthConfig,
-  input: { email: string; password: string } & SessionInput
+  input: { email: string; password: string; ip?: string } & SessionInput
 ): Promise<Result<{ user: AuthenticatedUser; tokens: SessionTokens }>> {
+  // Normalised the same way the duplicate-email check and the write path
+  // normalise it (see `staff-service.createStaff`): two spellings of the same
+  // address must share one rate-limit bucket, not reset it by casing alone.
+  const email = input.email.trim().toLowerCase();
+  const ip = input.ip ?? 'unknown';
+
+  // Checked before any password work at all -- including the dummy-hash
+  // timing defence below -- so a rate-limited burst never spends argon2 time,
+  // which is the whole point of limiting it.
+  if (isLoginRateLimited(email, ip)) return fail('RATE_LIMITED');
+
   const user = await db.user.findFirst({
-    where: { email: { equals: input.email, mode: 'insensitive' } },
+    where: { email: { equals: email, mode: 'insensitive' } },
   });
 
   // Same error code for a nonexistent user and a wrong password: telling them
@@ -121,11 +133,16 @@ export async function login(
   // through timing what the shared error code hides.
   if (!user?.passwordHash) {
     await verifyPassword(DUMMY_PASSWORD_HASH, input.password);
+    recordFailedLoginAttempt(email, ip);
     return fail('INVALID_CREDENTIALS');
   }
-  if (!(await verifyPassword(user.passwordHash, input.password))) return fail('INVALID_CREDENTIALS');
+  if (!(await verifyPassword(user.passwordHash, input.password))) {
+    recordFailedLoginAttempt(email, ip);
+    return fail('INVALID_CREDENTIALS');
+  }
   if (user.status === 'DISABLED') return fail('ACCOUNT_DISABLED');
 
+  clearLoginRateLimit(email, ip);
   const tokens = await issueSession(db, config, user.id, randomUUID(), input);
   return ok({ user: await describeUser(db, user.id), tokens });
 }

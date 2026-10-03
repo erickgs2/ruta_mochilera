@@ -175,7 +175,7 @@ describe('TripFormComponent', () => {
     it('is hidden from a user without data.backfill', () => {
       configure();
       const auth = TestBed.inject(AuthService);
-      auth.setSessionForTesting('access', 'refresh', userWith(['trip.create']));
+      auth.setSessionForTesting('access', userWith(['trip.create']));
 
       const fixture = TestBed.createComponent(TripFormComponent);
       fixture.detectChanges();

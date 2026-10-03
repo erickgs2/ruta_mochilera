@@ -102,7 +102,7 @@ describe('TripsListComponent', () => {
   it('shows the "new trip" action to a user with trip.create', () => {
     configure();
     const auth = TestBed.inject(AuthService);
-    auth.setSessionForTesting('access', 'refresh', userWith(['trip.create']));
+    auth.setSessionForTesting('access', userWith(['trip.create']));
 
     const fixture = TestBed.createComponent(TripsListComponent);
     fixture.detectChanges();
@@ -115,7 +115,7 @@ describe('TripsListComponent', () => {
   it('hides the "new trip" action from a user without trip.create', () => {
     configure();
     const auth = TestBed.inject(AuthService);
-    auth.setSessionForTesting('access', 'refresh', userWith(['trip.view']));
+    auth.setSessionForTesting('access', userWith(['trip.view']));
 
     const fixture = TestBed.createComponent(TripsListComponent);
     fixture.detectChanges();

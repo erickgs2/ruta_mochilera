@@ -3,6 +3,7 @@ import { closeTestDb, prepareTestDb, resetDatabase, withTestDb } from '@rm/db/te
 import { hashPassword } from '@rm/domain-identity';
 import { POST as loginRoute } from './login/route';
 import { POST as refreshRoute } from './refresh/route';
+import { POST as logoutRoute } from './logout/route';
 import { GET as meRoute } from '../me/route';
 
 const db = withTestDb();
@@ -13,6 +14,33 @@ const post = (handler: typeof loginRoute, body: unknown) =>
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(body),
   }));
+
+/**
+ * The refresh/logout routes take no body at all now -- the refresh token
+ * travels only as the `rm_refresh_token` cookie (see
+ * `../../../../../lib/http/refresh-cookie.ts`). `postWithCookie` is what
+ * exercises that real path instead of constructing a `Request` that skips it:
+ * it reads the `Set-Cookie` header off a prior response (typically login) and
+ * replays it as the `Cookie` header on the next request, exactly as a browser
+ * would.
+ */
+function postWithCookie(handler: typeof refreshRoute, cookie: string | null) {
+  return handler(
+    new Request('http://localhost/api/v1/auth', {
+      method: 'POST',
+      headers: cookie ? { cookie } : {},
+    })
+  );
+}
+
+/** Extracts the `rm_refresh_token=...` pair (name and value only, no attributes) from a `Set-Cookie` header. */
+function cookiePairFrom(response: Response): string {
+  const setCookie = response.headers.get('set-cookie');
+  if (!setCookie) throw new Error('response carried no Set-Cookie header');
+  const pair = setCookie.split(';')[0];
+  if (!pair) throw new Error('malformed Set-Cookie header');
+  return pair;
+}
 
 async function seedAdmin() {
   const permission = await db.permission.create({
@@ -42,14 +70,23 @@ describe('auth endpoints', () => {
 
   afterAll(() => closeTestDb());
 
-  it('logs in and returns the session payload', async () => {
+  it('logs in, sets the refresh token only as an httpOnly/Secure/SameSite=Strict cookie, and never in the JSON body', async () => {
     await seedAdmin();
     const response = await post(loginRoute, { email: 'admin@agency.test', password: 'Correct-Horse-1' });
 
     expect(response.status).toBe(200);
     const body = await response.json();
     expect(body.user.permissions).toEqual(['trip.view']);
-    expect(body.tokens.refreshToken).toBeTruthy();
+    expect(body.tokens.accessToken).toBeTruthy();
+    expect(body.tokens).not.toHaveProperty('refreshToken');
+
+    const setCookie = response.headers.get('set-cookie');
+    expect(setCookie).toBeTruthy();
+    expect(setCookie).toContain('rm_refresh_token=');
+    expect(setCookie).toContain('HttpOnly');
+    expect(setCookie).toContain('Secure');
+    expect(setCookie).toContain('SameSite=Strict');
+    expect(setCookie).toContain('Path=/api/v1/auth');
   });
 
   it('returns 401 problem+json on bad credentials', async () => {
@@ -88,14 +125,58 @@ describe('auth endpoints', () => {
     expect((await response.json()).email).toBe('admin@agency.test');
   });
 
-  it('rejects a replayed refresh token with 401 TOKEN_REUSED', async () => {
-    await seedAdmin();
-    const login = await (await post(loginRoute, { email: 'admin@agency.test', password: 'Correct-Horse-1' })).json();
+  it('rejects /refresh with no cookie at all', async () => {
+    const response = await postWithCookie(refreshRoute, null);
+    expect(response.status).toBe(401);
+    expect((await response.json()).code).toBe('TOKEN_INVALID');
+    // Even with nothing to clear, the response still carries an expiring cookie.
+    expect(response.headers.get('set-cookie')).toContain('Max-Age=0');
+  });
 
-    await post(refreshRoute, { refreshToken: login.tokens.refreshToken });
-    const replay = await post(refreshRoute, { refreshToken: login.tokens.refreshToken });
+  it('rotates the session when the browser presents the refresh cookie', async () => {
+    await seedAdmin();
+    const login = await post(loginRoute, { email: 'admin@agency.test', password: 'Correct-Horse-1' });
+    const cookie = cookiePairFrom(login);
+
+    const refreshed = await postWithCookie(refreshRoute, cookie);
+    expect(refreshed.status).toBe(200);
+    const refreshedBody = await refreshed.json();
+    expect(refreshedBody.tokens.accessToken).toBeTruthy();
+    expect(refreshedBody.tokens).not.toHaveProperty('refreshToken');
+    // The rotation issued a new cookie, distinct from the one just spent.
+    expect(cookiePairFrom(refreshed)).not.toBe(cookie);
+  });
+
+  it('rejects a replayed refresh cookie with 401 TOKEN_REUSED and clears the cookie', async () => {
+    await seedAdmin();
+    const login = await post(loginRoute, { email: 'admin@agency.test', password: 'Correct-Horse-1' });
+    const cookie = cookiePairFrom(login);
+
+    await postWithCookie(refreshRoute, cookie);
+    const replay = await postWithCookie(refreshRoute, cookie);
 
     expect(replay.status).toBe(401);
     expect((await replay.json()).code).toBe('TOKEN_REUSED');
+    expect(replay.headers.get('set-cookie')).toContain('Max-Age=0');
+  });
+
+  it('logs out via the cookie, revokes the session and clears the cookie', async () => {
+    await seedAdmin();
+    const login = await post(loginRoute, { email: 'admin@agency.test', password: 'Correct-Horse-1' });
+    const cookie = cookiePairFrom(login);
+
+    const logout = await postWithCookie(logoutRoute, cookie);
+    expect(logout.status).toBe(204);
+    expect(logout.headers.get('set-cookie')).toContain('Max-Age=0');
+
+    // The revoked cookie no longer refreshes a session.
+    const afterLogout = await postWithCookie(refreshRoute, cookie);
+    expect(afterLogout.status).toBe(401);
+  });
+
+  it('logging out with no cookie at all still succeeds (idempotent) and clears the cookie', async () => {
+    const response = await postWithCookie(logoutRoute, null);
+    expect(response.status).toBe(204);
+    expect(response.headers.get('set-cookie')).toContain('Max-Age=0');
   });
 });

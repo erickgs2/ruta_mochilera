@@ -12,15 +12,15 @@
     <mat-icon>translate</mat-icon>
   </button>
   <mat-menu #languageMenu="matMenu">
-    <button mat-menu-item (click)="switchLanguage('es')">Español</button>
-    <button mat-menu-item (click)="switchLanguage('en')">English</button>
+    <button mat-menu-item class="shell-language-es" (click)="switchLanguage('es')">Español</button>
+    <button mat-menu-item class="shell-language-en" (click)="switchLanguage('en')">English</button>
   </mat-menu>
 
   @if (auth.user(); as user) {
     <span class="shell-user">{{ user.fullName }}</span>
   }
 
-  <button mat-icon-button (click)="signOut()" [attr.aria-label]="'auth.signOut' | translate">
+  <button mat-icon-button class="shell-sign-out" (click)="signOut()" [attr.aria-label]="'auth.signOut' | translate">
     <mat-icon>logout</mat-icon>
   </button>
 </mat-toolbar>

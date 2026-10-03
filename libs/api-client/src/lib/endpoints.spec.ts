@@ -21,10 +21,10 @@ describe('endpoints', () => {
     httpMock.expectOne('https://api.test/api/v1/me').flush({});
   });
 
-  it('AuthApi.refresh posts the refresh token', () => {
-    TestBed.inject(AuthApi).refresh('rtok').subscribe();
+  it('AuthApi.refresh posts with no body -- the refresh token travels as a cookie, not JSON', () => {
+    TestBed.inject(AuthApi).refresh().subscribe();
     const req = httpMock.expectOne('https://api.test/api/v1/auth/refresh');
-    expect(req.request.body).toEqual({ refreshToken: 'rtok' });
+    expect(req.request.body).toEqual({});
     req.flush({});
   });
 

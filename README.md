@@ -33,7 +33,7 @@ flowchart LR
   través de un cliente tipado generado desde el propio contrato de la API
   (`libs/api-client`), nunca llama a Prisma ni decide permisos por su cuenta.
 - **Aplicación de clientes** — Fase 2. Hasta entonces, la raíz del sitio
-  redirige al panel administrativo (ver `infra/nginx/nginx.conf`).
+  redirige al panel administrativo (ver `infra/nginx/nginx.conf.template`).
 
 `libs/domain` contiene toda la lógica de negocio (viajes, costeo, RBAC,
 identidad, personal, auditoría) y no importa nada de Next.js ni de Angular:
@@ -114,3 +114,35 @@ secretos ni `NODE_ENV`. Se levanta con:
 ```bash
 docker compose -f infra/compose/compose.prod.yml --env-file .env.prod up -d --build
 ```
+
+### TLS
+
+**La terminación TLS ocurre en este mismo Nginx, no en un balanceador por
+delante.** La decisión viene del propio diseño (§11 de la spec): un solo
+Nginx al frente, en la misma máquina, sin ALB/ELB ni ningún otro componente
+de borde mencionado en ningún ambiente. Introducir un balanceador sólo para
+sostener un certificado sería infraestructura nueva que el diseño nunca pidió
+-- y qa/producción son hoy una sola instancia EC2, no un grupo de instancias
+que un balanceador tendría razón de repartir.
+
+El certificado lo emite y renueva **Let's Encrypt**, vía un contenedor
+`certbot` que acompaña a `nginx` en `compose.prod.yml` (desafío HTTP-01,
+servido desde `/.well-known/acme-challenge/`). `infra/nginx/nginx.conf.template`
+es una plantilla: la imagen oficial de Nginx sustituye `${DOMAIN_NAME}` al
+arrancar el contenedor (variable `DOMAIN_NAME` en `.env.prod`), y expone dos
+`server`: el puerto 80 sólo responde el reto ACME y redirige todo lo demás a
+HTTPS; el 443 sirve `/api/` y `/admin/` con el certificado real. Sin esto, la
+cookie `Secure` del refresh token (ver
+`apps/api/src/lib/http/refresh-cookie.ts`) viajaría en claro -- o, peor, el
+navegador simplemente nunca la enviaría.
+
+El certificado inicial no existe en un host nuevo: con `nginx` arriba y el
+DNS de `DOMAIN_NAME` ya apuntando a este host, se pide una sola vez (el
+comentario de servicio `certbot` en `compose.prod.yml` tiene el comando
+exacto) y luego se reinicia `nginx` para que lo recoja. De ahí en adelante,
+el propio contenedor `certbot` lo renueva solo cada 12 horas (Let's Encrypt
+expira a los 90 días; `certbot renew` es un no-op hasta que falten ~30).
+
+Dev (Raspberry Pi) no levanta este Nginx en absoluto -- `compose.dev.yml`
+sólo trae Postgres, igual que `compose.test.yml` -- así que no necesita
+`DOMAIN_NAME` ni certificado alguno.

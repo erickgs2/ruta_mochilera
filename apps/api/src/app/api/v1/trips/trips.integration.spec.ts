@@ -1,8 +1,14 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { closeTestDb, prepareTestDb, resetDatabase, withTestDb } from '@rm/db/testing';
+import { LocalFileStorage } from '@rm/storage';
+import { setStorage } from '../../../../lib/storage';
 import { loginAs, seedPermissionCatalog } from '../../../../test-support/auth-fixtures';
 import { GET as getTripRoute, PUT as updateTripRoute } from './[tripId]/route';
 import { PUT as changeStatusRoute } from './[tripId]/status/route';
+import { POST as uploadImageRoute } from './[tripId]/images/route';
 import { GET as listTripsRoute, POST as createTripRoute } from './route';
 
 const db = withTestDb();
@@ -145,6 +151,63 @@ describe('trip endpoints', () => {
       const response = await getTripRoute(request('/api/v1/trips/any-id'), withTripId('any-id'));
       expect(response.status).toBe(401);
       expect((await response.json()).code).toBe('TOKEN_INVALID');
+    });
+
+    /**
+     * `withImageUrlsResult` (see `../../../../lib/http/trip-response.ts`)
+     * computes `images[].url` at the HTTP boundary -- the domain's `TripDto`
+     * does not carry it. Nothing in `registry.ts`'s type-level assertions
+     * catches a future edit that drops `withImageUrlsResult` from this
+     * route: those compare two *declared* types, not what the handler
+     * actually returns at runtime. This test is the real guard: it uploads
+     * an image through the real upload route, then asserts the field this
+     * phase already had to fix once is actually present and points
+     * somewhere plausible, end to end through a real `GET`.
+     */
+    describe('image URLs on the returned trip', () => {
+      let storageRoot: string;
+
+      beforeEach(() => {
+        storageRoot = mkdtempSync(join(tmpdir(), 'rm-trip-image-url-test-'));
+        setStorage(new LocalFileStorage(storageRoot, 'http://localhost/api/v1/files'));
+      });
+
+      afterEach(() => {
+        setStorage(undefined);
+        rmSync(storageRoot, { recursive: true, force: true });
+      });
+
+      it('includes a well-formed url for an uploaded image', async () => {
+        const token = await loginAs(db, 'editor@agency.test', ['trip.create', 'trip.view', 'trip.update']);
+        const created = await createTrip(token);
+
+        const png = Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x01, 0x02, 0x03]);
+        const form = new FormData();
+        form.set('file', new File([png], 'cover.png', { type: 'image/png' }));
+        const uploadResponse = await uploadImageRoute(
+          new Request(`http://localhost/api/v1/trips/${created.id}/images`, {
+            method: 'POST',
+            headers: { authorization: `Bearer ${token}` },
+            body: form,
+          }),
+          { params: Promise.resolve({ tripId: created.id }) }
+        );
+        expect(uploadResponse.status).toBe(201);
+        const uploadedImage = await uploadResponse.json();
+
+        const response = await getTripRoute(request(`/api/v1/trips/${created.id}`, token), withTripId(created.id));
+        expect(response.status).toBe(200);
+        const trip = await response.json();
+
+        expect(trip.images).toHaveLength(1);
+        expect(trip.images[0].storageKey).toBe(uploadedImage.storageKey);
+        expect(typeof trip.images[0].url).toBe('string');
+        expect(trip.images[0].url.length).toBeGreaterThan(0);
+        // Well-formed: an absolute URL that actually points at the stored key,
+        // not just a non-empty string.
+        expect(() => new URL(trip.images[0].url)).not.toThrow();
+        expect(trip.images[0].url).toBe(`http://localhost/api/v1/files/${uploadedImage.storageKey}`);
+      });
     });
   });
 

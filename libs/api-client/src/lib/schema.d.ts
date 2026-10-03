@@ -81,6 +81,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** @description No request body: the refresh token is read from the httpOnly rm_refresh_token cookie set by /auth/login, never from JSON. The response sets a fresh cookie via Set-Cookie. */
         post: {
             parameters: {
                 query?: never;
@@ -88,11 +89,7 @@ export interface paths {
                 path?: never;
                 cookie?: never;
             };
-            requestBody: {
-                content: {
-                    "application/json": components["schemas"]["RefreshRequest"];
-                };
-            };
+            requestBody?: never;
             responses: {
                 /** @description Session rotated */
                 200: {
@@ -103,7 +100,7 @@ export interface paths {
                         "application/json": components["schemas"]["Session"];
                     };
                 };
-                /** @description Unknown, expired or replayed refresh token */
+                /** @description Missing, unknown, expired or replayed refresh token */
                 401: {
                     headers: {
                         [name: string]: unknown;
@@ -114,15 +111,6 @@ export interface paths {
                 };
                 /** @description Account disabled */
                 403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/problem+json": components["schemas"]["Problem"];
-                    };
-                };
-                /** @description Validation failed */
-                422: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -147,6 +135,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** @description No request body: the refresh token is read from the rm_refresh_token cookie. Always succeeds (idempotent) and always clears the cookie via Set-Cookie, even when there was no live session. */
         post: {
             parameters: {
                 query?: never;
@@ -154,29 +143,14 @@ export interface paths {
                 path?: never;
                 cookie?: never;
             };
-            requestBody: {
-                content: {
-                    "application/json": components["schemas"]["RefreshRequest"];
-                };
-            };
+            requestBody?: never;
             responses: {
-                /** @description Session revoked (idempotent: an already-closed session still returns 200) */
-                200: {
+                /** @description Session revoked */
+                204: {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content: {
-                        "application/json": null;
-                    };
-                };
-                /** @description Validation failed */
-                422: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/problem+json": components["schemas"]["Problem"];
-                    };
+                    content?: never;
                 };
             };
         };
@@ -1605,7 +1579,6 @@ export interface components {
             };
             tokens: {
                 accessToken: string;
-                refreshToken: string;
                 expiresInSeconds: number;
             };
         };
@@ -1623,9 +1596,6 @@ export interface components {
             email: string;
             password: string;
             deviceId?: string;
-        };
-        RefreshRequest: {
-            refreshToken: string;
         };
         AuthenticatedUser: {
             /** Format: uuid */

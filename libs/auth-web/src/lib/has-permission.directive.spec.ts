@@ -46,7 +46,7 @@ describe('HasPermissionDirective', () => {
   });
 
   it('renders the template when the user has the permission', async () => {
-    auth.setSessionForTesting('access-1', 'refresh-1', userWith(['trip.create']));
+    auth.setSessionForTesting('access-1', userWith(['trip.create']));
     const fixture = TestBed.createComponent(HostComponent);
     fixture.detectChanges();
     await fixture.whenStable();
@@ -57,7 +57,7 @@ describe('HasPermissionDirective', () => {
     // This is the safety-relevant path: every successful token refresh
     // returns a fresh permissions list, and an actor whose permission was
     // just revoked must stop seeing the gated control without a page reload.
-    auth.setSessionForTesting('access-1', 'refresh-1', userWith(['trip.create']));
+    auth.setSessionForTesting('access-1', userWith(['trip.create']));
     const fixture = TestBed.createComponent(HostComponent);
     fixture.detectChanges();
     await fixture.whenStable();
@@ -65,13 +65,13 @@ describe('HasPermissionDirective', () => {
 
     // Simulate a refresh response that no longer carries the permission --
     // same AuthService instance, same fixture, no re-creation.
-    auth.setSessionForTesting('access-2', 'refresh-2', userWith([]));
+    auth.setSessionForTesting('access-2', userWith([]));
     fixture.detectChanges();
     await fixture.whenStable();
     expect(fixture.nativeElement.textContent.trim()).toBe('');
 
     // And the reverse: the permission is granted back in a later refresh.
-    auth.setSessionForTesting('access-3', 'refresh-3', userWith(['trip.create']));
+    auth.setSessionForTesting('access-3', userWith(['trip.create']));
     fixture.detectChanges();
     await fixture.whenStable();
     expect(fixture.nativeElement.textContent.trim()).toBe('allowed');

@@ -24,6 +24,29 @@ describe('ApiClient', () => {
     req.flush([]);
   });
 
+  it('sends every request with credentials, so the browser attaches the refresh-token cookie where it applies', () => {
+    // The refresh token now lives only in an httpOnly cookie (see
+    // apps/api/src/lib/http/refresh-cookie.ts); without withCredentials the
+    // browser never attaches it, even same-origin.
+    client.get('/api/v1/trips').subscribe();
+    expect(httpMock.expectOne('https://api.test/api/v1/trips').request.withCredentials).toBe(true);
+
+    client.post('/api/v1/auth/login', {}).subscribe();
+    expect(httpMock.expectOne('https://api.test/api/v1/auth/login').request.withCredentials).toBe(true);
+
+    client.put('/api/v1/trips/t1', {}).subscribe();
+    expect(httpMock.expectOne('https://api.test/api/v1/trips/t1').request.withCredentials).toBe(true);
+
+    client.delete('/api/v1/rbac/roles/r1').subscribe();
+    expect(httpMock.expectOne('https://api.test/api/v1/rbac/roles/r1').request.withCredentials).toBe(true);
+
+    const form = new FormData();
+    client.upload('/api/v1/trips/t1/images', form).subscribe();
+    expect(httpMock.expectOne('https://api.test/api/v1/trips/t1/images').request.withCredentials).toBe(true);
+
+    httpMock.match(() => true).forEach((req) => req.flush({}));
+  });
+
   it('omits undefined and empty-string query parameters', () => {
     client.get('/api/v1/staff', { search: undefined, status: '' }).subscribe();
     const req = httpMock.expectOne((r) => r.url === 'https://api.test/api/v1/staff');

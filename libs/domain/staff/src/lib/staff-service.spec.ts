@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { closeTestDb, prepareTestDb, resetDatabase, withTestDb } from '@rm/db/testing';
 import { verifyPassword } from '@rm/domain-identity';
 import type { Actor } from '@rm/domain-rbac';
@@ -51,6 +51,39 @@ describe('staff service', () => {
     const result = await createStaff(db, actor, { ...baseInput, email: 'NUEVO@agency.test' });
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.error.code).toBe('EMAIL_ALREADY_REGISTERED');
+  });
+
+  it('rejects an email that collides only once the database enforces it', async () => {
+    // Simulates two concurrent creates for the same email racing past the
+    // application-level pre-check (both see no existing row) before either
+    // has inserted: the unique index is the backstop that must still produce
+    // EMAIL_ALREADY_REGISTERED instead of an unhandled Prisma error
+    // surfacing as a 500. Mirrors `role-service.spec.ts`'s equivalent test
+    // for role names.
+    const originalFindFirst = db.user.findFirst.bind(db.user);
+    const findFirstSpy = vi.spyOn(db.user, 'findFirst').mockImplementation(
+      (async (args: Parameters<typeof db.user.findFirst>[0]) => {
+        const result = await originalFindFirst(args);
+        if ((args?.where?.email as { equals?: string } | undefined)?.equals === baseInput.email) {
+          await db.user.create({
+            data: {
+              email: baseInput.email,
+              type: 'STAFF',
+              staffProfile: { create: { fullName: 'Racer' } },
+            },
+          });
+        }
+        return result;
+      }) as unknown as typeof db.user.findFirst
+    );
+
+    try {
+      const result = await createStaff(db, actor, baseInput);
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.error.code).toBe('EMAIL_ALREADY_REGISTERED');
+    } finally {
+      findFirstSpy.mockRestore();
+    }
   });
 
   it('assigns the requested roles', async () => {

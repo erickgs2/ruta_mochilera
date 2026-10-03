@@ -12,7 +12,13 @@ RUN pnpm install --offline --frozen-lockfile \
  && pnpm nx build admin --skip-nx-cache
 
 FROM nginx:1.27-alpine
-COPY infra/nginx/nginx.conf /etc/nginx/conf.d/default.conf
+# A `.template` file under `/etc/nginx/templates/` is rendered by the
+# official image's own `docker-entrypoint.sh` at container start (via
+# `envsubst`), substituting `${DOMAIN_NAME}` from the container's
+# environment into `/etc/nginx/conf.d/default.conf` -- see
+# `infra/nginx/nginx.conf.template` for why TLS termination lives here and
+# `compose.prod.yml` for where `DOMAIN_NAME` comes from.
+COPY infra/nginx/nginx.conf.template /etc/nginx/templates/default.conf.template
 # @angular/build:application emits the browser bundle under a `browser/`
 # subdirectory of the configured outputPath (dist/apps/admin) -- see
 # apps/admin/project.json's build target.

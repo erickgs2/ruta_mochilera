@@ -45,7 +45,7 @@ describe('RolesListComponent', () => {
   it('shows the "new role" action and per-row edit/delete actions to a user with role.manage', () => {
     configure(false);
     const auth = TestBed.inject(AuthService);
-    auth.setSessionForTesting('access', 'refresh', userWith(['role.manage']));
+    auth.setSessionForTesting('access', userWith(['role.manage']));
 
     const fixture = TestBed.createComponent(RolesListComponent);
     fixture.detectChanges();
@@ -60,7 +60,7 @@ describe('RolesListComponent', () => {
   it('hides the "new role" action and per-row edit/delete actions from a user without role.manage', () => {
     configure(false);
     const auth = TestBed.inject(AuthService);
-    auth.setSessionForTesting('access', 'refresh', userWith(['role.view']));
+    auth.setSessionForTesting('access', userWith(['role.view']));
 
     const fixture = TestBed.createComponent(RolesListComponent);
     fixture.detectChanges();
@@ -75,7 +75,7 @@ describe('RolesListComponent', () => {
   it('does not call deleteRole when the confirmation dialog is dismissed', () => {
     configure(false);
     const auth = TestBed.inject(AuthService);
-    auth.setSessionForTesting('access', 'refresh', userWith(['role.manage']));
+    auth.setSessionForTesting('access', userWith(['role.manage']));
 
     const fixture = TestBed.createComponent(RolesListComponent);
     fixture.detectChanges();
@@ -92,7 +92,7 @@ describe('RolesListComponent', () => {
   it('calls deleteRole when the confirmation dialog is accepted, and reloads the list', () => {
     configure(true);
     const auth = TestBed.inject(AuthService);
-    auth.setSessionForTesting('access', 'refresh', userWith(['role.manage']));
+    auth.setSessionForTesting('access', userWith(['role.manage']));
 
     const fixture = TestBed.createComponent(RolesListComponent);
     fixture.detectChanges();
@@ -112,7 +112,7 @@ describe('RolesListComponent', () => {
   it('shows the userCount the backend sent with ROLE_IN_USE, not a generic message', () => {
     configure(true);
     const auth = TestBed.inject(AuthService);
-    auth.setSessionForTesting('access', 'refresh', userWith(['role.manage']));
+    auth.setSessionForTesting('access', userWith(['role.manage']));
     TestBed.inject(TranslateService).setTranslation('es', {
       errors: { ROLE_IN_USE: 'Tiene {{userCount}} usuarios asignados.' },
     });

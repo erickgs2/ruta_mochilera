@@ -4,9 +4,13 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { API_BASE_URL } from '@rm/api-client';
 import { AuthService } from './auth.service';
 
+// The refresh token never appears here: it travels only as the httpOnly
+// cookie the real API sets (see `apps/api/src/lib/http/refresh-cookie.ts`).
+// `HttpTestingController` cannot model `Set-Cookie`/`Cookie` at all, so these
+// specs only exercise the JSON body AuthService actually reads.
 const session = {
   user: { id: 'u1', email: 'a@b.test', type: 'STAFF', locale: 'es', fullName: 'Ana', permissions: ['trip.view'] },
-  tokens: { accessToken: 'access-1', refreshToken: 'refresh-1', expiresInSeconds: 900 },
+  tokens: { accessToken: 'access-1', expiresInSeconds: 900 },
 };
 
 describe('AuthService', () => {
@@ -45,7 +49,7 @@ describe('AuthService', () => {
     await promise;
 
     const fresh = new AuthService();
-    expect(fresh.refreshToken()).toBe('refresh-1');
+    expect(fresh.accessToken()).toBe('access-1');
   });
 
   it('clears everything on logout', async () => {
@@ -54,11 +58,11 @@ describe('AuthService', () => {
     await promise;
 
     const logout = service.logout();
-    http.expectOne('/api/v1/auth/logout').flush({});
+    http.expectOne('/api/v1/auth/logout').flush(null);
     await logout;
 
     expect(service.isAuthenticated()).toBe(false);
-    expect(service.refreshToken()).toBeNull();
+    expect(service.accessToken()).toBeNull();
     expect(localStorage.getItem('rm.session')).toBeNull();
   });
 
@@ -83,7 +87,7 @@ describe('AuthService', () => {
     await logout;
 
     expect(service.isAuthenticated()).toBe(false);
-    expect(service.refreshToken()).toBeNull();
+    expect(service.accessToken()).toBeNull();
     expect(localStorage.getItem('rm.session')).toBeNull();
   });
 });

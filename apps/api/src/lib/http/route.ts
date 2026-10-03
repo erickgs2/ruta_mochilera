@@ -18,13 +18,29 @@ export interface RouteContext<TBody, TActor extends Actor | null> {
   request: Request;
 }
 
+/**
+ * Full override of the HTTP response, given the handler's complete `Result`
+ * (success or failure) rather than just the success value. `route()` still
+ * authenticates, checks the permission, validates the body and catches
+ * unexpected exceptions -- this only replaces the final `toResponse` step.
+ *
+ * The only consumers today are `/auth/login`, `/auth/refresh` and
+ * `/auth/logout`: the refresh token travels as an httpOnly, Secure,
+ * SameSite=Strict cookie (see `lib/http/refresh-cookie.ts`), never in the
+ * JSON body, which `toResponse`'s plain `Response.json(result.value, ...)`
+ * cannot express. Everything else keeps using `successStatus`.
+ */
+export type RespondOverride<TResult> = (result: Result<TResult>, request: Request) => Response;
+
 /** A route that skips authentication entirely. Cannot carry a permission: there is no actor to check it against. */
 export interface PublicRouteOptions<TBody, TResult> {
   auth: 'public';
   /** Zod schema for the JSON request body. Omit for GET and DELETE. */
   body?: ZodType<TBody>;
-  /** HTTP status on success. Defaults to 200. */
+  /** HTTP status on success. Defaults to 200. Ignored when `respond` is given. */
   successStatus?: number;
+  /** See `RespondOverride`. */
+  respond?: RespondOverride<TResult>;
   handler: (context: RouteContext<TBody, null>) => Promise<Result<TResult>>;
 }
 
@@ -58,8 +74,10 @@ export interface AuthenticatedRouteOptions<TBody, TResult> {
   anyPermission?: readonly PermissionKey[];
   /** Zod schema for the JSON request body. Omit for GET and DELETE. */
   body?: ZodType<TBody>;
-  /** HTTP status on success. Defaults to 200. */
+  /** HTTP status on success. Defaults to 200. Ignored when `respond` is given. */
   successStatus?: number;
+  /** See `RespondOverride`. */
+  respond?: RespondOverride<TResult>;
   handler: (context: RouteContext<TBody, Actor>) => Promise<Result<TResult>>;
 }
 
@@ -144,7 +162,7 @@ export function route<TBody = undefined, TResult = unknown>(
         const body = await parseBody(options.body, request);
         if (!body.ok) return problemResponse(body.error);
         const result = await options.handler({ actor: null, body: body.value, params, request });
-        return toResponse(result, options.successStatus);
+        return options.respond ? options.respond(result, request) : toResponse(result, options.successStatus);
       }
 
       // Authenticate first: a null actor is always 401, whether or not this
@@ -164,7 +182,7 @@ export function route<TBody = undefined, TResult = unknown>(
       const body = await parseBody(options.body, request);
       if (!body.ok) return problemResponse(body.error);
       const result = await options.handler({ actor, body: body.value, params, request });
-      return toResponse(result, options.successStatus);
+      return options.respond ? options.respond(result, request) : toResponse(result, options.successStatus);
     } catch (error) {
       // Never let an unexpected exception escape as a bare stack trace to the
       // client. Logged server-side for diagnosis; the response carries only a

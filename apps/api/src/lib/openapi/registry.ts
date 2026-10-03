@@ -10,7 +10,6 @@ import {
   permissionSchema as permissionSchemaImport,
   pricingPolicyRequestSchema as pricingPolicyRequestSchemaImport,
   problemSchema as problemSchemaImport,
-  refreshRequestSchema as refreshRequestSchemaImport,
   roleInputSchema as roleInputSchemaImport,
   roleSchema as roleSchemaImport,
   sessionResponseSchema as sessionResponseSchemaImport,
@@ -38,7 +37,6 @@ import type { TripDto, TripImageDto, TripSummaryDto } from '@rm/domain-trips';
  */
 const problemSchema = problemSchemaImport.meta({ id: 'Problem' });
 const loginRequestSchema = loginRequestSchemaImport.meta({ id: 'LoginRequest' });
-const refreshRequestSchema = refreshRequestSchemaImport.meta({ id: 'RefreshRequest' });
 const authenticatedUserSchema = authenticatedUserSchemaImport.meta({ id: 'AuthenticatedUser' });
 const sessionResponseSchema = sessionResponseSchemaImport.meta({ id: 'Session' });
 const permissionSchema = permissionSchemaImport.meta({ id: 'Permission' });
@@ -301,12 +299,12 @@ export function buildOpenApiDocument() {
     method: 'post',
     path: '/api/v1/auth/refresh',
     tags: ['auth'],
-    request: { body: requestBody(refreshRequestSchema) },
+    description:
+      'No request body: the refresh token is read from the httpOnly rm_refresh_token cookie set by /auth/login, never from JSON. The response sets a fresh cookie via Set-Cookie.',
     responses: {
       200: { description: 'Session rotated', ...json(sessionResponseSchema) },
-      401: problem('Unknown, expired or replayed refresh token'),
+      401: problem('Missing, unknown, expired or replayed refresh token'),
       403: problem('Account disabled'),
-      422: problem('Validation failed'),
     },
   });
 
@@ -314,10 +312,10 @@ export function buildOpenApiDocument() {
     method: 'post',
     path: '/api/v1/auth/logout',
     tags: ['auth'],
-    request: { body: requestBody(refreshRequestSchema) },
+    description:
+      'No request body: the refresh token is read from the rm_refresh_token cookie. Always succeeds (idempotent) and always clears the cookie via Set-Cookie, even when there was no live session.',
     responses: {
-      200: { description: 'Session revoked (idempotent: an already-closed session still returns 200)', ...json(z.null()) },
-      422: problem('Validation failed'),
+      204: { description: 'Session revoked' },
     },
   });
 

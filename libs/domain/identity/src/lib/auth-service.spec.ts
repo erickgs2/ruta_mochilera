@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { closeTestDb, prepareTestDb, resetDatabase, withTestDb } from '@rm/db/testing';
+import { resetLoginRateLimiterForTesting } from './login-rate-limiter';
 import { hashPassword } from './password';
 import { hashRefreshToken, verifyAccessToken } from './tokens';
 import { login, logout, refreshSession, type AuthConfig } from './auth-service';
@@ -40,7 +41,13 @@ afterAll(async () => {
 });
 
 describe('login', () => {
-  beforeEach(() => resetDatabase(db));
+  beforeEach(() => {
+    // The rate limiter is in-memory, module-level state (see its own doc
+    // comment): without this reset, failed-login tests below would bleed
+    // into each other and eventually trip RATE_LIMITED for the wrong reason.
+    resetLoginRateLimiterForTesting();
+    return resetDatabase(db);
+  });
 
   it('returns tokens and the flattened permission list on valid credentials', async () => {
     await seedStaffUser();
@@ -97,6 +104,86 @@ describe('login', () => {
     await seedStaffUser();
     await login(db, config, { email: 'ana@agency.test', password: 'Correct-Horse-1' });
     expect(await db.refreshToken.count()).toBe(1);
+  });
+
+  describe('rate limiting', () => {
+    it('returns RATE_LIMITED after five failed attempts against the same email, even from different IPs', async () => {
+      await seedStaffUser();
+      for (let attempt = 0; attempt < 5; attempt += 1) {
+        const result = await login(db, config, {
+          email: 'ana@agency.test',
+          password: 'wrong',
+          ip: `10.0.0.${attempt}`,
+        });
+        expect(result.ok).toBe(false);
+        if (!result.ok) expect(result.error.code).toBe('INVALID_CREDENTIALS');
+      }
+
+      const sixth = await login(db, config, { email: 'ana@agency.test', password: 'wrong', ip: '10.0.0.99' });
+      expect(sixth.ok).toBe(false);
+      if (!sixth.ok) expect(sixth.error.code).toBe('RATE_LIMITED');
+
+      // The correct password is refused too, while rate-limited: the whole
+      // point is to stop verifying passwords at all once the limit trips.
+      const withCorrectPassword = await login(db, config, {
+        email: 'ana@agency.test',
+        password: 'Correct-Horse-1',
+        ip: '10.0.0.99',
+      });
+      expect(withCorrectPassword.ok).toBe(false);
+      if (!withCorrectPassword.ok) expect(withCorrectPassword.error.code).toBe('RATE_LIMITED');
+    });
+
+    it('returns RATE_LIMITED after five failed attempts from the same IP, even against different emails', async () => {
+      await seedStaffUser('luis@agency.test');
+      for (let attempt = 0; attempt < 5; attempt += 1) {
+        const result = await login(db, config, {
+          email: `unknown-${attempt}@agency.test`,
+          password: 'wrong',
+          ip: '203.0.113.5',
+        });
+        expect(result.ok).toBe(false);
+      }
+
+      const sixth = await login(db, config, {
+        email: 'luis@agency.test',
+        password: 'Correct-Horse-1',
+        ip: '203.0.113.5',
+      });
+      expect(sixth.ok).toBe(false);
+      if (!sixth.ok) expect(sixth.error.code).toBe('RATE_LIMITED');
+    });
+
+    it('does not rate-limit a legitimate user whose password is correct on the first try', async () => {
+      await seedStaffUser();
+      const result = await login(db, config, {
+        email: 'ana@agency.test',
+        password: 'Correct-Horse-1',
+        ip: '198.51.100.1',
+      });
+      expect(result.ok).toBe(true);
+    });
+
+    it('clears the counters on a successful login, so a later mistake is not immediately rate-limited', async () => {
+      await seedStaffUser();
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        await login(db, config, { email: 'ana@agency.test', password: 'wrong', ip: '192.0.2.1' });
+      }
+      const success = await login(db, config, {
+        email: 'ana@agency.test',
+        password: 'Correct-Horse-1',
+        ip: '192.0.2.1',
+      });
+      expect(success.ok).toBe(true);
+
+      const afterReset = await login(db, config, {
+        email: 'ana@agency.test',
+        password: 'wrong',
+        ip: '192.0.2.1',
+      });
+      expect(afterReset.ok).toBe(false);
+      if (!afterReset.ok) expect(afterReset.error.code).toBe('INVALID_CREDENTIALS');
+    });
   });
 });
 

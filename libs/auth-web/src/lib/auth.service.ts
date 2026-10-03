@@ -11,17 +11,25 @@ export interface SessionUser {
   permissions: string[];
 }
 
+/**
+ * The refresh token is deliberately absent from this shape and from what
+ * gets persisted below. It now lives only in the httpOnly, Secure,
+ * SameSite=Strict cookie the API sets on `/auth/login` and `/auth/refresh`
+ * (see `apps/api/src/lib/http/refresh-cookie.ts`) -- no script on this page,
+ * including this one, can read it. `localStorage` is still fine for the
+ * access token: it is short-lived, and holding it is what lets a page reload
+ * keep the user signed in without a round trip before the first paint.
+ */
 interface PersistedSession {
   accessToken: string;
-  refreshToken: string;
   user: SessionUser | null;
 }
 
 const STORAGE_KEY = 'rm.session';
 
 /**
- * Holds the current session (tokens + user) as signals, and persists it to
- * `localStorage` so a page reload does not sign the user out.
+ * Holds the current session (access token + user) as signals, and persists it
+ * to `localStorage` so a page reload does not sign the user out.
  *
  * `api` is a constructor parameter rather than an `inject()` field
  * initializer on purpose: `inject()` unconditionally requires an active
@@ -52,35 +60,26 @@ export class AuthService {
     return this.session()?.accessToken ?? null;
   }
 
-  refreshToken(): string | null {
-    return this.session()?.refreshToken ?? null;
-  }
-
   hasPermission(permission: string): boolean {
     return this.permissions().includes(permission);
   }
 
   async login(email: string, password: string): Promise<void> {
     const response = await firstValueFrom(this.api!.login({ email, password }));
-    this.persist({
-      accessToken: response.tokens.accessToken,
-      refreshToken: response.tokens.refreshToken,
-      user: response.user,
-    });
+    this.persist({ accessToken: response.tokens.accessToken, user: response.user });
   }
 
   async logout(): Promise<void> {
-    const token = this.refreshToken();
-    if (token) {
-      // Even if the server call fails, the local session must still disappear:
-      // a user on a flaky connection who clicks "sign out" must not stay signed in.
-      await firstValueFrom(this.api!.logout(token)).catch(() => undefined);
-    }
+    // Even if the server call fails, the local session must still disappear:
+    // a user on a flaky connection who clicks "sign out" must not stay signed
+    // in. The server call itself clears the refresh-token cookie; there is no
+    // client-held token left for this method to forget.
+    await firstValueFrom(this.api!.logout()).catch(() => undefined);
     this.clear();
   }
 
-  applyRefreshedSession(accessToken: string, refreshToken: string, user?: SessionUser): void {
-    this.persist({ accessToken, refreshToken, user: user ?? this.user() });
+  applyRefreshedSession(accessToken: string, user?: SessionUser): void {
+    this.persist({ accessToken, user: user ?? this.user() });
   }
 
   clear(): void {
@@ -89,8 +88,8 @@ export class AuthService {
   }
 
   /** Test seam: lets specs install a session without going through the network. */
-  setSessionForTesting(accessToken: string, refreshToken: string, user?: SessionUser): void {
-    this.persist({ accessToken, refreshToken, user: user ?? this.user() });
+  setSessionForTesting(accessToken: string, user?: SessionUser): void {
+    this.persist({ accessToken, user: user ?? this.user() });
   }
 
   private persist(session: PersistedSession): void {

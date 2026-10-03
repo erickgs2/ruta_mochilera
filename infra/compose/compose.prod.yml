@@ -57,6 +57,13 @@ services:
     expose:
       - '3000'
 
+  # TLS is terminated by this Nginx itself (see
+  # infra/nginx/nginx.conf.template's doc comment for why, versus a load
+  # balancer in front): it answers both 80 (ACME challenge + redirect to
+  # HTTPS) and 443, with a certificate from Let's Encrypt that the `certbot`
+  # service below obtains and renews into the `rm-certbot-conf` volume this
+  # container also mounts, read-only, at the standard
+  # /etc/letsencrypt path.
   nginx:
     build:
       context: ../..
@@ -64,10 +71,54 @@ services:
     image: ruta-mochilera/web:latest
     container_name: rm-nginx-prod
     restart: unless-stopped
+    environment:
+      DOMAIN_NAME: ${DOMAIN_NAME}
     depends_on:
       - api
     ports:
       - '80:80'
+      - '443:443'
+    volumes:
+      - rm-certbot-conf:/etc/letsencrypt:ro
+      - rm-certbot-www:/var/www/certbot:ro
+    # `certbot renew` (below) writes the renewed certificate into the shared
+    # `rm-certbot-conf` volume, but nginx workers only ever read a
+    # certificate file once, at startup or reload -- a renewal alone changes
+    # nothing this container is serving. There is no cross-container signal
+    # wired from `certbot` to this container (that needs either the docker
+    # socket or a shared process namespace, both more than Phase 1 needs for
+    # a file that changes every ~60 days), so this overrides the image's
+    # default command to reload nginx itself on a fixed schedule instead:
+    # `nginx -s reload` is a graceful, zero-downtime reload (new workers
+    # spawned, old ones drain) and a no-op in effect when the certificate on
+    # disk has not actually changed, so doing it on a timer rather than only
+    # after a real renewal costs nothing.
+    command: >-
+      sh -c '(while :; do sleep 6h; nginx -s reload; done) & exec nginx -g "daemon off;"'
+
+  # Issues and renews the Let's Encrypt certificate `nginx` serves (into the
+  # `rm-certbot-conf` volume `nginx` also mounts, read-only). The initial
+  # certificate does not exist yet on a fresh host: run, once, after `nginx`
+  # is up and DNS for `${DOMAIN_NAME}` already points here --
+  #   docker compose -f infra/compose/compose.prod.yml --env-file .env.prod \
+  #     run --rm certbot certonly --webroot -w /var/www/certbot \
+  #     -d ${DOMAIN_NAME} --email <ops-email> --agree-tos --no-eff-email
+  # -- then `docker compose ... restart nginx` once so it picks up the new
+  # files immediately rather than waiting for its own reload timer above.
+  # From then on this service's loop renews automatically and nginx's own
+  # loop reloads within six hours of any renewal -- comfortably inside Let's
+  # Encrypt's ~30-day renewal window before a 90-day certificate expires.
+  certbot:
+    image: certbot/certbot:latest
+    container_name: rm-certbot-prod
+    restart: unless-stopped
+    volumes:
+      - rm-certbot-conf:/etc/letsencrypt
+      - rm-certbot-www:/var/www/certbot
+    entrypoint: >-
+      sh -c 'trap exit TERM; while :; do certbot renew --webroot -w /var/www/certbot --quiet; sleep 12h; done'
 
 volumes:
   rm-pgdata-prod:
+  rm-certbot-conf:
+  rm-certbot-www:

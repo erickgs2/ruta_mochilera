@@ -34,12 +34,18 @@ export class AuthApi {
     return this.api.post('/api/v1/auth/login', body);
   }
 
-  refresh(refreshToken: string): Observable<Ok<'/api/v1/auth/refresh', 'post'>> {
-    return this.api.post('/api/v1/auth/refresh', { refreshToken });
+  /**
+   * No argument and no request body: the refresh token travels only as the
+   * httpOnly cookie `/auth/login` set, which `ApiClient`'s `withCredentials`
+   * attaches automatically.
+   */
+  refresh(): Observable<Ok<'/api/v1/auth/refresh', 'post'>> {
+    return this.api.post('/api/v1/auth/refresh', {});
   }
 
-  logout(refreshToken: string): Observable<Ok<'/api/v1/auth/logout', 'post'>> {
-    return this.api.post('/api/v1/auth/logout', { refreshToken });
+  /** Same cookie-only contract as `refresh()` -- see its doc comment. */
+  logout(): Observable<void> {
+    return this.api.post('/api/v1/auth/logout', {});
   }
 
   me(): Observable<Ok<'/api/v1/me', 'get'>> {

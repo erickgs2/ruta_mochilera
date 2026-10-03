@@ -1,4 +1,4 @@
-import type { Db } from '@rm/db';
+import { uniqueViolationIndex, type Db } from '@rm/db';
 import { recordAudit } from '@rm/domain-audit';
 import { hashPassword } from '@rm/domain-identity';
 import type { Actor } from '@rm/domain-rbac';
@@ -52,6 +52,23 @@ function toDto(user: StaffRow): StaffDto {
     locale: user.locale,
     roleIds: user.roles.map((link) => link.roleId),
   };
+}
+
+/** The unique index backing `User.email` (see the `init` migration). */
+const USER_EMAIL_UNIQUE_INDEX = 'users_email_key';
+
+/**
+ * Detects the race the pre-check `findFirst` in `createStaff` cannot close:
+ * two concurrent creates for the same email can both pass that check before
+ * either has inserted, so the database's unique index is the final word, not
+ * just a nice-to-have -- the same race `role-service.createRole` closes for
+ * role names and `trip-service.createTrip` closes for slugs. Without this,
+ * a genuine race surfaces as an unhandled `PrismaClientKnownRequestError` and
+ * `route()`'s catch-all turns it into an opaque `INTERNAL_ERROR` instead of
+ * the same `EMAIL_ALREADY_REGISTERED` the pre-check returns.
+ */
+function isEmailConflict(error: unknown): boolean {
+  return uniqueViolationIndex(error) === USER_EMAIL_UNIQUE_INDEX;
 }
 
 async function assertRolesExist(db: Db, roleIds: string[]): Promise<Result<null>> {
@@ -108,32 +125,37 @@ export async function createStaff(
 
   const passwordHash = await hashPassword(input.password);
 
-  const user = await db.$transaction(async (tx) => {
-    const created = await tx.user.create({
-      data: {
-        email,
-        type: 'STAFF',
-        locale: input.locale,
-        passwordHash,
-        // An account created by another administrator is born trusted: it
-        // does not go through email verification.
-        emailVerifiedAt: new Date(),
-        staffProfile: { create: { fullName: input.fullName, employeeCode: input.employeeCode } },
-        roles: { create: input.roleIds.map((roleId) => ({ roleId })) },
-      },
-      include: STAFF_SHAPE,
+  try {
+    const user = await db.$transaction(async (tx) => {
+      const created = await tx.user.create({
+        data: {
+          email,
+          type: 'STAFF',
+          locale: input.locale,
+          passwordHash,
+          // An account created by another administrator is born trusted: it
+          // does not go through email verification.
+          emailVerifiedAt: new Date(),
+          staffProfile: { create: { fullName: input.fullName, employeeCode: input.employeeCode } },
+          roles: { create: input.roleIds.map((roleId) => ({ roleId })) },
+        },
+        include: STAFF_SHAPE,
+      });
+      await recordAudit(tx, {
+        actorUserId: actor.userId,
+        action: 'staff.created',
+        entityType: 'User',
+        entityId: created.id,
+        after: { email, fullName: input.fullName, roleIds: input.roleIds },
+      });
+      return created;
     });
-    await recordAudit(tx, {
-      actorUserId: actor.userId,
-      action: 'staff.created',
-      entityType: 'User',
-      entityId: created.id,
-      after: { email, fullName: input.fullName, roleIds: input.roleIds },
-    });
-    return created;
-  });
 
-  return ok(toDto(user));
+    return ok(toDto(user));
+  } catch (error) {
+    if (isEmailConflict(error)) return fail('EMAIL_ALREADY_REGISTERED');
+    throw error;
+  }
 }
 
 /**

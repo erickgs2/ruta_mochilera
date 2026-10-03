@@ -1,0 +1,65 @@
+# TLS termination lives here, in this Nginx, not in front of it: qa and
+# production are a single EC2 instance with no load balancer in the spec
+# (docs/superpowers/specs/2026-09-28-agencia-viajes-diseno.md, §11 -- "Un
+# solo Nginx al frente, en la misma máquina"), so introducing an ALB/ELB just
+# to hold a certificate would be new infrastructure the design never called
+# for. Certificates come from Let's Encrypt via a certbot companion
+# container (see `infra/compose/compose.prod.yml`), issued and renewed with
+# the HTTP-01 challenge served out of the `/.well-known/acme-challenge/`
+# location below.
+#
+# `${DOMAIN_NAME}` is substituted at container start by the official nginx
+# image's own template mechanism (this file is copied to
+# `/etc/nginx/templates/default.conf.template`; see `Dockerfile.web`), from
+# the `DOMAIN_NAME` environment variable in `.env.prod`. Dev (Raspberry Pi)
+# does not set it and does not run this Nginx image with TLS -- see the
+# README's deployment section.
+
+# Plain HTTP: only the ACME challenge is ever answered here. Everything else
+# redirects to HTTPS so the refresh-token cookie's `Secure` attribute (see
+# `apps/api/src/lib/http/refresh-cookie.ts`) is never silently dropped by a
+# client that happened to connect over port 80.
+server {
+    listen 80;
+    server_name ${DOMAIN_NAME};
+
+    location /.well-known/acme-challenge/ {
+        root /var/www/certbot;
+    }
+
+    location / {
+        return 301 https://$host$request_uri;
+    }
+}
+
+server {
+    listen 443 ssl;
+    http2 on;
+    server_name ${DOMAIN_NAME};
+    client_max_body_size 10M;
+
+    ssl_certificate     /etc/letsencrypt/live/${DOMAIN_NAME}/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/${DOMAIN_NAME}/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+
+    # The API and the admin panel live behind this single front door. The
+    # `api` hostname is the compose service name from compose.prod.yml.
+    location /api/ {
+        proxy_pass http://api:3000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    location /admin/ {
+        alias /usr/share/nginx/html/admin/;
+        try_files $uri $uri/ /admin/index.html;
+    }
+
+    # The customer-facing app is Phase 2 and does not exist yet, so the root
+    # path redirects to the admin panel for now.
+    location / {
+        return 302 /admin/;
+    }
+}

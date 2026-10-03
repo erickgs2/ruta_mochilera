@@ -31,7 +31,7 @@ describe('authGuard', () => {
   });
 
   it('allows navigation when a session exists', () => {
-    auth.setSessionForTesting('access-1', 'refresh-1', staffUser);
+    auth.setSessionForTesting('access-1', staffUser);
     const result = TestBed.runInInjectionContext(() => authGuard({} as never, {} as never));
     expect(result).toBe(true);
   });
@@ -68,14 +68,14 @@ describe('permissionGuard', () => {
   });
 
   it('redirects to /forbidden when authenticated but missing the permission', async () => {
-    auth.setSessionForTesting('access-1', 'refresh-1', staffUser);
+    auth.setSessionForTesting('access-1', staffUser);
     const guard = permissionGuard('trip.create');
     const result = TestBed.runInInjectionContext(() => guard({} as never, {} as never));
     expect((result as UrlTree).toString()).toBe('/forbidden');
   });
 
   it('allows navigation when authenticated with the permission', () => {
-    auth.setSessionForTesting('access-1', 'refresh-1', {
+    auth.setSessionForTesting('access-1', {
       id: 'u1',
       email: 'a@b.test',
       type: 'STAFF',

@@ -7,10 +7,6 @@ export const loginRequestSchema = z.object({
   deviceId: z.string().max(128).optional(),
 });
 
-export const refreshRequestSchema = z.object({
-  refreshToken: z.string().min(1),
-});
-
 export const authenticatedUserSchema = z.object({
   id: uuidSchema,
   email: z.string().email(),
@@ -20,16 +16,21 @@ export const authenticatedUserSchema = z.object({
   permissions: z.array(z.string()),
 });
 
+/**
+ * The refresh token is deliberately absent here: it never appears in a JSON
+ * response body. `/auth/login` and `/auth/refresh` deliver it only as an
+ * httpOnly, Secure, SameSite=Strict cookie (see
+ * `apps/api/src/lib/http/refresh-cookie.ts` and the spec's security section,
+ * §10) -- a token a script on the page can read is a token XSS can steal.
+ */
 export const sessionResponseSchema = z.object({
   user: authenticatedUserSchema,
   tokens: z.object({
     accessToken: z.string(),
-    refreshToken: z.string(),
     expiresInSeconds: z.number().int().positive(),
   }),
 });
 
 export type LoginRequest = z.infer<typeof loginRequestSchema>;
-export type RefreshRequest = z.infer<typeof refreshRequestSchema>;
 export type AuthenticatedUserDto = z.infer<typeof authenticatedUserSchema>;
 export type SessionResponse = z.infer<typeof sessionResponseSchema>;

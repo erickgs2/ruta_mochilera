@@ -148,6 +148,42 @@ describe('trip service', () => {
     expect(result.value.availableSeats).toBe(12);
   });
 
+  it('reads the backfill date gate from the configured organization.timezone, not the fallback constant', async () => {
+    // Every other test in this file runs with no `SystemSetting` row at all,
+    // so `organizationTimeZone` (trip-service.ts) always falls back to its
+    // `America/Mexico_City` constant -- the fallback branch is exercised
+    // everywhere, the configured-row branch nowhere. This test seeds a row
+    // with a different timezone and proves the gate's decision actually
+    // changes with it.
+    //
+    // At 2026-06-15T12:00:00Z: America/Mexico_City (UTC-6) reads this as
+    // 2026-06-15 06:00 -- still the 15th. Pacific/Kiritimati (UTC+14) reads
+    // it as 2026-06-16 02:00 -- already the 16th. A trip departing on the
+    // 15th is therefore NOT past under the default/fallback timezone but IS
+    // past under this configured one, so only the configured value can be
+    // what made the backfill gate trip below.
+    await db.systemSetting.create({
+      data: { key: 'organization.timezone', value: 'Pacific/Kiritimati' },
+    });
+
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date('2026-06-15T12:00:00Z'));
+
+      const result = await createTrip(db, actorWith(['trip.create']), {
+        ...baseInput,
+        departureDate: new Date('2026-06-15'),
+        returnDate: new Date('2026-06-20'),
+        paymentDeadline: new Date('2026-05-15'),
+      });
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.error.code).toBe('PERMISSION_DENIED');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('appends a counter when the slug already exists', async () => {
     await createTrip(db, actorWith(['trip.create']), baseInput);
     const second = await createTrip(db, actorWith(['trip.create']), baseInput);
