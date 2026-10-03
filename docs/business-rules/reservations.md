@@ -47,6 +47,38 @@ el `now()` de PostgreSQL: dentro de una transacción, `now()` es la hora en que
 la transacción empezó, que en una transacción interactiva larga puede ser
 notablemente anterior.
 
+### Un apartado `HELD` siempre tiene fecha de vencimiento
+
+`hold_expires_at` es nullable porque `ACTIVE` la anula a propósito: cubierto el
+anticipo mínimo, el lugar deja de ser un apartado y deja de vencer (§5.3). Pero
+nada ataba la otra dirección, así que una fila `HELD` con `hold_expires_at`
+nulo era representable: un apartado que no vence nunca y que el conteo de cupo
+lee como **libre**, porque `hold_expires_at > ahora` no es cierto para `NULL`.
+El lugar quedaría ocupado y vendible a la vez — una sobreventa silenciosa
+dentro del único cálculo cuyo trabajo es evitarla.
+
+Se resuelve haciendo imposible el estado, no contando a la defensiva:
+
+```sql
+ALTER TABLE "reservations"
+  ADD CONSTRAINT "reservations_held_requires_hold_expiry"
+  CHECK ("status" <> 'HELD' OR "hold_expires_at" IS NOT NULL);
+```
+
+La implicación es **de un solo sentido** (`HELD` ⇒ no nulo). `CANCELLED` y
+`EXPIRED` conservan la fecha que tuvieran, que es historia que vale la pena
+guardar, y `ACTIVE` no tiene ninguna.
+
+Prisma no sabe expresar un `CHECK` en `schema.prisma`, igual que no sabe
+expresar el índice parcial, así que vive como SQL crudo en la migración
+`20261003224500_reservation_held_requires_hold_expiry`. El modelo
+`Reservation` lleva un comentario que remite aquí, y
+`reservations-schema.spec.ts` comprueba que la base **rechaza** la fila mala,
+no sólo que el código no la escribe.
+
+Con esa garantía, `countCommittedSeats` no necesita una rama para el caso nulo:
+sería código inalcanzable.
+
 ## Por qué el cálculo exige el bloqueo
 
 Leer el cupo para **escribir** (tomar un lugar, o reducir `total_capacity`)

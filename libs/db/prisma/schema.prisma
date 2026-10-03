@@ -381,6 +381,13 @@ model SystemSetting {
  * `@@unique` here on purpose; a full unique constraint would also reject a
  * second CANCELLED or EXPIRED reservation for the same pair, which is exactly
  * what the partial index must allow.
+ *
+ * The same migration set also carries the CHECK constraint
+ * `reservations_held_requires_hold_expiry`: a HELD row must have a
+ * `hold_expires_at`. Prisma cannot express a CHECK either, so it lives in the
+ * `reservation_held_requires_hold_expiry` migration. The implication is
+ * one-directional -- ACTIVE clears the expiry on purpose (business rule 5.3)
+ * -- which is why the column stays nullable here.
  */
 model Reservation {
   id                      String            @id @default(uuid()) @db.Uuid
@@ -388,6 +395,8 @@ model Reservation {
   tripId                  String            @map("trip_id") @db.Uuid
   customerId              String            @map("customer_id") @db.Uuid
   status                  ReservationStatus @default(HELD)
+  /// Nullable only because ACTIVE clears it. A HELD row without one is
+  /// refused by the CHECK constraint named in this model's doc comment.
   holdExpiresAt           DateTime?         @map("hold_expires_at") @db.Timestamptz
   // Frozen at creation: editing the trip's price afterwards never changes an
   // existing reservation. Propagating a price change is an explicit Phase 2B

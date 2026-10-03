@@ -56,6 +56,28 @@ export interface CreatePrismaClientOptions {
 }
 
 /**
+ * Throws unless `schema` is a PostgreSQL schema name this workspace is willing
+ * to drop into SQL and into a connection startup string unquoted.
+ *
+ * Lowercase on purpose, not merely "safe characters". An unquoted identifier
+ * is case-folded to lowercase by PostgreSQL, so accepting `MySchema` here
+ * would silently resolve to `myschema` and fail to match a schema actually
+ * created as `"MySchema"` -- a mismatch that would surface as "relation does
+ * not exist" far from its cause. Rejecting the name outright is the honest
+ * answer; a caller that truly needs a mixed-case schema has to quote it
+ * everywhere, which is a different design.
+ *
+ * The single definition both callers share: this file, building the
+ * `search_path` startup option, and the test harness, naming each worker's
+ * schema.
+ */
+export function assertSchemaIdentifier(schema: string): void {
+  if (!/^[a-z0-9_]+$/.test(schema)) {
+    throw new Error(`Refusing to use "${schema}" as a schema name: expected [a-z0-9_]+`);
+  }
+}
+
+/**
  * Builds the libpq startup option that puts `schema` on the connection's
  * `search_path`.
  *
@@ -67,18 +89,16 @@ export interface CreatePrismaClientOptions {
  * schema would have quietly read and locked rows in `public` instead, which
  * is the worst possible failure mode for a lock: silent, and green.
  *
- * The name is interpolated into a startup string, so it is validated rather
- * than escaped: anything outside `[A-Za-z0-9_]` is rejected. Every schema
- * name this workspace produces is already of that shape.
+ * The name is interpolated into a startup string, where quoting would not
+ * save it anyway (a space splits the option), so it is validated rather than
+ * escaped.
  *
  * Exported so the test harness's query-counting client, which builds its own
  * adapter to wire up Prisma's `log` events, resolves raw SQL against the
  * same schema as every other client instead of restating the string.
  */
 export function searchPathStartupOption(schema: string): string {
-  if (!/^[A-Za-z0-9_]+$/.test(schema)) {
-    throw new Error(`Refusing to use "${schema}" as a schema name: expected [A-Za-z0-9_]+`);
-  }
+  assertSchemaIdentifier(schema);
   return `-c search_path=${schema}`;
 }
 

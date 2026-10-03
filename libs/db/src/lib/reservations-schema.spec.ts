@@ -65,6 +65,7 @@ describe('reservations schema', () => {
         tripId: trip.id,
         customerId: customer.id,
         status: 'HELD',
+        holdExpiresAt: new Date('2026-10-10T12:00:00Z'),
         totalPriceCents: 500000,
         minimumDepositCents: 100000,
         paymentDeadline: new Date('2026-11-01'),
@@ -87,6 +88,7 @@ describe('reservations schema', () => {
         tripId: trip.id,
         customerId: customer.id,
         status: 'HELD',
+        holdExpiresAt: new Date('2026-10-10T12:00:00Z'),
         totalPriceCents: 500000,
         minimumDepositCents: 100000,
         paymentDeadline: new Date('2026-11-01'),
@@ -115,6 +117,47 @@ describe('reservations schema', () => {
     expect(uniqueViolationIndex(error)).toBe('reservations_live_trip_customer_key');
   });
 
+  it('refuses a HELD reservation with no hold expiry', async () => {
+    const { trip, customer } = await createTripAndCustomer(db);
+
+    const error = await db.reservation
+      .create({
+        data: {
+          code: 'RES-0006',
+          tripId: trip.id,
+          customerId: customer.id,
+          status: 'HELD',
+          holdExpiresAt: null,
+          totalPriceCents: 500000,
+          minimumDepositCents: 100000,
+          paymentDeadline: new Date('2026-11-01'),
+          source: 'APP',
+        },
+      })
+      .then(() => undefined)
+      .catch((thrown: unknown) => thrown);
+
+    // A HELD row with no expiry is a hold that never runs out, and the seat
+    // counter reads it as free (`hold_expires_at > now()` is false for NULL):
+    // the seat is both taken and sellable. The database refuses the state
+    // instead of every reader having to remember it.
+    expect(error).toMatchObject({
+      code: 'P2039',
+      meta: {
+        driverAdapterError: {
+          // 23514 is PostgreSQL's check_violation. Asserting the SQLSTATE and
+          // the constraint name, rather than just "it threw", is what makes
+          // this fail for the right reason: a foreign key or a NOT NULL would
+          // not match.
+          cause: {
+            code: '23514',
+            message: expect.stringContaining('reservations_held_requires_hold_expiry'),
+          },
+        },
+      },
+    });
+  });
+
   it('does not let a cancelled reservation block a new one', async () => {
     const { trip, customer } = await createTripAndCustomer(db);
 
@@ -138,6 +181,7 @@ describe('reservations schema', () => {
         tripId: trip.id,
         customerId: customer.id,
         status: 'HELD',
+        holdExpiresAt: new Date('2026-10-10T12:00:00Z'),
         totalPriceCents: 500000,
         minimumDepositCents: 100000,
         paymentDeadline: new Date('2026-11-01'),

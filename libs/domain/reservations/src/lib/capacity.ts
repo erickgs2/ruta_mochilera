@@ -8,7 +8,10 @@ import type { DbTransactionClient } from '@rm/db';
 export interface CommittedSeats {
   /** Reservations in `ACTIVE`: the deposit was covered and the seat is taken. */
   activeReservations: number;
-  /** Reservations still in `HELD` whose `hold_expires_at` is in the future. */
+  /**
+   * Reservations still in `HELD` whose `hold_expires_at` is in the future.
+   * Every HELD row has one -- a CHECK constraint guarantees it.
+   */
   liveHolds: number;
 }
 
@@ -87,6 +90,13 @@ export async function countCommittedSeatsForTrips(
   // caller inside a transaction gets the same answer it would outside one:
   // PostgreSQL's `now()` is the transaction's start time, which in a long
   // interactive transaction can be meaningfully older.
+  //
+  // `hold_expires_at > now` also decides the NULL case, since the comparison
+  // is not true for NULL -- a HELD row with no expiry would be counted as
+  // free. There is no defensive branch for that here because the state
+  // cannot exist: the CHECK constraint
+  // `reservations_held_requires_hold_expiry` refuses it at the database
+  // (see `docs/business-rules/reservations.md`).
   const rows = await db.reservation.groupBy({
     by: ['tripId', 'status'],
     where: {

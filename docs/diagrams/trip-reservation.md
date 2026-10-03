@@ -65,3 +65,9 @@ flowchart LR
 
 Ningún estado terminal requiere tocar un contador para devolver el lugar: el
 cupo se deriva de estas filas en cada lectura y nunca se almacena.
+
+La rama «HELD vencido» depende de que todo `HELD` **tenga** fecha de
+vencimiento: con `hold_expires_at` nulo la comparación no es cierta y la fila
+caería en «no ocupa» estando viva. El `CHECK`
+`reservations_held_requires_hold_expiry` impide esa fila, así que el diagrama
+no tiene un cuarto caso (ver `docs/business-rules/reservations.md`).

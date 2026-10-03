@@ -3,7 +3,12 @@ import { existsSync, readdirSync, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '../generated/prisma/client';
-import { createPrismaClient, searchPathStartupOption, type Db } from '../lib/client';
+import {
+  assertSchemaIdentifier,
+  createPrismaClient,
+  searchPathStartupOption,
+  type Db,
+} from '../lib/client';
 
 const DEFAULT_TEST_DATABASE_URL = 'postgresql://rm:rm@localhost:5432/rm_test';
 
@@ -185,7 +190,9 @@ function projectKey(): string {
  * character outside `[a-z0-9_]` folded to `_`, and truncated with a hash
  * suffix so it can never exceed PostgreSQL's 63-byte identifier limit. The
  * validation applies to the fully composed name because a project name may
- * legally contain characters an identifier may not.
+ * legally contain characters an identifier may not, and it is the same
+ * `assertSchemaIdentifier` the connection builder applies, so a name this
+ * function accepts can never be one `search_path` rejects.
  */
 function composeSchemaName(project: string, workerId: string): string {
   const slug = `test_${project}_w${workerId}`
@@ -193,9 +200,7 @@ function composeSchemaName(project: string, workerId: string): string {
     .replace(/[^a-z0-9_]+/g, '_')
     .replace(/_+/g, '_');
   const name = slug.length <= 63 ? slug : `${slug.slice(0, 54)}_${fingerprint(slug)}`;
-  if (!/^[a-z0-9_]+$/.test(name)) {
-    throw new Error(`Refusing to use "${name}" as a schema name: expected [a-z0-9_]+`);
-  }
+  assertSchemaIdentifier(name);
   return name;
 }
 
