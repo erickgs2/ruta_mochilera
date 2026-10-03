@@ -30,6 +30,7 @@ const ALL_DOMAIN_ERROR_CODES: readonly DomainErrorCode[] = [
   'ROLE_IN_USE',
   'NOT_FOUND',
   'VALIDATION_FAILED',
+  'UNSUPPORTED_MEDIA_TYPE',
   'CONFLICT',
   'INVALID_CAPACITY',
   'CAPACITY_BELOW_COMMITTED',
@@ -58,6 +59,7 @@ function assertKnownCode(code: DomainErrorCode): void {
     case 'ROLE_IN_USE':
     case 'NOT_FOUND':
     case 'VALIDATION_FAILED':
+    case 'UNSUPPORTED_MEDIA_TYPE':
     case 'CONFLICT':
     case 'INVALID_CAPACITY':
     case 'CAPACITY_BELOW_COMMITTED':

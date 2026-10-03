@@ -207,6 +207,7 @@
     "ROLE_IN_USE": "A role with {{userCount}} assigned user(s) cannot be deleted.",
     "NOT_FOUND": "The requested resource was not found.",
     "VALIDATION_FAILED": "Please check the submitted data.",
+    "UNSUPPORTED_MEDIA_TYPE": "The request could not be processed. Please try again.",
     "CONFLICT": "A record with that data already exists.",
     "INVALID_CAPACITY": "The entered capacity is not valid.",
     "CAPACITY_BELOW_COMMITTED": "Capacity cannot be lower than the seats already committed.",

@@ -207,6 +207,7 @@
     "ROLE_IN_USE": "No se puede eliminar un rol con {{userCount}} usuario(s) asignado(s).",
     "NOT_FOUND": "No se encontró el recurso solicitado.",
     "VALIDATION_FAILED": "Revisa los datos capturados.",
+    "UNSUPPORTED_MEDIA_TYPE": "No se pudo procesar la solicitud. Inténtalo de nuevo.",
     "CONFLICT": "Ya existe un registro con esos datos.",
     "INVALID_CAPACITY": "El cupo capturado no es válido.",
     "CAPACITY_BELOW_COMMITTED": "El cupo no puede ser menor a los lugares ya comprometidos.",

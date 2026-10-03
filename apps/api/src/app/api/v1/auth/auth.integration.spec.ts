@@ -89,6 +89,31 @@ describe('auth endpoints', () => {
     expect(setCookie).toContain('Path=/api/v1/auth');
   });
 
+  it('rejects a text/plain login attempt with 415 and issues no Set-Cookie (login CSRF)', async () => {
+    // This is the finding itself: `SameSite=Strict` protects the cookie
+    // `/auth/refresh` and `/auth/logout` *read*, but `/auth/login` *sets*
+    // one, and `SameSite` says nothing about whether a browser stores an
+    // incoming `Set-Cookie`. Without the `Content-Type` check, a
+    // cross-origin `fetch` with `Content-Type: text/plain` -- CORS
+    // safelisted, so no preflight -- could reach this public endpoint with
+    // a raw JSON body and have the attacker's own credentials silently
+    // adopted in the victim's browser. Requiring `application/json` removes
+    // the safelisted path (see `parseBody` in `lib/http/route.ts`).
+    await seedAdmin();
+
+    const response = await loginRoute(
+      new Request('http://localhost/api/v1/auth/login', {
+        method: 'POST',
+        headers: { 'content-type': 'text/plain' },
+        body: JSON.stringify({ email: 'admin@agency.test', password: 'Correct-Horse-1' }),
+      })
+    );
+
+    expect(response.status).toBe(415);
+    expect((await response.json()).code).toBe('UNSUPPORTED_MEDIA_TYPE');
+    expect(response.headers.get('set-cookie')).toBeNull();
+  });
+
   it('returns 401 problem+json on bad credentials', async () => {
     await seedAdmin();
     const response = await post(loginRoute, { email: 'admin@agency.test', password: 'wrong' });

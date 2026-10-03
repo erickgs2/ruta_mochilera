@@ -95,12 +95,52 @@ export type RouteOptions<TBody, TResult> =
 
 type NextRouteArgs = { params: Promise<Record<string, string>> };
 
-/** Parses and validates the JSON body against `schema`, or returns `undefined` immediately when there is none. */
+/**
+ * True when `request`'s `Content-Type` is `application/json`, optionally
+ * with parameters such as a charset (`application/json; charset=utf-8` is
+ * legitimate and must pass). Matched on the media type alone, case
+ * insensitively, ignoring everything after the first `;`.
+ */
+function hasJsonContentType(request: Request): boolean {
+  const contentType = request.headers.get('content-type');
+  if (!contentType) return false;
+  const mediaType = contentType.split(';', 1)[0]?.trim().toLowerCase();
+  return mediaType === 'application/json';
+}
+
+/**
+ * Parses and validates the JSON body against `schema`, or returns
+ * `undefined` immediately when there is none.
+ *
+ * The `Content-Type` check below exists for a reason that has nothing to do
+ * with parsing correctness: `fetch` with `Content-Type: text/plain` is one
+ * of the three CORS "safelisted" content types, so a cross-origin request
+ * using it never triggers a preflight -- the browser just sends it. For most
+ * endpoints that is merely sloppy (the handler still requires a valid access
+ * token). But `POST /auth/login` is `auth: 'public'` and *sets* a cookie
+ * rather than reading one, so `SameSite=Strict` -- which governs whether a
+ * cookie is attached to an *outgoing* request, not whether an *incoming*
+ * `Set-Cookie` gets stored -- does not protect it: a cross-site page can
+ * submit the attacker's own credentials from the victim's browser via a
+ * safelisted `text/plain` request, and the victim ends up silently inside
+ * the attacker's account (a login CSRF, not a data leak).
+ *
+ * Requiring `application/json` closes that path: it is not a safelisted
+ * value, so the browser must run a real CORS preflight (`OPTIONS`) first,
+ * and this API answers no preflight permissively (see the CORS review in
+ * `.superpowers/sdd/2026-09-28-fase-1-cimientos-panel-admin/csrf-fix-report.md`)
+ * -- so the browser never sends the real cross-origin request at all. This
+ * check runs before `request.json()` so a mislabelled body is rejected
+ * without ever touching the handler.
+ */
 async function parseBody<TBody>(
   schema: ZodType<TBody> | undefined,
   request: Request
 ): Promise<Result<TBody>> {
   if (!schema) return ok(undefined as TBody);
+  if (!hasJsonContentType(request)) {
+    return fail('UNSUPPORTED_MEDIA_TYPE', { expected: 'application/json' });
+  }
   const raw = await request.json().catch(() => undefined);
   const parsed = schema.safeParse(raw);
   if (!parsed.success) {

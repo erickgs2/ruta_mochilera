@@ -14,6 +14,7 @@ export type DomainErrorCode =
   // Generic
   | 'NOT_FOUND'
   | 'VALIDATION_FAILED'
+  | 'UNSUPPORTED_MEDIA_TYPE'
   | 'CONFLICT'
   // Trips and costing
   | 'INVALID_CAPACITY'

@@ -123,13 +123,93 @@ describe('route', () => {
     const handler = vi.fn(async () => ok('unreachable'));
     const endpoint = route({ body: z.object({ name: z.string() }), handler });
 
+    // A real `Content-Type` is required even for this test: without it,
+    // `request.json()` is never reached at all -- see the `Content-Type`
+    // tests below, which is exactly the regression they guard against.
     const response = await endpoint(
-      new Request('http://localhost/x', { method: 'POST', body: JSON.stringify({}) })
+      new Request('http://localhost/x', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({}),
+      })
     );
 
     expect(response.status).toBe(422);
     expect((await response.json()).code).toBe('VALIDATION_FAILED');
     expect(handler).not.toHaveBeenCalled();
+  });
+
+  describe('Content-Type enforcement on a body-carrying route', () => {
+    // A `fetch` with `Content-Type: text/plain` is one of the three CORS
+    // "safelisted" content types: a cross-origin page can send it without
+    // ever triggering a preflight. Requiring `application/json` here closes
+    // that path -- see the long comment on `parseBody` in `route.ts` for the
+    // full threat model (login CSRF).
+
+    it('rejects Content-Type: text/plain with 415, before the handler runs', async () => {
+      mockedGetActor.mockResolvedValue(staffActor());
+      const handler = vi.fn(async () => ok('unreachable'));
+      const endpoint = route({ body: z.object({ name: z.string() }), handler });
+
+      const response = await endpoint(
+        new Request('http://localhost/x', {
+          method: 'POST',
+          headers: { 'content-type': 'text/plain' },
+          body: JSON.stringify({ name: 'x' }),
+        })
+      );
+
+      expect(response.status).toBe(415);
+      expect((await response.json()).code).toBe('UNSUPPORTED_MEDIA_TYPE');
+      expect(handler).not.toHaveBeenCalled();
+    });
+
+    it('accepts Content-Type: application/json', async () => {
+      mockedGetActor.mockResolvedValue(staffActor());
+      const handler = vi.fn(async () => ok('granted'));
+      const endpoint = route({ body: z.object({ name: z.string() }), handler });
+
+      const response = await endpoint(
+        new Request('http://localhost/x', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ name: 'x' }),
+        })
+      );
+
+      expect(response.status).toBe(200);
+      expect(handler).toHaveBeenCalledTimes(1);
+    });
+
+    it('accepts Content-Type: application/json; charset=utf-8', async () => {
+      mockedGetActor.mockResolvedValue(staffActor());
+      const handler = vi.fn(async () => ok('granted'));
+      const endpoint = route({ body: z.object({ name: z.string() }), handler });
+
+      const response = await endpoint(
+        new Request('http://localhost/x', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json; charset=utf-8' },
+          body: JSON.stringify({ name: 'x' }),
+        })
+      );
+
+      expect(response.status).toBe(200);
+      expect(handler).toHaveBeenCalledTimes(1);
+    });
+
+    it('leaves a route with no body schema unaffected by Content-Type', async () => {
+      mockedGetActor.mockResolvedValue(staffActor());
+      const handler = vi.fn(async () => ok('granted'));
+      const endpoint = route({ handler });
+
+      const response = await endpoint(
+        new Request('http://localhost/x', { method: 'DELETE', headers: { 'content-type': 'text/plain' } })
+      );
+
+      expect(response.status).toBe(200);
+      expect(handler).toHaveBeenCalledTimes(1);
+    });
   });
 
   it('returns a generic problem+json 500 without leaking details when the handler throws', async () => {
