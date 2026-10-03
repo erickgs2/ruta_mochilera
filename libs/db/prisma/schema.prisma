@@ -57,6 +57,52 @@ enum PriceMode {
   MANUAL
 }
 
+enum ReservationStatus {
+  HELD
+  ACTIVE
+  CANCELLED
+  EXPIRED
+}
+
+enum ReservationSource {
+  APP
+  BRANCH
+  IMPORT
+}
+
+enum PaymentMethod {
+  CARD
+  OXXO
+  SPEI
+  CASH
+  LEGACY
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCEEDED
+  FAILED
+  EXPIRED
+  REFUNDED
+}
+
+enum PaymentProvider {
+  STRIPE
+  MANUAL
+}
+
+enum NotificationChannel {
+  EMAIL
+  INBOX
+}
+
+enum NotificationStatus {
+  PENDING
+  SENT
+  FAILED
+  READ
+}
+
 model User {
   id              String     @id @default(uuid()) @db.Uuid
   email           String     @unique
@@ -68,12 +114,16 @@ model User {
   createdAt       DateTime   @default(now()) @map("created_at") @db.Timestamptz
   updatedAt       DateTime   @updatedAt @map("updated_at") @db.Timestamptz
 
-  staffProfile    StaffProfile?
-  customerProfile CustomerProfile?
-  authIdentities  AuthIdentity[]
-  refreshTokens   RefreshToken[]
-  roles           UserRole[]
-  createdTrips    Trip[]           @relation("TripCreatedBy")
+  staffProfile           StaffProfile?
+  customerProfile        CustomerProfile?
+  authIdentities         AuthIdentity[]
+  refreshTokens          RefreshToken[]
+  roles                  UserRole[]
+  createdTrips           Trip[]                 @relation("TripCreatedBy")
+  createdReservations    Reservation[]          @relation("ReservationCreatedBy")
+  cancelledReservations  Reservation[]          @relation("ReservationCancelledBy")
+  recordedPayments       Payment[]              @relation("PaymentRecordedBy")
+  notificationDeliveries NotificationDelivery[]
 
   @@map("users")
 }
@@ -89,16 +139,20 @@ model StaffProfile {
 }
 
 model CustomerProfile {
-  userId      String         @id @map("user_id") @db.Uuid
-  fullName    String         @map("full_name")
-  phone       String
-  birthDate   DateTime       @map("birth_date") @db.Date
-  photoKey    String?        @map("photo_key")
-  origin      CustomerOrigin
-  invitedAt   DateTime?      @map("invited_at") @db.Timestamptz
-  activatedAt DateTime?      @map("activated_at") @db.Timestamptz
+  userId          String         @id @map("user_id") @db.Uuid
+  fullName        String         @map("full_name")
+  phone           String
+  birthDate       DateTime       @map("birth_date") @db.Date
+  photoKey        String?        @map("photo_key")
+  origin          CustomerOrigin
+  invitedAt       DateTime?      @map("invited_at") @db.Timestamptz
+  activatedAt     DateTime?      @map("activated_at") @db.Timestamptz
+  // Nullable: pre-existing customers have never accepted the Phase 2A terms
+  // screen, and a historical acceptance date cannot be invented for them.
+  acceptedTermsAt DateTime?      @map("accepted_terms_at") @db.Timestamptz
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  reservations Reservation[]
 
   @@index([phone])
   @@map("customer_profiles")
@@ -240,6 +294,7 @@ model Trip {
   translations TripTranslation[]
   images       TripImage[]
   budgetItems  TripBudgetItem[]
+  reservations Reservation[]
 
   @@index([status, departureDate])
   @@map("trips")
@@ -315,4 +370,134 @@ model SystemSetting {
   updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz
 
   @@map("system_settings")
+}
+
+/**
+ * A single live reservation per customer per trip is also enforced by the
+ * partial unique index `reservations_live_trip_customer_key` on
+ * (trip_id, customer_id) WHERE status IN ('HELD', 'ACTIVE'). Prisma cannot
+ * express a partial index in the schema, so it is written as raw SQL inside
+ * the `reservations_payments_notifications` migration — there is no
+ * `@@unique` here on purpose; a full unique constraint would also reject a
+ * second CANCELLED or EXPIRED reservation for the same pair, which is exactly
+ * what the partial index must allow.
+ */
+model Reservation {
+  id                      String            @id @default(uuid()) @db.Uuid
+  code                    String            @unique
+  tripId                  String            @map("trip_id") @db.Uuid
+  customerId              String            @map("customer_id") @db.Uuid
+  status                  ReservationStatus @default(HELD)
+  holdExpiresAt           DateTime?         @map("hold_expires_at") @db.Timestamptz
+  // Frozen at creation: editing the trip's price afterwards never changes an
+  // existing reservation. Propagating a price change is an explicit Phase 2B
+  // operation, not an automatic side effect of editing the trip.
+  totalPriceCents         Int               @map("total_price_cents")
+  minimumDepositCents     Int               @map("minimum_deposit_cents")
+  // Denormalized on purpose, updated in the same transaction as the `Payment`
+  // row that moves it. `Payment` rows are always the source of truth; the
+  // nightly reconciliation job compares this column against them and alerts
+  // on drift (see `NotificationDelivery`).
+  paidCents               Int               @default(0) @map("paid_cents")
+  // Declared now, filled starting Phase 2B.
+  creditCents             Int               @default(0) @map("credit_cents")
+  paymentDeadline         DateTime          @map("payment_deadline") @db.Date
+  source                  ReservationSource
+  createdById             String?           @map("created_by") @db.Uuid
+  cancellationRequestedAt DateTime?         @map("cancellation_requested_at") @db.Timestamptz
+  cancellationReason      String?           @map("cancellation_reason")
+  cancelledAt             DateTime?         @map("cancelled_at") @db.Timestamptz
+  cancelledById           String?           @map("cancelled_by") @db.Uuid
+  isBackfilled            Boolean           @default(false) @map("is_backfilled")
+  createdAt               DateTime          @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt               DateTime          @updatedAt @map("updated_at") @db.Timestamptz
+
+  trip        Trip            @relation(fields: [tripId], references: [id])
+  customer    CustomerProfile @relation(fields: [customerId], references: [userId])
+  createdBy   User?           @relation("ReservationCreatedBy", fields: [createdById], references: [id])
+  cancelledBy User?           @relation("ReservationCancelledBy", fields: [cancelledById], references: [id])
+  payments    Payment[]
+
+  @@index([tripId])
+  @@index([customerId])
+  @@map("reservations")
+}
+
+model Payment {
+  id                 String          @id @default(uuid()) @db.Uuid
+  reservationId      String          @map("reservation_id") @db.Uuid
+  amountCents        Int             @map("amount_cents")
+  method             PaymentMethod
+  status             PaymentStatus
+  // Kept apart from `recordedAt` so Phase 2B's historical capture works: reports
+  // use `paidAt`, so a payment made in March but captured in September still
+  // appears in March.
+  paidAt             DateTime?       @map("paid_at") @db.Timestamptz
+  recordedAt         DateTime        @default(now()) @map("recorded_at") @db.Timestamptz
+  provider           PaymentProvider
+  providerIntentId   String?         @map("provider_intent_id")
+  // OXXO only. The voucher expires at the same time as the hold (see
+  // `Reservation.holdExpiresAt`), so the system never confirms a payment for a
+  // seat that has already been released.
+  providerVoucherUrl String?         @map("provider_voucher_url")
+  voucherExpiresAt   DateTime?       @map("voucher_expires_at") @db.Timestamptz
+  // Receipt fields: declared now, filled starting Phase 2B. Included here so
+  // the table is not migrated twice.
+  receiptNumber      String?         @map("receipt_number")
+  receiptKey         String?         @map("receipt_key")
+  receiptSentAt      DateTime?       @map("receipt_sent_at") @db.Timestamptz
+  recordedById       String?         @map("recorded_by") @db.Uuid
+  isBackfilled       Boolean         @default(false) @map("is_backfilled")
+  notes              String          @default("")
+  createdAt          DateTime        @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt          DateTime        @updatedAt @map("updated_at") @db.Timestamptz
+
+  reservation Reservation @relation(fields: [reservationId], references: [id], onDelete: Cascade)
+  recordedBy  User?       @relation("PaymentRecordedBy", fields: [recordedById], references: [id])
+
+  @@index([reservationId])
+  @@map("payments")
+}
+
+/**
+ * Exists purely for webhook idempotency: Stripe retries webhook deliveries,
+ * and without this table a retry would duplicate a payment. The primary key
+ * is Stripe's own event id (e.g. `evt_...`), not a generated UUID.
+ */
+model StripeEvent {
+  stripeEventId String   @id @map("stripe_event_id")
+  type          String
+  payload       Json
+  processedAt   DateTime @default(now()) @map("processed_at") @db.Timestamptz
+
+  @@map("stripe_events")
+}
+
+/**
+ * The minimum inbox. Every notification produces two rows, one EMAIL and one
+ * INBOX, so a customer's in-app inbox shows exactly what was emailed to them.
+ * Keyed by `user_id`, not `customer_id`: three Phase 2A alerts go to staff
+ * rather than customers (the cancellation request, the orphan OXXO payment,
+ * and the nightly `paid_cents` drift alert), and staff are `User` rows
+ * without a `CustomerProfile`, so a customer-scoped FK cannot hold them. This
+ * one table serves both audiences; the customer inbox filters by the
+ * authenticated user's own id.
+ */
+model NotificationDelivery {
+  id            String              @id @default(uuid()) @db.Uuid
+  userId        String              @map("user_id") @db.Uuid
+  eventType     String              @map("event_type")
+  channel       NotificationChannel
+  renderedTitle String              @map("rendered_title")
+  renderedBody  String              @map("rendered_body")
+  status        NotificationStatus  @default(PENDING)
+  sentAt        DateTime?           @map("sent_at") @db.Timestamptz
+  readAt        DateTime?           @map("read_at") @db.Timestamptz
+  error         String?
+  createdAt     DateTime            @default(now()) @map("created_at") @db.Timestamptz
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@map("notification_deliveries")
 }
