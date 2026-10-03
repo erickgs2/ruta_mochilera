@@ -369,6 +369,62 @@ describe('trip service', () => {
     expect(search.ok && search.value).toHaveLength(1);
   });
 
+  it('summarizes five trips with correct availableSeats and departure-date ordering', async () => {
+    // Regression guard for `listTrips` over several trips at once: each
+    // summary's shape, its `availableSeats` (derived through the batched
+    // `committedSeatsForTrips`, still the Phase 1 stub returning zero for
+    // every id -- see the comment on that helper), and the overall ordering
+    // by `departureDate` ascending. This passes against both the per-trip
+    // loop and the batched call introduced alongside this test: the stub
+    // issues no queries either way, so it cannot tell the two apart -- it
+    // only pins the observable output. See Task 1's ruling on why the
+    // query-count assertion itself belongs to Task 3 instead.
+    const seeds = [
+      { name: 'Trip E', departureDate: new Date('2026-12-05'), totalCapacity: 10, preSoldSeats: 2 },
+      { name: 'Trip A', departureDate: new Date('2026-12-01'), totalCapacity: 20, preSoldSeats: 0 },
+      { name: 'Trip D', departureDate: new Date('2026-12-04'), totalCapacity: 15, preSoldSeats: 15 },
+      { name: 'Trip B', departureDate: new Date('2026-12-02'), totalCapacity: 8, preSoldSeats: 3 },
+      { name: 'Trip C', departureDate: new Date('2026-12-03'), totalCapacity: 5, preSoldSeats: 1 },
+    ];
+
+    for (const seed of seeds) {
+      const result = await createTrip(db, actorWith(['trip.create', 'data.backfill']), {
+        ...baseInput,
+        departureDate: seed.departureDate,
+        returnDate: new Date(seed.departureDate.getTime() + 6 * 24 * 60 * 60 * 1000),
+        totalCapacity: seed.totalCapacity,
+        preSoldSeats: seed.preSoldSeats,
+        isBackfilled: seed.preSoldSeats > 0,
+        translations: [
+          { locale: 'es', name: seed.name, description: 'd', itinerary: 'i', includes: 'inc', excludes: 'exc' },
+        ],
+      });
+      expect(result.ok).toBe(true);
+    }
+
+    const listed = await listTrips(db, {});
+    expect(listed.ok).toBe(true);
+    if (!listed.ok) return;
+
+    expect(listed.value).toHaveLength(5);
+    expect(listed.value.map((trip) => trip.name)).toEqual([
+      'Trip A',
+      'Trip B',
+      'Trip C',
+      'Trip D',
+      'Trip E',
+    ]);
+    expect(listed.value.map((trip) => trip.availableSeats)).toEqual([20, 5, 4, 0, 8]);
+    for (const trip of listed.value) {
+      expect(trip).toMatchObject({
+        id: expect.any(String),
+        slug: expect.any(String),
+        status: 'DRAFT',
+        pricePerSeatCents: expect.any(Number),
+      });
+    }
+  });
+
   it('reprices the trip when totalCapacity changes through updateTrip', async () => {
     // Regression test for a cross-domain gap found in Task 13: capacity is a
     // divisor in the per-seat price formula, but `updateTrip` lives here and

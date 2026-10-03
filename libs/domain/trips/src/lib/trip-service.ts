@@ -107,6 +107,22 @@ async function committedSeats(_db: DbTransactionClient, _tripId: string) {
   return { activeReservations: 0, liveHolds: 0 };
 }
 
+/**
+ * Batched sibling of `committedSeats`, for callers that need the figure for
+ * several trips at once -- today only `listTrips`. Still the Phase 1 stub:
+ * returns zero for every id in `tripIds`, mirroring `committedSeats` above,
+ * until the reservations domain task fills both with real queries against
+ * `Reservation`. Exists so `listTrips` can issue this lookup once instead of
+ * once per trip inside its `Promise.all`; `toDto` and `updateTrip` keep using
+ * the single-trip `committedSeats` since they only ever need one id.
+ */
+async function committedSeatsForTrips(
+  _db: Db,
+  tripIds: string[]
+): Promise<Map<string, { activeReservations: number; liveHolds: number }>> {
+  return new Map(tripIds.map((tripId) => [tripId, { activeReservations: 0, liveHolds: 0 }]));
+}
+
 async function toDto(db: Db, tripId: string): Promise<TripDto> {
   const trip = await db.trip.findUniqueOrThrow({ where: { id: tripId }, include: TRIP_SHAPE });
   const committed = await committedSeats(db, tripId);
@@ -500,30 +516,32 @@ export async function listTrips(
     orderBy: { departureDate: 'asc' },
   });
 
-  // Routed through `committedSeats`, the same stub `toDto` and `updateTrip`
-  // use, so the list view's numbers move in lockstep with the detail view's
-  // once Phase 2 fills the stub in -- an inline `{ activeReservations: 0,
-  // liveHolds: 0 }` here would silently diverge from the rest of this file
-  // the day that happens.
-  const summaries = await Promise.all(
-    trips.map(async (trip) => {
-      const committed = await committedSeats(db, trip.id);
-      return {
-        id: trip.id,
-        slug: trip.slug,
-        status: trip.status,
-        name: trip.translations[0]?.name ?? trip.slug,
-        departureDate: trip.departureDate,
+  // Routed through `committedSeatsForTrips`, the batched sibling of the
+  // stub `toDto` and `updateTrip` use, so the list view's numbers move in
+  // lockstep with the detail view's once Phase 2 fills both stubs in -- an
+  // inline `{ activeReservations: 0, liveHolds: 0 }` here would silently
+  // diverge from the rest of this file the day that happens. Called once for
+  // every trip in the page rather than once per trip inside the `map` below,
+  // so this list does not grow a query per trip once the stub is filled.
+  const committedByTripId = await committedSeatsForTrips(db, trips.map((trip) => trip.id));
+
+  const summaries = trips.map((trip) => {
+    const committed = committedByTripId.get(trip.id) ?? { activeReservations: 0, liveHolds: 0 };
+    return {
+      id: trip.id,
+      slug: trip.slug,
+      status: trip.status,
+      name: trip.translations[0]?.name ?? trip.slug,
+      departureDate: trip.departureDate,
+      totalCapacity: trip.totalCapacity,
+      availableSeats: availableSeats({
         totalCapacity: trip.totalCapacity,
-        availableSeats: availableSeats({
-          totalCapacity: trip.totalCapacity,
-          preSoldSeats: trip.preSoldSeats,
-          ...committed,
-        }),
-        pricePerSeatCents: trip.pricePerSeatCents,
-      };
-    })
-  );
+        preSoldSeats: trip.preSoldSeats,
+        ...committed,
+      }),
+      pricePerSeatCents: trip.pricePerSeatCents,
+    };
+  });
 
   return ok(summaries);
 }

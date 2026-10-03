@@ -16,6 +16,14 @@ describe('roundUpToPeso', () => {
   });
 });
 
+describe('roundUpToPeso with negative input', () => {
+  it('rounds away from zero so a refund is never understated', () => {
+    expect(roundUpToPeso(-150)).toBe(-200);
+    expect(roundUpToPeso(-100)).toBe(-100);
+    expect(roundUpToPeso(-1)).toBe(-100);
+  });
+});
+
 describe('formatMoney', () => {
   it('formats Spanish amounts with the MXN suffix', () => {
     expect(formatMoney(1250000, 'es')).toBe('$12,500.00 MXN');

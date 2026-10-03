@@ -40,3 +40,19 @@ stateDiagram-v2
     COMPLETED --> [*]
     CANCELLED --> [*]
 ```
+
+## Cupo en el listado de viajes
+
+`listTrips` no recalcula el cupo disponible viaje por viaje: junta todos los
+ids de la página y los resuelve en una sola llamada a
+`committedSeatsForTrips`, la variante agrupada de `committedSeats` (ver
+`docs/business-rules/trips.md`, sección «Cupo disponible»). El detalle de un
+viaje sigue usando la variante de un solo id.
+
+```mermaid
+flowchart TD
+    A[listTrips] --> B[Busca viajes de la página]
+    B --> C["committedSeatsForTrips(db, ids)<br/>una sola llamada"]
+    C --> D[Mapa id → comprometido]
+    D --> E["Para cada viaje:<br/>availableSeats = cupo − pre-vendido − comprometido"]
+```

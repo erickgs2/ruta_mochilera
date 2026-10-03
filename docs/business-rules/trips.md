@@ -108,6 +108,15 @@ cupo al editar — pasan por este mismo stub, así que los tres cambian en
 conjunto el día que la Fase 2 lo sustituya por las consultas reales contra
 `Reservation`; ninguno calcula por su cuenta.
 
+`listTrips` no llama a `committedSeats` una vez por viaje: usa una variante
+agrupada, `committedSeatsForTrips(db, tripIds)`, que recibe todos los ids de la
+página y devuelve un mapa. Hoy, con el stub devolviendo cero para cada id, esto
+no cambia ninguna consulta — pero en cuanto la Fase 2 rellene ambas variantes
+con consultas reales contra `Reservation`, la forma agrupada evita que el
+listado emita una consulta por viaje (un N+1 por el tamaño de la página). El
+detalle de un viaje (`toDto`) y la validación de cupo al editar (`updateTrip`)
+siguen usando la variante de un solo viaje, porque ahí sólo hace falta un id.
+
 ## Validaciones al crear y editar
 
 | Regla | Al crear | Al editar |

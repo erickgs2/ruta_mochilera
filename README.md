@@ -66,6 +66,20 @@ En esta máquina, PostgreSQL corre nativo en `localhost:5432`; ver la sección
 `infra/compose/compose.dev.yml` / `compose.test.yml` como alternativa en
 Docker.
 
+### Requisitos externos de la Fase 2A
+
+`.env.example` y `.env.prod.example` documentan las claves de Stripe y Resend
+(`STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PUBLISHABLE_KEY`,
+`RESEND_API_KEY`, `RESEND_FROM_ADDRESS`) y los IDs de cliente OAuth de Google y
+Apple (`GOOGLE_OAUTH_CLIENT_ID`, `APPLE_OAUTH_CLIENT_ID`). Ninguna de las
+cuatro cuentas externas existe todavía en este entorno: las dos primeras
+bloquean cobro real y entrega de correo (ver la tabla de «Requisitos externos
+que bloquean tareas» en `docs/superpowers/plans/2026-10-03-fase-2a-reservas-y-pagos.md`).
+Los dos IDs de OAuth se dejan **vacíos a propósito** — vacío significa
+"proveedor desactivado", que es como el login social se degrada mientras esas
+cuentas no estén listas; no son un marcador `CHANGE_ME` porque un valor vacío
+es un estado válido en producción, no sólo un recordatorio de desarrollo.
+
 ## Scripts
 
 | Comando | Qué hace |
