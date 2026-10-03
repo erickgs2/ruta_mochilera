@@ -1,9 +1,13 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { closeTestDb, prepareTestDb, resetDatabase, withTestDb } from '@rm/db/testing';
 import type { Db, DbTransactionClient } from '@rm/db';
-import { availableSeats } from '@rm/domain-trips';
 import { fail, ok, type Result } from '@rm/shared-utils';
-import { countCommittedSeats, countCommittedSeatsForTrips, lockTripForCapacity } from './capacity';
+import {
+  availableSeats,
+  countCommittedSeats,
+  countCommittedSeatsForTrips,
+  lockTripForCapacity,
+} from './capacity';
 
 const db = withTestDb();
 
@@ -147,6 +151,26 @@ async function claimSeat(
     return ok({ id: reservation.id });
   });
 }
+
+describe('availableSeats', () => {
+  it('subtracts pre-sold seats, active reservations and live holds', () => {
+    expect(
+      availableSeats({ totalCapacity: 20, preSoldSeats: 5, activeReservations: 3, liveHolds: 2 })
+    ).toBe(10);
+  });
+
+  it('counts a trip with no commitments as fully available', () => {
+    expect(
+      availableSeats({ totalCapacity: 20, preSoldSeats: 0, activeReservations: 0, liveHolds: 0 })
+    ).toBe(20);
+  });
+
+  it('never returns a negative number', () => {
+    expect(
+      availableSeats({ totalCapacity: 5, preSoldSeats: 4, activeReservations: 3, liveHolds: 0 })
+    ).toBe(0);
+  });
+});
 
 describe('capacity', () => {
   beforeAll(() => prepareTestDb());

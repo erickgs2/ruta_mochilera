@@ -3,12 +3,12 @@ import { recordAudit } from '@rm/domain-audit';
 import { repriceTrip } from '@rm/domain-costing';
 import { requirePermission, type Actor } from '@rm/domain-rbac';
 import {
+  availableSeats,
   countCommittedSeats,
   countCommittedSeatsForTrips,
   lockTripForCapacity,
 } from '@rm/domain-reservations';
 import { fail, isPastDate, ok, type Result } from '@rm/shared-utils';
-import { availableSeats } from './capacity';
 import { slugify } from './slug';
 import { canTransition, type TripStatus } from './trip-status';
 

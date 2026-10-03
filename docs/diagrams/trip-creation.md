@@ -48,8 +48,9 @@ ids de la página y los resuelve en una sola llamada a
 `committedSeatsForTrips`, la variante agrupada de `committedSeats` (ver
 `docs/business-rules/trips.md`, sección «Cupo disponible»). El detalle de un
 viaje sigue usando la variante de un solo id. Ambas delegan en
-`libs/domain/reservations`; el conteo real se documenta en
-`docs/diagrams/trip-reservation.md`.
+`libs/domain/reservations`, que es también de donde `trip-service.ts` importa
+`availableSeats`, la resta que aparece en el último nodo del diagrama; el
+conteo real se documenta en `docs/diagrams/trip-reservation.md`.
 
 ```mermaid
 flowchart TD

@@ -1,9 +1,8 @@
 import type { DbTransactionClient } from '@rm/db';
 
 /**
- * The two commitment counts the capacity formula subtracts from a trip's
- * total: see `availableSeats` in `@rm/domain-trips` and §5.1 of the Phase 2A
- * design spec.
+ * The two commitment counts `availableSeats` subtracts from a trip's total:
+ * see §5.1 of the Phase 2A design spec.
  */
 export interface CommittedSeats {
   /** Reservations in `ACTIVE`: the deposit was covered and the seat is taken. */
@@ -20,12 +19,44 @@ function noCommitments(): CommittedSeats {
 }
 
 /**
+ * Everything the capacity formula needs: the trip's own two numbers plus the
+ * commitments `countCommittedSeats` returns. Spelled as an extension of
+ * `CommittedSeats` rather than repeating its two fields, so there is one
+ * definition of what "committed" means and a caller can spread a count
+ * straight into it.
+ */
+export interface CapacityInput extends CommittedSeats {
+  totalCapacity: number;
+  /** Seats already sold outside the system, captured during the hot start. */
+  preSoldSeats: number;
+}
+
+/**
+ * Available seats are always derived, never stored. A mutable counter is
+ * exactly where overselling appears when two people book the last seat in the
+ * same second.
+ *
+ * A caller that is about to *write* against this number -- taking a seat, or
+ * shrinking a trip's capacity -- must compute it inside a transaction that
+ * has already locked the trip row with `lockTripForCapacity`; otherwise two
+ * of them read the same count and both proceed. Read-only callers (`toDto`,
+ * `listTrips` in `@rm/domain-trips`) need no lock: they report a number that
+ * is a snapshot by nature.
+ */
+export function availableSeats(input: CapacityInput): number {
+  return Math.max(
+    0,
+    input.totalCapacity - input.preSoldSeats - input.activeReservations - input.liveHolds
+  );
+}
+
+/**
  * Locks the trip's row for the rest of the caller's transaction, so that the
  * read-decide-insert sequence a reservation performs cannot interleave with
  * another one for the same trip.
  *
- * Available seats are derived, never stored (`availableSeats`), which means
- * two concurrent reservations would otherwise both read the same commitment
+ * Available seats are derived, never stored (see `availableSeats` above),
+ * which means two concurrent reservations would both read the same commitment
  * count, both find the last seat free, and both insert. Under READ COMMITTED
  * -- PostgreSQL's default, and what Prisma's interactive transactions use --
  * the second transaction blocks here until the first commits, and the count

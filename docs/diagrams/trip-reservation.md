@@ -9,6 +9,12 @@ El orden importa: **primero** el bloqueo, después el conteo, después la
 decisión y al final la escritura. Contar antes de bloquear deja exactamente la
 ventana que produce la sobreventa.
 
+Los tres pasos centrales —`lockTripForCapacity`, `countCommittedSeats` y
+`availableSeats`— viven todos en
+`libs/domain/reservations/src/lib/capacity.ts` desde la Tarea 4 (ver
+`docs/business-rules/reservations.md`, «Por qué la fórmula vive aquí y no en
+viajes»).
+
 ```mermaid
 flowchart TD
     A[Intento de reserva] --> B[("BEGIN (READ COMMITTED)")]

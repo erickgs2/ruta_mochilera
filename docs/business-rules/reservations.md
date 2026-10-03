@@ -33,11 +33,12 @@ nadie tenga que tocar un contador. Por eso la expiración de un apartado no
 necesita ninguna escritura para liberar el asiento; el job que marca `EXPIRED`
 (§5.3 de la spec) sólo existe para cerrar el Payment Intent y dejar constancia.
 
-El cálculo vive en `availableSeats` (`@rm/domain-trips`, la fórmula pura) y los
-conteos en `libs/domain/reservations/src/lib/capacity.ts`:
+Fórmula y conteos viven juntos en
+`libs/domain/reservations/src/lib/capacity.ts`:
 
 | Función | Para qué |
 |---|---|
+| `availableSeats(input)` | La resta pura, sin base de datos: cupo − pre-vendido − comprometido, nunca negativa. |
 | `countCommittedSeats(db, tripId)` | Conteo de un viaje, en una sola consulta agrupada. |
 | `countCommittedSeatsForTrips(db, tripIds)` | Lo mismo para varios viajes en **una** consulta; devuelve un mapa con ceros para los viajes sin reservas, nunca con entradas ausentes. |
 | `lockTripForCapacity(tx, tripId)` | `SELECT id FROM trips WHERE id = $1 FOR UPDATE`. |
@@ -113,6 +114,19 @@ es código que parece protegido y no lo está.
 `updateTrip` (`@rm/domain-trips`) toma el mismo bloqueo antes de comprobar
 `CAPACITY_BELOW_COMMITTED`, por la misma razón: reducir el cupo es decidir
 contra un conteo que otra reserva puede estar a punto de invalidar.
+
+### Por qué la fórmula vive aquí y no en viajes
+
+`availableSeats` estuvo hasta la Tarea 4 en `libs/domain/trips`, con el conteo
+en reservas. Media fórmula en cada librería significaba que viajes importaba
+`countCommittedSeats` de reservas y reservas importaba `availableSeats` de
+viajes: un ciclo en el grafo de dependencias. La §5.1 de la spec coloca la
+regla de cupo en reservas y el conteo ya estaba aquí, así que la resta se mudó
+con sus pruebas y la única arista que queda es `trips → reservations`.
+
+`CapacityInput` se declara como una extensión de `CommittedSeats` —cupo total
+y pre-vendidos encima de los dos conteos— para que exista una sola definición
+de «comprometido» y quien cuenta pueda pasar el resultado directo a la resta.
 
 ### El índice parcial no sustituye al bloqueo
 

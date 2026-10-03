@@ -97,10 +97,15 @@ dos personas reservan el último lugar en el mismo segundo.
 `pre_sold_seats` son los lugares vendidos fuera del sistema durante el arranque
 en caliente, que la agencia no quiso capturar uno por uno.
 
-Las reservas activas y los apartados vigentes se cuentan en
-`libs/domain/reservations` (`countCommittedSeats` y su forma agrupada), que es
-donde viven las reglas del modelo `Reservation`. **Los tres puntos donde se
-calcula el cupo** — el detalle de un viaje, el listado (`listTrips`) y la
+La fórmula entera vive en `libs/domain/reservations`, que es donde viven las
+reglas del modelo `Reservation`: tanto el conteo de reservas activas y
+apartados vigentes (`countCommittedSeats` y su forma agrupada) como la resta
+final (`availableSeats`). `trip-service.ts` la importa de ahí; hasta la
+Tarea 4 la resta vivía en `libs/domain/trips/src/lib/capacity.ts` y el conteo
+en reservas, de modo que cada librería importaba la mitad de la otra —un ciclo
+en el grafo de dependencias por partir una sola fórmula en dos. Ahora la única
+arista es `trips → reservations`. **Los tres puntos donde se calcula el
+cupo** — el detalle de un viaje, el listado (`listTrips`) y la
 validación de cupo al editar — pasan por los mismos dos ayudantes de
 `trip-service.ts` (`committedSeats` y `committedSeatsForTrips`), que no hacen
 más que delegar ahí; ninguno cuenta por su cuenta.
