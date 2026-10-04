@@ -119,6 +119,21 @@ async function lockReservationForPayment(
  * human decision. `paid_cents` still moves, because the nightly
  * reconciliation compares it against the `SUCCEEDED` payment rows and a
  * payment recorded without it would be permanent, false drift.
+ *
+ * **Task 8 hardening.** The second write used to be a plain `update` keyed
+ * only on `id`. That was never exploitable in practice -- the first write
+ * above already re-reads the row under the lock this function's caller took
+ * (or this function's own first write takes), and the `if` that guards this
+ * write already refuses to fire once that fresh read shows anything but
+ * `HELD` -- so no sequence of events was ever found, concurrent or not, that
+ * made the old unconditional write visibly wrong (see the "does not
+ * resurrect..." test in `payment-service.spec.ts`, which passes against the
+ * old code too). It is written as a conditional `updateMany` anyway, now that
+ * `expireHolds` (apps/worker) is the first other writer ever to contend for
+ * this exact row: this makes the write correct *by its own WHERE clause*,
+ * the same idiom `confirmPayment`'s own PENDING -> SUCCEEDED transition
+ * already uses, rather than correct only as a consequence of how long some
+ * other function happens to hold a lock.
  */
 async function applyConfirmedPayment(
   tx: DbTransactionClient,
@@ -131,8 +146,8 @@ async function applyConfirmedPayment(
   });
 
   if (reservation.status === 'HELD' && reservation.paidCents >= reservation.minimumDepositCents) {
-    await tx.reservation.update({
-      where: { id: reservationId },
+    await tx.reservation.updateMany({
+      where: { id: reservationId, status: 'HELD' },
       data: { status: 'ACTIVE', holdExpiresAt: null },
     });
   }

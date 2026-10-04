@@ -779,6 +779,69 @@ describe('payment service', () => {
       expect(after.paidCents).toBe(150_000);
       expect(after.paidCents).toBe(await succeededTotal(db, reservation.id));
     });
+
+    it('does not resurrect a reservation that a concurrent hold-expiry already won the race and committed EXPIRED', async () => {
+      // Carried from Task 5's review (see Task 8's brief): `applyConfirmedPayment`
+      // activates a reservation with an `update` keyed only on `id`, unconditional
+      // on status. `expireHolds` (apps/worker, Task 8) is the first other writer
+      // that ever contends for this exact row, so this proves `confirmPayment`
+      // cannot revive a reservation `expireHolds` has already expired, even when
+      // the two are racing for the same row rather than running one after the
+      // other. The complementary ordering -- `expireHolds` arriving after a
+      // payment has *already* activated the reservation -- is `expireHolds`'s own
+      // responsibility and is proved in `apps/worker`'s `expire-holds.spec.ts`,
+      // where that job's write (not this one) is what must stay conditional.
+      const reservation = await seedReservation(db, {
+        minimumDepositCents: 100_000,
+        holdExpiresAt: new Date(Date.now() - HOUR_MS), // already past -- a real expireHolds candidate
+      });
+      await seedPendingPayment(reservation.id, 'pi_expiring_race', 150_000);
+
+      const expiryHasLocked = deferred();
+      const expiryMayCommit = deferred();
+      const pausingExpiry = clientPausingAt(
+        db,
+        { model: 'reservation', operation: 'updateMany', when: 'after' },
+        async () => {
+          expiryHasLocked.resolve();
+          await expiryMayCommit.promise;
+        }
+      );
+
+      // Stands in for one row of `expireHolds`'s own work: a single
+      // conditional `UPDATE ... WHERE status = 'HELD'`, exactly the shape
+      // Task 8 gives that job. Takes the row lock first and holds it,
+      // uncommitted, while `confirmPayment` starts and blocks behind it --
+      // a real wait enforced by PostgreSQL, not a hand-wavy precondition.
+      const expiring = pausingExpiry.$transaction((tx) =>
+        tx.reservation.updateMany({
+          where: { id: reservation.id, status: 'HELD' },
+          data: { status: 'EXPIRED', holdExpiresAt: null },
+        })
+      );
+
+      const confirming = (async () => {
+        await expiryHasLocked.promise;
+        return confirmPayment(db, { providerIntentId: 'pi_expiring_race', paidAt: new Date() });
+      })();
+
+      // Long enough for `confirmPayment` to reach the row lock and queue
+      // behind it before the expiry transaction commits.
+      await settle(200);
+      expiryMayCommit.resolve();
+
+      const [expired, confirmed] = await Promise.all([expiring, confirming]);
+
+      expect(expired.count).toBe(1);
+      expect(confirmed.ok).toBe(true);
+      const after = await db.reservation.findUniqueOrThrow({ where: { id: reservation.id } });
+      // The money is visible either way (paid_cents still moves); what must
+      // not happen is the confirmation silently overwriting the expiry that
+      // already committed.
+      expect(after.paidCents).toBe(150_000);
+      expect(after.status).toBe('EXPIRED');
+      expect(after.holdExpiresAt).toBeNull();
+    });
   });
 
   describe('listPaymentsForCustomer', () => {

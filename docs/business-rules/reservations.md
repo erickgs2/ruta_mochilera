@@ -179,15 +179,83 @@ nunca un efecto automático de editar el viaje.
 
 `paid_cents` está desnormalizado a propósito: se actualiza en la misma
 transacción que el `Payment` que lo mueve, pero la verdad siempre son los
-registros `Payment`. Un job nocturno de conciliación (Fase 2A, §6 de la spec)
-compara `paid_cents` contra la suma real de pagos y avisa si divergen —ver
-`NotificationDelivery` en `payments.md` (pendiente) y `notifications.md`
-(pendiente).
+registros `Payment`. Un job nocturno de conciliación (Fase 2A, §6 de la spec,
+`reconcilePaidCents` — Tarea 8) compara `paid_cents` contra la suma real de
+pagos y avisa si divergen; ver la sección dedicada en `payments.md` y la
+frontera transaccional del aviso en `notifications.md`.
 
 `credit_cents` se declara desde ahora en el esquema pero sólo lo llena la
 Fase 2B (saldo a favor por pagos retroactivos).
 
-## Crear una reserva (§5.2)
+## Los jobs de fondo: `expireHolds` y `warnExpiringHolds` (Tarea 8)
+
+Implementados en `apps/worker/src/jobs/`, no en `libs/domain/reservations`:
+son **funciones puras del cliente de base** (`async function(db, queue)`,
+sin pg-boss dentro), para poder probarlas invocándolas dos veces seguidas
+sin levantar un planificador. `apps/worker/src/main.ts` es lo único que sabe
+que existe pg-boss; registra ambas con su cadencia y nada más.
+
+| Job | Cadencia | Qué hace |
+|---|---|---|
+| `expireHolds` | cada 5 minutos | Pasa a `EXPIRED` cada `HELD` con `hold_expires_at` vencido, cancela sus Payment Intents pendientes (ver abajo) y avisa `HOLD_EXPIRED` al cliente. |
+| `warnExpiringHolds` | cada hora | Avisa `HOLD_EXPIRING` a quien le quede menos de un cuarto del plazo de su apartado. |
+
+### `expireHolds`: por qué la escritura es condicional, no por `id`
+
+El `UPDATE` real es `updateMany({ where: { id, status: 'HELD',
+holdExpiresAt: { lt: now } }, data: { status: 'EXPIRED', holdExpiresAt: null
+} })` — nunca un `update` por `id` a solas. La razón es una condición de
+carrera heredada de la revisión de la Tarea 5: este job lee sus candidatos
+con un `findMany` sin bloqueo y después abre una transacción por fila para
+escribirla, así que nada impide que un pago concurrente active esa misma
+reservación en la ventana que queda entre la lectura y la escritura.
+Condicionar la escritura a `status: 'HELD'` hace que, si eso ocurre, la
+escritura de este job no afecte ninguna fila (encuentra `ACTIVE`, no
+`HELD`) en vez de resucitar `EXPIRED` por encima de una activación legítima
+que ya se confirmó. `expire-holds.spec.ts`
+("does not resurrect or clobber...") fuerza exactamente esa intercalación
+con un cliente que pausa la transacción de `expireHolds` justo antes de
+escribir, deja correr un `recordPayment` completo en esa ventana, y
+comprueba que la reservación termina `ACTIVE`, no `EXPIRED`. La misma
+sección en `payments.md` documenta el refuerzo paralelo del otro lado de
+esa misma fila.
+
+**Idempotente** por la misma condición: una segunda pasada sobre una fila ya
+`EXPIRED` no afecta ninguna fila (`status: 'HELD'` ya no coincide), así que
+no reenvía el aviso ni vuelve a intentar cancelar los Payment Intents.
+
+**Cancelación de Payment Intents (§5.3).** El puerto de pagos todavía no
+existe en la Tarea 8 -- la Tarea 9 lo construye. `expireHolds` recibe un
+tercer parámetro opcional, `cancelPendingPaymentIntents`, sin invocarlo aquí
+más que como un hueco inyectado: el mismo stub honesto que la Fase 1 dejó en
+`committedSeats` en vez de inventar una dependencia que esta tarea no puede
+probar de verdad.
+
+### `warnExpiringHolds`: el umbral es relativo al apartado, no fijo
+
+```
+threshold_hours = max(trip.hold_ttl_hours / 4, 1)
+avisa si 0 < (hold_expires_at − ahora) ≤ threshold_hours
+```
+
+Un umbral fijo ("faltan 18 horas") avisaría de un apartado de 6 horas en el
+instante mismo de reservar. Por eso es una fracción del propio
+`hold_ttl_hours` del viaje, con un piso de una hora: un apartado de 72 horas
+avisa dentro de sus últimas 18; uno de 6 horas, dentro de su última hora y
+media, nunca al crearse (6h > 1.5h en ese momento).
+`warn-expiring-holds.spec.ts` prueba ambos viajes exactamente para
+comprobar que el de 6 horas no avisa de inmediato.
+
+No avisa si `paid_cents` ya alcanzó `minimum_deposit_cents` (debería estar
+`ACTIVE` y por tanto fuera del filtro `status: 'HELD'`, pero la comprobación
+es explícita de todos modos) ni si ya avisó antes de esa misma reservación.
+
+**Idempotente por `reservationId`, no sólo por `customerId`.** Antes de
+avisar, consulta `NotificationDelivery` por `(reservation_id, event_type)`.
+`reservation_id` existe en esa tabla desde la Tarea 8 — ver la sección
+dedicada en `notifications.md` para por qué `(customer_id, event_type)` solo
+era ambiguo (un cliente puede tener más de una reservación `HELD` a la
+vez) y por qué este cambio de esquema no estaba en el plan original.
 
 `createReservation(db, { tripId, customerId })`
 (`libs/domain/reservations/src/lib/reservation-service.ts`) hace **todo**
