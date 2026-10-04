@@ -1,4 +1,3 @@
-import { DateTime } from 'luxon';
 import type {
   Db,
   DbTransactionClient,
@@ -10,7 +9,7 @@ import type {
 } from '@rm/db';
 import { recordAudit } from '@rm/domain-audit';
 import { organizationTimeZone } from '@rm/domain-settings';
-import { fail, monthStartsBetween, ok, type Result } from '@rm/shared-utils';
+import { endOfCalendarDay, fail, monthStartsBetween, ok, type Result } from '@rm/shared-utils';
 import { suggestedMonthly } from './instalment';
 
 export interface RecordPaymentInput {
@@ -346,21 +345,4 @@ export async function suggestedMonthlyForReservation(
     timeZone
   );
   return ok(suggestedMonthly(balanceOf(reservation), months));
-}
-
-/**
- * Turns a date-only value -- a `@db.Date` column, which Prisma round-trips as
- * UTC midnight of that calendar date -- into an instant inside that same
- * calendar day in `timeZone`.
- *
- * Without this the deadline is read as an instant: in `America/Mexico_City`
- * (UTC-6), "1 March" arrives as 28 February at 18:00, and the month-start
- * count silently loses the customer's last payment opportunity. Same reason
- * `isPastDate` in `@rm/shared-utils` compares calendar-day labels rather than
- * instants.
- */
-function endOfCalendarDay(date: Date, timeZone: string): Date {
-  const day = DateTime.fromJSDate(date, { zone: 'utc' }).toISODate();
-  if (!day) throw new Error('endOfCalendarDay received an invalid Date');
-  return DateTime.fromISO(day, { zone: timeZone }).endOf('day').toJSDate();
 }

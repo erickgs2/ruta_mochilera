@@ -51,3 +51,19 @@ export function isPastDate(date: Date, now: Date, timeZone: string): boolean {
   // as chronologically, so plain string comparison is correct here.
   return day < today;
 }
+
+/**
+ * Turns a date-only value -- a `@db.Date` column, which Prisma round-trips as
+ * UTC midnight of that calendar date -- into an instant inside that same
+ * calendar day in `timeZone`.
+ *
+ * Without this the deadline is read as an instant: in `America/Mexico_City`
+ * (UTC-6), "1 March" arrives as 28 February at 18:00, and the month-start
+ * count silently loses the customer's last payment opportunity. Same reason
+ * `isPastDate` above compares calendar-day labels rather than instants.
+ */
+export function endOfCalendarDay(date: Date, timeZone: string): Date {
+  const day = DateTime.fromJSDate(date, { zone: 'utc' }).toISODate();
+  if (!day) throw new Error('endOfCalendarDay received an invalid Date');
+  return DateTime.fromISO(day, { zone: timeZone }).endOf('day').toJSDate();
+}

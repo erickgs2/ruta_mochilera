@@ -180,7 +180,10 @@ instante: Prisma la devuelve como medianoche UTC de ese día. Leída como
 instante en una zona detrás de UTC cae en el mes anterior y el cliente pierde
 silenciosamente su última oportunidad de pago, así que antes de contar los
 días 01 se reancla en el día de calendario de la zona de la organización. Es
-el mismo cuidado que `isPastDate` aplica en `@rm/shared-utils`.
+el mismo cuidado que `isPastDate` aplica en `@rm/shared-utils`. El reanclaje
+en sí es `endOfCalendarDay`, que vivía en este módulo y ahora está junto a
+`isPastDate` y `monthStartsBetween` en `@rm/shared-utils/calendar.ts`; sin
+cambio de regla.
 
 El sistema jamás rechaza un abono por ser menor que la mensualidad sugerida.
 Es motivacional: se muestra en la app y se usa en los recordatorios.
