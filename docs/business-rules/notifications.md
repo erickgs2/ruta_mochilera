@@ -45,47 +45,80 @@ lista cerrada se aplica en la frontera del dominio en su lugar:
   error de compilación, no uno descubierto en producción. Es el mismo
   mecanismo que `STATUS_BY_CODE` usa para `DomainErrorCode`.
 
-## La frontera transaccional: las filas sí, el envío no
+## La frontera transaccional: las filas y el encolado sí, el envío no (Ruling 11, Tarea 8)
 
-`notifyCustomer(tx, email, input)` y `notifyAdmins(tx, email, input)` reciben
+`notifyCustomer(tx, queue, input)` y `notifyAdmins(tx, queue, input)` reciben
 el `DbTransactionClient` del llamador y escriben ambas filas (`EMAIL` e
-`INBOX`) a través de él. Esto es deliberado: un aviso de "pago confirmado"
-no debe sobrevivir si la transacción que confirmó ese pago se revierte por
-cualquier motivo posterior. La prueba de este comportamiento
-(`delivery-service.spec.ts`, "rolls back both delivery rows when the caller
-rolls back the enclosing transaction") abre una transacción, llama a
-`notifyCustomer` dentro de ella, fuerza un `throw` después, y comprueba que
-no sobrevive ninguna fila.
+`INBOX`) a través de él, exactamente como en la Tarea 7. Esto es deliberado:
+un aviso de "pago confirmado" no debe sobrevivir si la transacción que
+confirmó ese pago se revierte por cualquier motivo posterior. La prueba de
+este comportamiento (`delivery-service.spec.ts`, "rolls back both delivery
+rows and the queued send when the caller rolls back the enclosing
+transaction") abre una transacción, llama a `notifyCustomer` dentro de ella,
+fuerza un `throw` después, y comprueba que no sobrevive ninguna fila **ni el
+trabajo encolado** (ver más abajo).
 
-El envío real por correo (`EmailProvider.send`), en cambio, es un efecto
-externo irreversible: una vez que sale, ninguna reversión de Postgres lo
-deshace. Por eso la recomendación de la Fase 2A es enviar **después de
-confirmar** el hecho que origina el aviso, nunca antes — enviar dentro de
-una transacción que todavía puede deshacerse significa poder avisar de algo
-que nunca llegó a ser cierto.
+Lo que cambió en la Tarea 8 es qué pasa con el envío real. La Tarea 7 dejó
+escrito, en esta misma sección, que la única garantía disponible era
+disciplina del llamador — "invocar `notifyCustomer` como la última operación
+de la transacción" — porque esta base de código no tenía todavía una cola de
+salida (*outbox*) que desacoplara el envío de la transacción a nivel de
+infraestructura. La Tarea 8 trae pg-boss para los tres jobs de fondo, y
+pg-boss vive en **esta misma base de PostgreSQL**, lo que por primera vez
+hace posible la solución real: en vez de llamar a `EmailProvider.send`
+dentro de la transacción, `notifyCustomer`/`notifyAdmins` **encolan** un
+trabajo `send-notification-email` (`@rm/jobs`) a través de `tx`, usando el
+adaptador `fromPrisma` de pg-boss:
 
-**Contrato para quien llame a `notifyCustomer`/`notifyAdmins`:** la función
-hace las dos cosas (escribir las filas y disparar el envío) en una sola
-llamada, porque la firma de la Tarea 7 así lo pide y porque el fallo del
-envío debe quedar grabado en la misma fila que lo intentó. La disciplina que
-le corresponde al llamador es **invocarla como la última operación de su
-transacción** — después de que todo lo demás que podría fallar ya se
-escribió sin error. Hecho así, para el momento en que el correo sale, nada
-que quede en esa transacción puede todavía forzar una reversión. Esta base
-de código no tiene (todavía) una cola de salida (*outbox*) que desacople el
-envío de la transacción a nivel de infraestructura; esa disciplina de
-llamador es la garantía real disponible hoy, y queda documentada aquí para
-que la Fase 2B no la pierda de vista si se añade ese tipo de cola más
-adelante.
+```ts
+await queue.send(SEND_NOTIFICATION_EMAIL_JOB, { deliveryId: emailRow.id }, { db: fromPrisma(tx) });
+```
+
+`fromPrisma(tx)` envuelve el propio `DbTransactionClient` como el `IDatabase`
+que pg-boss necesita para ejecutar su `INSERT` en la tabla `job` — **la
+misma transacción, la misma conexión** que las dos filas de arriba. Si `tx`
+se revierte, el `INSERT` del trabajo se revierte con ella; no sobrevive ni
+la fila ni la cola. `apps/worker` es quien realmente llama a
+`EmailProvider.send`, en `deliverQueuedEmail(db, email, deliveryId)`, y lo
+hace **después** de que esa transacción ya cerró — nunca puede avisar de
+algo que todavía podía deshacerse, sin depender de que el llamador recuerde
+nada.
+
+El parámetro se llama `queue`, no `email`: ninguna de las dos funciones
+necesita ya el puerto de correo, porque ninguna de las dos envía nada. El
+plan original de la Tarea 8 no anticipó este cambio de firma; se documenta
+aquí porque es exactamente la clase de decisión que esta sección pide no
+perder de vista.
+
+pg-boss corre en su propio esquema de PostgreSQL (`pgboss` en producción,
+separado del `public` donde vive Prisma) — nunca el mismo esquema que las
+tablas de dominio, por la misma razón que cada worker de prueba tiene el
+suyo (ver `libs/jobs/src/testing/test-queue.ts`).
+
+## El envío real: `deliverQueuedEmail`, en `apps/worker`
+
+`deliverQueuedEmail(db, email, deliveryId)` es la mitad que faltaba: lee la
+fila `EMAIL` por su id, envía usando su `rendered_title`/`rendered_body` ya
+congelados, y la marca `SENT` o `FAILED`. La dirección del destinatario,
+en cambio, **no** se congela — se lee de `User.email` en el momento del
+envío, porque sólo el *texto* es historia permanente; a qué dirección llega
+un recordatorio es lo que la cuenta tenga registrado ahora.
+
+Es **idempotente**: pg-boss entrega sus trabajos *al menos* una vez, nunca
+exactamente una, así que una fila que ya está `SENT` o `FAILED` se deja
+intacta en vez de reenviarse. Lo prueba `delivery-service.spec.ts` ("is a
+no-op the second time it runs..."), llamando a la función dos veces seguidas
+con un proveedor que cuenta sus propias invocaciones.
 
 ## Un fallo de envío no debe perder la copia de bandeja
 
 Si `EmailProvider.send` falla (dirección mal formada, proveedor caído), la
 fila `EMAIL` se marca `FAILED` con su error, la fila `INBOX` se queda
-`SENT`, y la función **no lanza**. El cliente sigue viendo el aviso en la
-app aunque el correo nunca haya salido. Esto es intencional: la bandeja es
-la fuente de verdad para el cliente; el correo es un refuerzo que puede
-fallar sin que el cliente se quede sin aviso.
+`SENT`, y `deliverQueuedEmail` **no lanza**. El cliente sigue viendo el
+aviso en la app aunque el correo nunca haya salido. Esto es intencional: la
+bandeja es la fuente de verdad para el cliente; el correo es un refuerzo que
+puede fallar sin que el cliente se quede sin aviso. Esta garantía es la
+misma que la Tarea 7 dejó escrita aquí; sólo cambió de función.
 
 ## `notifyAdmins`: tres avisos sin cliente al que ir
 
@@ -132,3 +165,26 @@ distinto; está en las tres ubicaciones que exige el catálogo de errores:
 como leída la fila `EMAIL` de un par no tiene sentido en la interfaz, así
 que esa fila también responde `DELIVERY_NOT_OWNED` aunque le pertenezca al
 mismo cliente.
+
+## `reservationId`: columna que la Tarea 8 añadió sin que el plan la anticipara
+
+`NotificationDelivery.reservation_id` (nullable, `ON DELETE SET NULL`,
+migración `notification_delivery_reservation_id`) no estaba en el plan
+original. Apareció al construir `warnExpiringHolds` (Tarea 8,
+`apps/worker`): ese job necesita saber "¿ya avisé de **esta** reservación
+en particular?", y `(customer_id, event_type)` por sí solo es ambiguo en
+cuanto un cliente tiene más de una reservación `HELD` a la vez — dos
+apartados distintos del mismo cliente comparten `customer_id` y
+`event_type`, y una consulta por esos dos campos no puede distinguir "ya
+avisé de la reservación A" de "ya avisé de la reservación B". `(customer_id,
+reservation_id, event_type)` sí es inequívoco, y el índice
+`notification_deliveries_reservation_id_event_type_idx` es exactamente esa
+consulta.
+
+Nullable porque no todo aviso tiene una sola reservación de la que colgar:
+`ORPHAN_PAYMENT`, por definición, no corresponde a ninguna reservación
+activa. `SetNull` en vez de `Cascade` al borrar una reservación: el
+historial de avisos de un cliente no debe desaparecer sólo porque la
+reservación que lo originó sí lo hizo (un caso que hoy no ocurre en
+producción -- nada borra una `Reservation` -- pero que `schema.spec.ts`
+comprueba directamente contra la base, no sólo contra el código).

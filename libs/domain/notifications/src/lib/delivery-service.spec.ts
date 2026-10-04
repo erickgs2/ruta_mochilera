@@ -1,11 +1,22 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { closeTestDb, prepareTestDb, resetDatabase, withTestDb } from '@rm/db/testing';
+import { closeTestQueue, resetTestQueue, withTestQueue } from '@rm/jobs/testing';
+import { SEND_NOTIFICATION_EMAIL_JOB } from '@rm/jobs';
 import type { Db } from '@rm/db';
-import { ConsoleEmailProvider, PROVIDER_REJECTED_TEST_ADDRESS, type EmailProvider } from '@rm/email';
-import { listInbox, markRead, notifyAdmins, notifyCustomer } from './delivery-service';
+import { ConsoleEmailProvider, PROVIDER_REJECTED_TEST_ADDRESS, type EmailProvider, type EmailMessage } from '@rm/email';
+import { deliverQueuedEmail, listInbox, markRead, notifyAdmins, notifyCustomer } from './delivery-service';
 
 const db = withTestDb();
 const email: EmailProvider = new ConsoleEmailProvider();
+
+/** Counts calls without actually sending anything, for the idempotency test below. */
+class CountingEmailProvider implements EmailProvider {
+  calls = 0;
+  async send(message: EmailMessage): ReturnType<EmailProvider['send']> {
+    this.calls += 1;
+    return email.send(message);
+  }
+}
 
 let sequence = 0;
 function next(): number {
@@ -76,21 +87,29 @@ async function seedStaffWithPermission(
 }
 
 describe('notification delivery service', () => {
-  beforeAll(() => prepareTestDb());
+  beforeAll(async () => {
+    await prepareTestDb();
+    await withTestQueue();
+  });
 
   beforeEach(async () => {
     await resetDatabase(db);
+    await resetTestQueue();
     sequence = 0;
   });
 
-  afterAll(() => closeTestDb());
+  afterAll(async () => {
+    await closeTestDb();
+    await closeTestQueue();
+  });
 
   describe('notifyCustomer', () => {
-    it('creates one EMAIL row and one INBOX row with the same rendered text', async () => {
+    it('creates one EMAIL row (still PENDING) and one SENT INBOX row with the same rendered text, and enqueues the send', async () => {
       const customerId = await seedCustomer(db);
+      const boss = await withTestQueue();
 
       await db.$transaction((tx) =>
-        notifyCustomer(tx, email, {
+        notifyCustomer(tx, boss, {
           customerId,
           eventType: 'PAYMENT_CONFIRMED',
           params: { tripName: 'Oaxaca', amount: '$500.00', balance: '$0.00' },
@@ -107,15 +126,21 @@ describe('notification delivery service', () => {
       expect(emailRow?.renderedTitle).toBe(inboxRow?.renderedTitle);
       expect(emailRow?.renderedBody).toBe(inboxRow?.renderedBody);
       expect(emailRow?.renderedBody).toContain('$500.00');
-      expect(emailRow?.status).toBe('SENT');
+      // The real send is the worker's job now, not this call's: the row
+      // starts and stays PENDING until `deliverQueuedEmail` runs.
+      expect(emailRow?.status).toBe('PENDING');
       expect(inboxRow?.status).toBe('SENT');
+
+      const jobs = await boss.findJobs(SEND_NOTIFICATION_EMAIL_JOB, { data: { deliveryId: emailRow?.id } });
+      expect(jobs).toHaveLength(1);
     });
 
     it("renders in the customer's locale and freezes the text even if the locale changes later", async () => {
       const customerId = await seedCustomer(db, { locale: 'en' });
+      const boss = await withTestQueue();
 
       await db.$transaction((tx) =>
-        notifyCustomer(tx, email, {
+        notifyCustomer(tx, boss, {
           customerId,
           eventType: 'PAYMENT_CONFIRMED',
           params: { tripName: 'Oaxaca', amount: '$500.00', balance: '$0.00' },
@@ -135,7 +160,7 @@ describe('notification delivery service', () => {
 
       // A new notice sent after the change renders in the new locale.
       await db.$transaction((tx) =>
-        notifyCustomer(tx, email, {
+        notifyCustomer(tx, boss, {
           customerId,
           eventType: 'PAYMENT_CONFIRMED',
           params: { tripName: 'Oaxaca', amount: '$100.00', balance: '$0.00' },
@@ -148,33 +173,56 @@ describe('notification delivery service', () => {
       expect(deliveries[1].renderedBody).toContain('Recibimos tu pago');
     });
 
-    it('marks the EMAIL row FAILED with the error and leaves INBOX SENT, without throwing, on a provider failure', async () => {
-      const customerId = await seedCustomer(db, { email: PROVIDER_REJECTED_TEST_ADDRESS });
+    it('stamps the delivery with the reservationId it is about, when one is given', async () => {
+      const customerId = await seedCustomer(db);
+      const boss = await withTestQueue();
 
-      await expect(
-        db.$transaction((tx) =>
-          notifyCustomer(tx, email, {
-            customerId,
-            eventType: 'PAYMENT_FAILED',
-            params: { tripName: 'Oaxaca', reason: 'insufficient funds' },
-          })
-        )
-      ).resolves.not.toThrow();
+      const trip = await db.trip.create({
+        data: {
+          slug: `oaxaca-${next()}`,
+          departureDate: new Date('2027-12-01'),
+          returnDate: new Date('2027-12-07'),
+          paymentDeadline: new Date('2027-11-01'),
+          totalCapacity: 20,
+          holdTtlHours: 72,
+          minimumDepositCents: 100000,
+          createdById: (await seedPlainStaff(db)),
+        },
+      });
+      const reservation = await db.reservation.create({
+        data: {
+          code: `RM-D${next()}`,
+          tripId: trip.id,
+          customerId,
+          status: 'HELD',
+          holdExpiresAt: new Date(Date.now() + 72 * 60 * 60 * 1000),
+          totalPriceCents: 500000,
+          minimumDepositCents: 100000,
+          paymentDeadline: trip.paymentDeadline,
+          source: 'APP',
+        },
+      });
+
+      await db.$transaction((tx) =>
+        notifyCustomer(tx, boss, {
+          customerId,
+          reservationId: reservation.id,
+          eventType: 'HOLD_EXPIRING',
+          params: { tripName: 'Oaxaca', holdExpiresAt: '2027-01-01' },
+        })
+      );
 
       const rows = await db.notificationDelivery.findMany({ where: { userId: customerId } });
-      const emailRow = rows.find((row) => row.channel === 'EMAIL');
-      const inboxRow = rows.find((row) => row.channel === 'INBOX');
-      expect(emailRow?.status).toBe('FAILED');
-      expect(emailRow?.error).toBeTruthy();
-      expect(inboxRow?.status).toBe('SENT');
+      expect(rows.every((row) => row.reservationId === reservation.id)).toBe(true);
     });
 
-    it('rolls back both delivery rows when the caller rolls back the enclosing transaction', async () => {
+    it('rolls back both delivery rows and the queued send when the caller rolls back the enclosing transaction', async () => {
       const customerId = await seedCustomer(db);
+      const boss = await withTestQueue();
 
       await expect(
         db.$transaction(async (tx) => {
-          await notifyCustomer(tx, email, {
+          await notifyCustomer(tx, boss, {
             customerId,
             eventType: 'PAYMENT_CONFIRMED',
             params: { tripName: 'Oaxaca', amount: '$500.00', balance: '$0.00' },
@@ -185,17 +233,26 @@ describe('notification delivery service', () => {
 
       const rows = await db.notificationDelivery.findMany({ where: { userId: customerId } });
       expect(rows).toHaveLength(0);
+
+      // The rows vanished with the transaction; the job pg-boss would have
+      // inserted for them must have vanished too, same connection, same
+      // rollback. No delivery id survives to filter by, so this asserts on
+      // the whole queue rather than a specific payload -- `resetTestQueue()`
+      // in `beforeEach` guarantees it was empty before this test ran.
+      const jobs = await boss.findJobs(SEND_NOTIFICATION_EMAIL_JOB, {});
+      expect(jobs).toHaveLength(0);
     });
   });
 
   describe('notifyAdmins', () => {
-    it('writes one delivery pair per live staff user holding reservation.cancel', async () => {
+    it('writes one delivery pair per live staff user holding reservation.cancel, and one job per EMAIL row', async () => {
       const holder = await seedStaffWithPermission(db, 'reservation.cancel');
       const other = await seedStaffWithPermission(db, 'reservation.cancel');
       await seedPlainStaff(db); // holds nothing, must receive nothing
+      const boss = await withTestQueue();
 
       await db.$transaction((tx) =>
-        notifyAdmins(tx, email, {
+        notifyAdmins(tx, boss, {
           eventType: 'CANCELLATION_REQUESTED',
           params: { reservationCode: 'RM-0001', customerName: 'Erick', reason: 'change of plans' },
         })
@@ -205,13 +262,17 @@ describe('notification delivery service', () => {
       const otherRows = await db.notificationDelivery.findMany({ where: { userId: other } });
       expect(holderRows).toHaveLength(2);
       expect(otherRows).toHaveLength(2);
+
+      const jobs = await boss.findJobs(SEND_NOTIFICATION_EMAIL_JOB, {});
+      expect(jobs).toHaveLength(2);
     });
 
     it('never sends to a disabled staff user even if their role grants the permission', async () => {
       const disabled = await seedStaffWithPermission(db, 'reservation.cancel', { status: 'DISABLED' });
+      const boss = await withTestQueue();
 
       await db.$transaction((tx) =>
-        notifyAdmins(tx, email, {
+        notifyAdmins(tx, boss, {
           eventType: 'CANCELLATION_REQUESTED',
           params: { reservationCode: 'RM-0001', customerName: 'Erick', reason: 'change of plans' },
         })
@@ -223,10 +284,11 @@ describe('notification delivery service', () => {
 
     it('writes nothing and does not throw when no staff holds the permission', async () => {
       await seedPlainStaff(db);
+      const boss = await withTestQueue();
 
       await expect(
         db.$transaction((tx) =>
-          notifyAdmins(tx, email, {
+          notifyAdmins(tx, boss, {
             eventType: 'ORPHAN_PAYMENT',
             params: { amount: '$500.00', provider: 'OXXO', intentId: 'pi_123' },
           })
@@ -238,12 +300,84 @@ describe('notification delivery service', () => {
     });
   });
 
+  describe('deliverQueuedEmail', () => {
+    it('sends the EMAIL row through the provider and marks it SENT', async () => {
+      const customerId = await seedCustomer(db);
+      const boss = await withTestQueue();
+      await db.$transaction((tx) =>
+        notifyCustomer(tx, boss, {
+          customerId,
+          eventType: 'PAYMENT_CONFIRMED',
+          params: { tripName: 'Oaxaca', amount: '$500.00', balance: '$0.00' },
+        })
+      );
+      const emailRow = await db.notificationDelivery.findFirstOrThrow({
+        where: { userId: customerId, channel: 'EMAIL' },
+      });
+
+      await deliverQueuedEmail(db, email, emailRow.id);
+
+      const updated = await db.notificationDelivery.findUniqueOrThrow({ where: { id: emailRow.id } });
+      expect(updated.status).toBe('SENT');
+      expect(updated.sentAt).not.toBeNull();
+    });
+
+    it('marks the EMAIL row FAILED with the error and leaves INBOX SENT, without throwing, when the provider rejects the address', async () => {
+      const customerId = await seedCustomer(db, { email: PROVIDER_REJECTED_TEST_ADDRESS });
+      const boss = await withTestQueue();
+      await db.$transaction((tx) =>
+        notifyCustomer(tx, boss, {
+          customerId,
+          eventType: 'PAYMENT_FAILED',
+          params: { tripName: 'Oaxaca', reason: 'insufficient funds' },
+        })
+      );
+      const emailRow = await db.notificationDelivery.findFirstOrThrow({
+        where: { userId: customerId, channel: 'EMAIL' },
+      });
+
+      await expect(deliverQueuedEmail(db, email, emailRow.id)).resolves.not.toThrow();
+
+      const updatedEmail = await db.notificationDelivery.findUniqueOrThrow({ where: { id: emailRow.id } });
+      const inboxRow = await db.notificationDelivery.findFirstOrThrow({
+        where: { userId: customerId, channel: 'INBOX' },
+      });
+      expect(updatedEmail.status).toBe('FAILED');
+      expect(updatedEmail.error).toBeTruthy();
+      expect(inboxRow.status).toBe('SENT');
+    });
+
+    it('is a no-op the second time it runs for the same delivery (pg-boss redelivers at least once)', async () => {
+      const customerId = await seedCustomer(db);
+      const boss = await withTestQueue();
+      const counting = new CountingEmailProvider();
+      await db.$transaction((tx) =>
+        notifyCustomer(tx, boss, {
+          customerId,
+          eventType: 'PAYMENT_CONFIRMED',
+          params: { tripName: 'Oaxaca', amount: '$500.00', balance: '$0.00' },
+        })
+      );
+      const emailRow = await db.notificationDelivery.findFirstOrThrow({
+        where: { userId: customerId, channel: 'EMAIL' },
+      });
+
+      await deliverQueuedEmail(db, counting, emailRow.id);
+      await deliverQueuedEmail(db, counting, emailRow.id);
+
+      expect(counting.calls).toBe(1);
+      const updated = await db.notificationDelivery.findUniqueOrThrow({ where: { id: emailRow.id } });
+      expect(updated.status).toBe('SENT');
+    });
+  });
+
   describe('listInbox', () => {
     it('returns the most recent INBOX deliveries first and never EMAIL deliveries', async () => {
       const customerId = await seedCustomer(db);
+      const boss = await withTestQueue();
       for (let i = 0; i < 3; i += 1) {
         await db.$transaction((tx) =>
-          notifyCustomer(tx, email, {
+          notifyCustomer(tx, boss, {
             customerId,
             eventType: 'HOLD_EXPIRING',
             params: { tripName: `Trip ${i}`, holdExpiresAt: '2027-01-01' },
@@ -262,9 +396,10 @@ describe('notification delivery service', () => {
 
     it('pages by cursor without repeating or skipping rows', async () => {
       const customerId = await seedCustomer(db);
+      const boss = await withTestQueue();
       for (let i = 0; i < 5; i += 1) {
         await db.$transaction((tx) =>
-          notifyCustomer(tx, email, {
+          notifyCustomer(tx, boss, {
             customerId,
             eventType: 'HOLD_EXPIRING',
             params: { tripName: `Trip ${i}`, holdExpiresAt: '2027-01-01' },
@@ -299,8 +434,9 @@ describe('notification delivery service', () => {
   describe('markRead', () => {
     it("marks a customer's own delivery as read", async () => {
       const customerId = await seedCustomer(db);
+      const boss = await withTestQueue();
       await db.$transaction((tx) =>
-        notifyCustomer(tx, email, {
+        notifyCustomer(tx, boss, {
           customerId,
           eventType: 'HOLD_EXPIRED',
           params: { tripName: 'Oaxaca' },
@@ -319,8 +455,9 @@ describe('notification delivery service', () => {
     it('returns DELIVERY_NOT_OWNED, not a confirmation, for a delivery belonging to someone else', async () => {
       const customerId = await seedCustomer(db);
       const otherCustomerId = await seedCustomer(db);
+      const boss = await withTestQueue();
       await db.$transaction((tx) =>
-        notifyCustomer(tx, email, {
+        notifyCustomer(tx, boss, {
           customerId,
           eventType: 'HOLD_EXPIRED',
           params: { tripName: 'Oaxaca' },

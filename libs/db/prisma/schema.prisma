@@ -381,7 +381,6 @@ model SystemSetting {
  * `@@unique` here on purpose; a full unique constraint would also reject a
  * second CANCELLED or EXPIRED reservation for the same pair, which is exactly
  * what the partial index must allow.
- *
  * The same migration set also carries the CHECK constraint
  * `reservations_held_requires_hold_expiry`: a HELD row must have a
  * `hold_expires_at`. Prisma cannot express a CHECK either, so it lives in the
@@ -421,11 +420,12 @@ model Reservation {
   createdAt               DateTime          @default(now()) @map("created_at") @db.Timestamptz
   updatedAt               DateTime          @updatedAt @map("updated_at") @db.Timestamptz
 
-  trip        Trip            @relation(fields: [tripId], references: [id])
-  customer    CustomerProfile @relation(fields: [customerId], references: [userId])
-  createdBy   User?           @relation("ReservationCreatedBy", fields: [createdById], references: [id])
-  cancelledBy User?           @relation("ReservationCancelledBy", fields: [cancelledById], references: [id])
-  payments    Payment[]
+  trip                   Trip                   @relation(fields: [tripId], references: [id])
+  customer               CustomerProfile        @relation(fields: [customerId], references: [userId])
+  createdBy              User?                  @relation("ReservationCreatedBy", fields: [createdById], references: [id])
+  cancelledBy            User?                  @relation("ReservationCancelledBy", fields: [cancelledById], references: [id])
+  payments               Payment[]
+  notificationDeliveries NotificationDelivery[]
 
   @@index([tripId])
   @@index([customerId])
@@ -499,6 +499,15 @@ model StripeEvent {
 model NotificationDelivery {
   id            String              @id @default(uuid()) @db.Uuid
   userId        String              @map("user_id") @db.Uuid
+  /// Nullable, added in the `notification_delivery_reservation_id` migration
+  /// (Task 8, not anticipated by the original plan): `warnExpiringHolds`
+  /// needs to ask "did I already warn about *this* reservation?", and
+  /// `(user_id, event_type)` alone is ambiguous the moment a customer holds
+  /// more than one reservation at once. Left null for the event types that
+  /// have no single reservation to point at (e.g. `ORPHAN_PAYMENT`).
+  /// `SetNull` on delete, not `Cascade`: deleting a reservation must not take
+  /// its notification history with it, only the now-dangling pointer.
+  reservationId String?             @map("reservation_id") @db.Uuid
   eventType     String              @map("event_type")
   channel       NotificationChannel
   renderedTitle String              @map("rendered_title")
@@ -509,8 +518,10 @@ model NotificationDelivery {
   error         String?
   createdAt     DateTime            @default(now()) @map("created_at") @db.Timestamptz
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  reservation Reservation? @relation(fields: [reservationId], references: [id], onDelete: SetNull)
 
   @@index([userId, createdAt])
+  @@index([reservationId, eventType])
   @@map("notification_deliveries")
 }

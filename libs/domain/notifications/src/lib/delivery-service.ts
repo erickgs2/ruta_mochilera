@@ -1,18 +1,38 @@
-import type { Db, DbTransactionClient, Locale, NotificationDelivery } from '@rm/db';
+import type { Db, DbTransactionClient, NotificationDelivery } from '@rm/db';
 import type { EmailProvider } from '@rm/email';
+import { SEND_NOTIFICATION_EMAIL_JOB, type SendNotificationEmailPayload } from '@rm/jobs';
 import { fail, ok, type Result } from '@rm/shared-utils';
 import type { PermissionKey } from '@rm/domain-rbac';
+import { fromPrisma, type PgBoss } from 'pg-boss';
 import { renderTemplate, type DeliveryEventType } from './templates';
+
+/**
+ * The one pg-boss capability `notifyCustomer`/`notifyAdmins` need: enqueuing
+ * the send job on the caller's own transaction (Ruling 11, see this file's
+ * doc comment above `deliverToUser`). Narrowed to `send` on purpose, so a
+ * test can pass a real `PgBoss` instance without this module reaching for
+ * anything else on it.
+ */
+export type NotificationQueue = Pick<PgBoss, 'send'>;
 
 export interface NotifyCustomerInput {
   customerId: string;
   eventType: DeliveryEventType;
   params: Record<string, string>;
+  /**
+   * The reservation this notice is about, when there is exactly one.
+   * Stamped onto both delivery rows so a later idempotency check (e.g.
+   * `warnExpiringHolds`: "did I already warn about *this* reservation?")
+   * is unambiguous even when the customer holds more than one reservation.
+   * Omit for event types with no single reservation to point at.
+   */
+  reservationId?: string;
 }
 
 export interface NotifyAdminsInput {
   eventType: DeliveryEventType;
   params: Record<string, string>;
+  reservationId?: string;
 }
 
 export interface InboxItemDto {
@@ -85,29 +105,36 @@ function decodeCursor(cursor: string): Result<Cursor> {
 }
 
 /**
- * Writes the EMAIL/INBOX pair for one recipient and attempts the send,
- * entirely through `tx`. Shared by `notifyCustomer` (one recipient) and
- * `notifyAdmins` (one call per eligible staff user).
+ * Writes the EMAIL/INBOX pair for one recipient and enqueues the actual
+ * send, entirely through `tx`. Shared by `notifyCustomer` (one recipient)
+ * and `notifyAdmins` (one call per eligible staff user).
  *
  * The INBOX row is `SENT` the moment it is written: showing it in the app
  * *is* delivering it, with nothing external that can fail. The EMAIL row
- * starts `PENDING` and is updated to `SENT` or `FAILED` right after the
- * `EmailProvider.send` call resolves -- a provider failure never throws
- * out of this function (business rule: the in-app copy must survive a
- * provider outage) and never removes either row.
+ * starts and stays `PENDING` here -- `deliverQueuedEmail` is the only thing
+ * that ever moves it to `SENT` or `FAILED`, and it runs later, outside this
+ * transaction, as `apps/worker`'s handler for `SEND_NOTIFICATION_EMAIL_JOB`.
+ *
+ * See this file's module doc comment (and `docs/business-rules/
+ * notifications.md`, "La frontera transaccional") for why: `queue.send`
+ * writes pg-boss's own job row through `fromPrisma(tx)`, the same
+ * transaction and the same connection as the two rows above. If `tx` rolls
+ * back, the INSERT into pg-boss's job table rolls back with it -- the send
+ * can never survive a business fact that did not.
  */
 async function deliverToUser(
   tx: DbTransactionClient,
-  email: EmailProvider,
-  recipient: { userId: string; emailAddress: string; locale: Locale },
+  queue: NotificationQueue,
+  recipient: { userId: string },
   eventType: DeliveryEventType,
-  params: Record<string, string>
+  params: Record<string, string>,
+  reservationId: string | undefined,
+  rendered: { subject: string; body: string }
 ): Promise<void> {
-  const rendered = renderTemplate(eventType, recipient.locale, params);
-
   await tx.notificationDelivery.create({
     data: {
       userId: recipient.userId,
+      reservationId: reservationId ?? null,
       eventType,
       channel: 'INBOX',
       renderedTitle: rendered.subject,
@@ -120,6 +147,7 @@ async function deliverToUser(
   const emailRow = await tx.notificationDelivery.create({
     data: {
       userId: recipient.userId,
+      reservationId: reservationId ?? null,
       eventType,
       channel: 'EMAIL',
       renderedTitle: rendered.subject,
@@ -128,24 +156,8 @@ async function deliverToUser(
     },
   });
 
-  const sendResult = await email.send({
-    to: recipient.emailAddress,
-    subject: rendered.subject,
-    html: `<p>${rendered.body}</p>`,
-    text: rendered.body,
-  });
-
-  if (sendResult.ok) {
-    await tx.notificationDelivery.update({
-      where: { id: emailRow.id },
-      data: { status: 'SENT', sentAt: new Date() },
-    });
-  } else {
-    await tx.notificationDelivery.update({
-      where: { id: emailRow.id },
-      data: { status: 'FAILED', error: JSON.stringify(sendResult.error) },
-    });
-  }
+  const payload: SendNotificationEmailPayload = { deliveryId: emailRow.id };
+  await queue.send(SEND_NOTIFICATION_EMAIL_JOB, payload, { db: fromPrisma(tx) });
 }
 
 /**
@@ -157,26 +169,21 @@ async function deliverToUser(
  * Takes the caller's `tx` because the delivery about a business fact (a
  * payment, a cancellation) must not outlive that fact if the transaction
  * that established it rolls back. See `docs/business-rules/notifications.md`
- * for the full "rows are transactional, the send is not" rule and what it
- * asks of callers.
+ * for the full "rows are transactional, the send is not" rule, now backed by
+ * a real outbox (Ruling 11) instead of caller discipline alone.
  */
 export async function notifyCustomer(
   tx: DbTransactionClient,
-  email: EmailProvider,
+  queue: NotificationQueue,
   input: NotifyCustomerInput
 ): Promise<void> {
   const user = await tx.user.findUniqueOrThrow({
     where: { id: input.customerId },
-    select: { id: true, email: true, locale: true },
+    select: { id: true, locale: true },
   });
 
-  await deliverToUser(
-    tx,
-    email,
-    { userId: user.id, emailAddress: user.email, locale: user.locale },
-    input.eventType,
-    input.params
-  );
+  const rendered = renderTemplate(input.eventType, user.locale, input.params);
+  await deliverToUser(tx, queue, { userId: user.id }, input.eventType, input.params, input.reservationId, rendered);
 }
 
 /**
@@ -187,7 +194,7 @@ export async function notifyCustomer(
  */
 export async function notifyAdmins(
   tx: DbTransactionClient,
-  email: EmailProvider,
+  queue: NotificationQueue,
   input: NotifyAdminsInput
 ): Promise<void> {
   const recipients = await tx.user.findMany({
@@ -196,17 +203,71 @@ export async function notifyAdmins(
       status: 'ACTIVE',
       roles: { some: { role: { permissions: { some: { permission: { key: ADMIN_ALERT_PERMISSION } } } } } },
     },
-    select: { id: true, email: true, locale: true },
+    select: { id: true, locale: true },
   });
 
   for (const recipient of recipients) {
+    const rendered = renderTemplate(input.eventType, recipient.locale, input.params);
     await deliverToUser(
       tx,
-      email,
-      { userId: recipient.id, emailAddress: recipient.email, locale: recipient.locale },
+      queue,
+      { userId: recipient.id },
       input.eventType,
-      input.params
+      input.params,
+      input.reservationId,
+      rendered
     );
+  }
+}
+
+/**
+ * The worker-side half of the outbox: reads the `EMAIL` row `deliveryId`
+ * names, sends it through `email` using its already-frozen
+ * `renderedTitle`/`renderedBody`, and marks the row `SENT` or `FAILED`.
+ * Never the recipient's address from the row itself -- that is read fresh
+ * from `User.email` here, at send time, because only the *text* is meant to
+ * be frozen history; the address a reminder reaches is whatever the account
+ * currently has on file.
+ *
+ * Runs outside any business transaction, deliberately: by the time this is
+ * called (`apps/worker`'s handler for `SEND_NOTIFICATION_EMAIL_JOB`), the
+ * transaction that wrote the row has already committed, which is the entire
+ * point of Ruling 11 -- the send cannot run before the fact it reports on is
+ * durable.
+ *
+ * **Idempotent.** pg-boss's `work`/`fetch` deliver at least once, never
+ * exactly once, so a delivery already `SENT` or `FAILED` is left alone
+ * rather than sent twice: the second delivery of the same job is a no-op,
+ * not a second email.
+ *
+ * **Never throws.** A malformed address or a provider outage marks the row
+ * `FAILED` with the error and leaves the `INBOX` copy exactly as it was --
+ * the same guarantee Task 7 gave when this function's work still lived
+ * inside `notifyCustomer` itself.
+ */
+export async function deliverQueuedEmail(db: Db, email: EmailProvider, deliveryId: string): Promise<void> {
+  const delivery = await db.notificationDelivery.findUnique({ where: { id: deliveryId } });
+  if (!delivery || delivery.channel !== 'EMAIL' || delivery.status !== 'PENDING') return;
+
+  const user = await db.user.findUniqueOrThrow({ where: { id: delivery.userId }, select: { email: true } });
+
+  const sendResult = await email.send({
+    to: user.email,
+    subject: delivery.renderedTitle,
+    html: `<p>${delivery.renderedBody}</p>`,
+    text: delivery.renderedBody,
+  });
+
+  if (sendResult.ok) {
+    await db.notificationDelivery.update({
+      where: { id: deliveryId },
+      data: { status: 'SENT', sentAt: new Date() },
+    });
+  } else {
+    await db.notificationDelivery.update({
+      where: { id: deliveryId },
+      data: { status: 'FAILED', error: JSON.stringify(sendResult.error) },
+    });
   }
 }
 
