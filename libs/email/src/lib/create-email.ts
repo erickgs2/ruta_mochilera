@@ -14,7 +14,7 @@ function requireEnvValue(value: string | undefined, name: string): string {
 /** Chooses the implementation from the environment. Nothing else in the app branches on the provider. */
 export function createEmail(env: AppEnv): EmailProvider {
   if (env.nodeEnv === 'development' || env.nodeEnv === 'test') {
-    return new ConsoleEmailProvider();
+    return new ConsoleEmailProvider({ verbose: env.emailVerboseLogging });
   }
   const apiKey = requireEnvValue(env.resendApiKey, 'RESEND_API_KEY');
   const fromAddress = requireEnvValue(env.resendFromAddress, 'RESEND_FROM_ADDRESS');

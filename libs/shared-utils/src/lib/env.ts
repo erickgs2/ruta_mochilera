@@ -14,6 +14,12 @@ const schema = z
     STORAGE_S3_REGION: z.string().optional(),
     RESEND_API_KEY: z.string().optional(),
     RESEND_FROM_ADDRESS: z.string().optional(),
+    // Deliberately a plain optional string, not z.coerce.boolean(): coercion
+    // treats any non-empty string (including the literal "false") as true,
+    // which is exactly the "on by accident" failure mode this flag must
+    // never have. Interpreted explicitly below -- only the literal "true"
+    // turns it on; absent or malformed stays off.
+    EMAIL_VERBOSE_LOGGING: z.string().optional(),
   })
   .superRefine((value, ctx) => {
     if (value.STORAGE_DRIVER === 'local' && !value.STORAGE_LOCAL_ROOT) {
@@ -46,6 +52,13 @@ export interface AppEnv {
   storageS3Region?: string;
   resendApiKey?: string;
   resendFromAddress?: string;
+  /**
+   * Prints email `html`/`text` bodies to the console (ConsoleEmailProvider
+   * only). Off by default and off for any value other than the literal
+   * "true": Task 11 sends six-digit email-verification codes through this
+   * port, and this flag controls whether those land in the log.
+   */
+  emailVerboseLogging: boolean;
 }
 
 export function loadEnv(source: Record<string, string | undefined>): AppEnv {
@@ -73,5 +86,6 @@ export function loadEnv(source: Record<string, string | undefined>): AppEnv {
     storageS3Region: value.STORAGE_S3_REGION,
     resendApiKey: value.RESEND_API_KEY,
     resendFromAddress: value.RESEND_FROM_ADDRESS,
+    emailVerboseLogging: value.EMAIL_VERBOSE_LOGGING === 'true',
   };
 }

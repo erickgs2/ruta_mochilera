@@ -53,4 +53,19 @@ describe('loadEnv', () => {
     expect(env.resendApiKey).toBe('resend-key');
     expect(env.resendFromAddress).toBe('no-reply@example.com');
   });
+
+  it('defaults EMAIL_VERBOSE_LOGGING to off when absent', () => {
+    const env = loadEnv(valid);
+    expect(env.emailVerboseLogging).toBe(false);
+  });
+
+  it('turns EMAIL_VERBOSE_LOGGING on only for the exact literal "true"', () => {
+    const env = loadEnv({ ...valid, EMAIL_VERBOSE_LOGGING: 'true' });
+    expect(env.emailVerboseLogging).toBe(true);
+  });
+
+  it('keeps EMAIL_VERBOSE_LOGGING off for any malformed value, never throwing', () => {
+    const env = loadEnv({ ...valid, EMAIL_VERBOSE_LOGGING: 'yes' });
+    expect(env.emailVerboseLogging).toBe(false);
+  });
 });
