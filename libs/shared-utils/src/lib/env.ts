@@ -12,6 +12,8 @@ const schema = z
     STORAGE_LOCAL_ROOT: z.string().optional(),
     STORAGE_S3_BUCKET: z.string().optional(),
     STORAGE_S3_REGION: z.string().optional(),
+    RESEND_API_KEY: z.string().optional(),
+    RESEND_FROM_ADDRESS: z.string().optional(),
   })
   .superRefine((value, ctx) => {
     if (value.STORAGE_DRIVER === 'local' && !value.STORAGE_LOCAL_ROOT) {
@@ -19,6 +21,15 @@ const schema = z
     }
     if (value.STORAGE_DRIVER === 's3' && (!value.STORAGE_S3_BUCKET || !value.STORAGE_S3_REGION)) {
       ctx.addIssue({ code: 'custom', message: 'STORAGE_S3_BUCKET and STORAGE_S3_REGION are required when STORAGE_DRIVER is s3' });
+    }
+    // Console email provider is selected for development/test (see createEmail);
+    // every other environment sends through Resend and needs its credentials.
+    const needsResendCredentials = value.NODE_ENV !== 'development' && value.NODE_ENV !== 'test';
+    if (needsResendCredentials && !value.RESEND_API_KEY) {
+      ctx.addIssue({ code: 'custom', message: 'RESEND_API_KEY is required when NODE_ENV is not development or test' });
+    }
+    if (needsResendCredentials && !value.RESEND_FROM_ADDRESS) {
+      ctx.addIssue({ code: 'custom', message: 'RESEND_FROM_ADDRESS is required when NODE_ENV is not development or test' });
     }
   });
 
@@ -33,6 +44,8 @@ export interface AppEnv {
   storageLocalRoot?: string;
   storageS3Bucket?: string;
   storageS3Region?: string;
+  resendApiKey?: string;
+  resendFromAddress?: string;
 }
 
 export function loadEnv(source: Record<string, string | undefined>): AppEnv {
@@ -58,5 +71,7 @@ export function loadEnv(source: Record<string, string | undefined>): AppEnv {
     storageLocalRoot: value.STORAGE_LOCAL_ROOT,
     storageS3Bucket: value.STORAGE_S3_BUCKET,
     storageS3Region: value.STORAGE_S3_REGION,
+    resendApiKey: value.RESEND_API_KEY,
+    resendFromAddress: value.RESEND_FROM_ADDRESS,
   };
 }

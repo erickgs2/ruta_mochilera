@@ -32,4 +32,25 @@ describe('loadEnv', () => {
   it('names the offending variable when a stock Zod message is used', () => {
     expect(() => loadEnv({ ...valid, DATABASE_URL: 'not-a-url' })).toThrow(/DATABASE_URL/);
   });
+
+  it('does not require Resend credentials in development or test', () => {
+    const env = loadEnv(valid);
+    expect(env.resendApiKey).toBeUndefined();
+    expect(env.resendFromAddress).toBeUndefined();
+  });
+
+  it('requires RESEND_API_KEY and RESEND_FROM_ADDRESS outside development and test', () => {
+    expect(() => loadEnv({ ...valid, NODE_ENV: 'production' })).toThrow(/RESEND_API_KEY/);
+  });
+
+  it('accepts a production environment with Resend credentials configured', () => {
+    const env = loadEnv({
+      ...valid,
+      NODE_ENV: 'production',
+      RESEND_API_KEY: 'resend-key',
+      RESEND_FROM_ADDRESS: 'no-reply@example.com',
+    });
+    expect(env.resendApiKey).toBe('resend-key');
+    expect(env.resendFromAddress).toBe('no-reply@example.com');
+  });
 });
