@@ -5,6 +5,7 @@ import { loadEnv } from '@rm/shared-utils';
 import { createEmail } from '@rm/email';
 import { deliverQueuedEmail } from '@rm/domain-notifications';
 import { organizationTimeZone } from '@rm/domain-settings';
+import { createPaymentProvider } from '@rm/payments-stripe';
 import {
   EXPIRE_HOLDS_JOB,
   JOB_NAMES,
@@ -13,7 +14,7 @@ import {
   WARN_EXPIRING_HOLDS_JOB,
   type SendNotificationEmailPayload,
 } from '@rm/jobs';
-import { expireHolds } from './jobs/expire-holds';
+import { createCancelPendingPaymentIntents, expireHolds } from './jobs/expire-holds';
 import { warnExpiringHolds } from './jobs/warn-expiring-holds';
 import { reconcilePaidCents } from './jobs/reconcile-paid-cents';
 
@@ -32,6 +33,8 @@ import { reconcilePaidCents } from './jobs/reconcile-paid-cents';
 const env = loadEnv(process.env);
 const db = createPrismaClient(env.databaseUrl);
 const email = createEmail(env);
+const paymentProvider = createPaymentProvider(env);
+const cancelPendingPaymentIntents = createCancelPendingPaymentIntents(paymentProvider);
 // No explicit `schema` here: pg-boss's own default (`pgboss`) sits next to
 // Prisma's default (`public`), the same deliberate separation the test
 // harness gives each of them in `@rm/jobs/testing` -- see that module's doc
@@ -69,7 +72,7 @@ async function main(): Promise<void> {
   await boss.schedule(RECONCILE_PAID_CENTS_JOB, '0 3 * * *', null, { tz: timeZone });
 
   await boss.work(EXPIRE_HOLDS_JOB, async () => {
-    await expireHolds(db, boss);
+    await expireHolds(db, boss, cancelPendingPaymentIntents);
   });
   await boss.work(WARN_EXPIRING_HOLDS_JOB, async () => {
     await warnExpiringHolds(db, boss);

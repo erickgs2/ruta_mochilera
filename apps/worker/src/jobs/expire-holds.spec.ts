@@ -1,9 +1,10 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { closeTestDb, prepareTestDb, resetDatabase, withTestDb } from '@rm/db/testing';
 import { closeTestQueue, resetTestQueue, withTestQueue } from '@rm/jobs/testing';
 import type { Db, DbTransactionClient, Reservation, ReservationStatus } from '@rm/db';
 import { recordPayment } from '@rm/domain-payments';
-import { expireHolds } from './expire-holds';
+import { FakePaymentProvider, PROVIDER_CANCEL_REJECTED_TEST_RESERVATION_ID } from '@rm/payments-stripe';
+import { createCancelPendingPaymentIntents, expireHolds } from './expire-holds';
 
 const db = withTestDb();
 const HOUR_MS = 60 * 60 * 1000;
@@ -47,6 +48,20 @@ async function seedCustomer(client: Db): Promise<string> {
     },
   });
   return user.id;
+}
+
+/** Writes a `PENDING` Payment row directly -- test setup only, bypassing `recordPayment`'s own rules. */
+async function seedPendingPayment(client: Db, reservationId: string, providerIntentId: string): Promise<void> {
+  await client.payment.create({
+    data: {
+      reservationId,
+      amountCents: 100_000,
+      method: 'CARD',
+      status: 'PENDING',
+      provider: 'STRIPE',
+      providerIntentId,
+    },
+  });
 }
 
 async function seedReservation(
@@ -273,5 +288,83 @@ describe('expireHolds', () => {
     // HOLD_EXPIRED notice for a reservation that is, in fact, active.
     const deliveries = await db.notificationDelivery.findMany({ where: { reservationId: reservation.id } });
     expect(deliveries).toHaveLength(0);
+  });
+
+  describe('cancelling pending Payment Intents (Task 9, closing the Task 8 hook)', () => {
+    it("cancels a reservation's pending Payment Intent at the provider when its hold expires", async () => {
+      const reservation = await seedReservation(db, { holdExpiresAt: new Date(Date.now() - HOUR_MS) });
+      const boss = await withTestQueue();
+      const provider = new FakePaymentProvider();
+      const created = await provider.createIntent({
+        reservationId: 'intent-seed-cancel',
+        amountCents: 100_000,
+        method: 'CARD',
+        customerEmail: 'traveler@example.com',
+      });
+      expect(created.ok).toBe(true);
+      if (!created.ok) return;
+      await seedPendingPayment(db, reservation.id, created.value.providerIntentId);
+
+      await expireHolds(db, boss, createCancelPendingPaymentIntents(provider));
+
+      expect(provider.inspect(created.value.providerIntentId)).toEqual({ status: 'canceled' });
+      const after = await db.reservation.findUniqueOrThrow({ where: { id: reservation.id } });
+      expect(after.status).toBe('EXPIRED');
+    });
+
+    it('running it twice does not cancel the same Payment Intent twice', async () => {
+      const reservation = await seedReservation(db, { holdExpiresAt: new Date(Date.now() - HOUR_MS) });
+      const boss = await withTestQueue();
+      const provider = new FakePaymentProvider();
+      const created = await provider.createIntent({
+        reservationId: 'intent-seed-double-cancel',
+        amountCents: 100_000,
+        method: 'CARD',
+        customerEmail: 'traveler@example.com',
+      });
+      expect(created.ok).toBe(true);
+      if (!created.ok) return;
+      await seedPendingPayment(db, reservation.id, created.value.providerIntentId);
+      const cancelSpy = vi.spyOn(provider, 'cancelIntent');
+      const cancelPendingPaymentIntents = createCancelPendingPaymentIntents(provider);
+
+      // Second run finds no HELD candidate left (the first already flipped
+      // it to EXPIRED), so the per-reservation loop body -- and therefore
+      // this hook -- never runs a second time for the same row.
+      await expireHolds(db, boss, cancelPendingPaymentIntents);
+      await expireHolds(db, boss, cancelPendingPaymentIntents);
+
+      expect(cancelSpy).toHaveBeenCalledTimes(1);
+      expect(provider.inspect(created.value.providerIntentId)).toEqual({ status: 'canceled' });
+    });
+
+    it('still releases the seat and logs the failure when the provider rejects the cancellation', async () => {
+      const reservation = await seedReservation(db, { holdExpiresAt: new Date(Date.now() - HOUR_MS) });
+      const boss = await withTestQueue();
+      const provider = new FakePaymentProvider();
+      const created = await provider.createIntent({
+        reservationId: PROVIDER_CANCEL_REJECTED_TEST_RESERVATION_ID,
+        amountCents: 100_000,
+        method: 'CARD',
+        customerEmail: 'traveler@example.com',
+      });
+      expect(created.ok).toBe(true);
+      if (!created.ok) return;
+      await seedPendingPayment(db, reservation.id, created.value.providerIntentId);
+      const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+      await expireHolds(db, boss, createCancelPendingPaymentIntents(provider));
+
+      // The seat is released regardless of the provider outage -- the
+      // opposite would let a third party's failure freeze it indefinitely.
+      const after = await db.reservation.findUniqueOrThrow({ where: { id: reservation.id } });
+      expect(after.status).toBe('EXPIRED');
+      expect(after.holdExpiresAt).toBeNull();
+      // Read before mockRestore(), which clears mock.calls as part of
+      // restoring the original implementation (see create-email.spec.ts's
+      // captureConsoleLog for the same caution).
+      expect(errorSpy).toHaveBeenCalled();
+      errorSpy.mockRestore();
+    });
   });
 });

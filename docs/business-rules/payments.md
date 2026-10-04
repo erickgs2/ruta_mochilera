@@ -165,6 +165,33 @@ apartado expiró:
 El dinero existe y debe verse; devolverlo o aplicarlo a otro viaje es decisión
 humana. Ningún movimiento de dinero es automático.
 
+## Cancelar el Payment Intent al expirar el apartado (Tarea 9, cierra el hueco de la Tarea 8)
+
+Spec §5.3. Cuando `expireHolds` (`apps/worker/src/jobs/expire-holds.ts`)
+expira un apartado `HELD`, cancela en el proveedor cada `Payment` en
+`PENDING` de esa reserva que tenga `provider_intent_id`: una ficha de OXXO
+sin cobrar o una intención de tarjeta sin confirmar no deben quedar
+esperando dinero para un lugar que el sistema ya liberó.
+
+El puerto (`libs/payments-stripe`, `PaymentProvider.cancelIntent`) se
+inyecta en `expireHolds` mediante `createCancelPendingPaymentIntents`, el
+mismo hueco que la Tarea 8 dejó deliberadamente abierto en vez de inventar
+una dependencia de Stripe que esa tarea no tenía forma de probar de verdad.
+
+**Un fallo al cancelar en el proveedor no impide que el apartado expire.**
+`createCancelPendingPaymentIntents` nunca lanza: si `cancelIntent` devuelve
+un error, sólo se registra con `console.error` y el lugar se libera igual.
+Lo contrario —dejar que el fallo aborte la transacción que ya marcó la
+reserva `EXPIRED`— permitiría que una caída de Stripe bloqueara un lugar
+indefinidamente, exactamente lo que esta regla existe para evitar.
+
+**No cancela dos veces.** `expireHolds` sólo llama a este cierre después de
+que su propio `updateMany` condicional de verdad volteó la fila a `EXPIRED`;
+una segunda pasada sobre una reserva ya `EXPIRED` no encuentra candidatos y
+nunca vuelve a invocarlo. `cancelIntent` es además idempotente por su propio
+contrato (`libs/payments-stripe/src/testing/payment-contract.ts`), así que
+una segunda llamada —si alguna vez ocurriera— tampoco sería un error.
+
 ## `reconcilePaidCents`: la conciliación nocturna (Tarea 8, §6 de la spec)
 
 Implementado en `apps/worker/src/jobs/reconcile-paid-cents.ts` como función
