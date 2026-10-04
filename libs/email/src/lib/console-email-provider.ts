@@ -31,7 +31,7 @@ export class ConsoleEmailProvider implements EmailProvider {
       return fail('VALIDATION_FAILED', { field: 'to' });
     }
     if (message.to === PROVIDER_REJECTED_TEST_ADDRESS) {
-      return fail('VALIDATION_FAILED', { field: 'to', reason: 'simulated_provider_rejection' });
+      return fail('EMAIL_PROVIDER_ERROR', { reason: 'simulated_provider_rejection' });
     }
 
     console.log(`[email] to=${message.to} subject=${JSON.stringify(message.subject)}`);

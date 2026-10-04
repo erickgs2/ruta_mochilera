@@ -30,7 +30,11 @@ export type DomainErrorCode =
   | 'PAYMENT_DEADLINE_PASSED'
   | 'HOLD_EXPIRED'
   | 'PAYMENT_EXCEEDS_BALANCE'
-  | 'DEPOSIT_BELOW_MINIMUM';
+  | 'DEPOSIT_BELOW_MINIMUM'
+  // Outbound providers (Phase 2) -- the provider or network failed, not the
+  // caller's input. Each of these is a 5xx in STATUS_BY_CODE, unlike every
+  // other code in this union, which is a client-side fault.
+  | 'EMAIL_PROVIDER_ERROR';
 
 export interface DomainError {
   code: DomainErrorCode;

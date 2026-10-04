@@ -45,6 +45,7 @@ const ALL_DOMAIN_ERROR_CODES: readonly DomainErrorCode[] = [
   'HOLD_EXPIRED',
   'PAYMENT_EXCEEDS_BALANCE',
   'DEPOSIT_BELOW_MINIMUM',
+  'EMAIL_PROVIDER_ERROR',
 ];
 
 /** Compile-time guard: fails to build if `DomainErrorCode` gains a case not listed above. */
@@ -77,6 +78,7 @@ function assertKnownCode(code: DomainErrorCode): void {
     case 'HOLD_EXPIRED':
     case 'PAYMENT_EXCEEDS_BALANCE':
     case 'DEPOSIT_BELOW_MINIMUM':
+    case 'EMAIL_PROVIDER_ERROR':
       return;
     default: {
       const exhaustive: never = code;

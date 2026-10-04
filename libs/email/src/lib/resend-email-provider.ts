@@ -46,8 +46,11 @@ export class ResendEmailProvider implements EmailProvider {
       });
 
       if (!response.ok) {
+        // The provider rejected or failed the request -- this is Resend's
+        // fault (or the network's), never the caller's, so it is
+        // EMAIL_PROVIDER_ERROR (502) and not VALIDATION_FAILED (422).
         const error = (await response.json().catch(() => ({}))) as ResendErrorResponse;
-        return fail('VALIDATION_FAILED', { status: response.status, message: error.message ?? error.name });
+        return fail('EMAIL_PROVIDER_ERROR', { status: response.status, message: error.message ?? error.name });
       }
 
       const body = (await response.json()) as ResendSuccessResponse;
@@ -55,7 +58,7 @@ export class ResendEmailProvider implements EmailProvider {
     } catch (error) {
       // Network failure, timeout, DNS, etc. A message that doesn't go out
       // must never take down the transaction that originated it.
-      return fail('VALIDATION_FAILED', {
+      return fail('EMAIL_PROVIDER_ERROR', {
         reason: 'network_error',
         message: error instanceof Error ? error.message : 'unknown error',
       });

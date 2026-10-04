@@ -2,7 +2,7 @@ import type { DomainError, DomainErrorCode } from '@rm/shared-utils';
 
 /**
  * Declared `Record<DomainErrorCode, number>` on purpose: TypeScript enforces
- * that every member of the 27-code union has an entry here. Adding a new
+ * that every member of the 28-code union has an entry here. Adding a new
  * `DomainErrorCode` without updating this map is a typecheck failure, not a
  * silent 500 discovered later.
  */
@@ -37,6 +37,10 @@ const STATUS_BY_CODE: Record<DomainErrorCode, number> = {
   HOLD_EXPIRED: 409,
   PAYMENT_EXCEEDS_BALANCE: 422,
   DEPOSIT_BELOW_MINIMUM: 422,
+  // The first 5xx in this map: every code above is a client-side fault, this
+  // one is ours (or our upstream's) -- the email provider or the network
+  // path to it failed, not the caller's input.
+  EMAIL_PROVIDER_ERROR: 502,
 };
 
 export function statusForCode(code: DomainErrorCode): number {

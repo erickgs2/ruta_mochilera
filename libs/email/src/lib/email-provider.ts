@@ -32,5 +32,9 @@ export function isValidEmailAddress(address: string): boolean {
  * `Result` and never as a thrown exception, without needing a live failure
  * from Resend. `ConsoleEmailProvider` honors it directly; it is never a
  * real recipient.
+ *
+ * Uses the `.invalid` TLD reserved by RFC 2606 ("guaranteed to be invalid"),
+ * not merely `.test` — this address is unreachable and unregistrable by
+ * construction, not just by convention.
  */
-export const PROVIDER_REJECTED_TEST_ADDRESS = 'provider-rejected@email.test';
+export const PROVIDER_REJECTED_TEST_ADDRESS = 'provider-rejected@email.invalid';
