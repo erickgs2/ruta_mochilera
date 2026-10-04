@@ -1514,6 +1514,62 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/webhooks/stripe": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Stripe's webhook endpoint, and the only public route that writes. Not authenticated and not permission-checked: the Stripe-Signature header, an HMAC over the exact request bytes computed with STRIPE_WEBHOOK_SECRET, is the only thing that authorises it. The body is therefore modelled here as an opaque string rather than a schema -- it is signed bytes to verify, not a client shape to validate, and it is read raw so the signature still covers it. Idempotent by the Stripe event id. Answers 200 both to a redelivery it has already applied and to an event type it does not handle, because Stripe retries anything that is not 2xx. */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": string;
+                };
+            };
+            responses: {
+                /** @description Event applied, already applied, or of a type this system ignores */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Missing or invalid Stripe-Signature header, or a malformed event body */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description The payment provider failed while verifying the signature */
+                502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/files/{key}": {
         parameters: {
             query?: never;

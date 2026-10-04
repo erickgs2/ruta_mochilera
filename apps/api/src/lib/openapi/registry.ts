@@ -626,6 +626,32 @@ export function buildOpenApiDocument() {
     },
   });
 
+  // --- webhooks ------------------------------------------------------------
+  registry.registerPath({
+    method: 'post',
+    path: '/api/v1/webhooks/stripe',
+    tags: ['webhooks'],
+    description:
+      "Stripe's webhook endpoint, and the only public route that writes. Not authenticated and not " +
+      'permission-checked: the Stripe-Signature header, an HMAC over the exact request bytes computed ' +
+      'with STRIPE_WEBHOOK_SECRET, is the only thing that authorises it. The body is therefore modelled ' +
+      'here as an opaque string rather than a schema -- it is signed bytes to verify, not a client shape ' +
+      'to validate, and it is read raw so the signature still covers it. Idempotent by the Stripe event ' +
+      'id. Answers 200 both to a redelivery it has already applied and to an event type it does not ' +
+      'handle, because Stripe retries anything that is not 2xx.',
+    request: {
+      body: {
+        required: true,
+        content: { 'application/json': { schema: { type: 'string', description: "Stripe's raw event body." } } },
+      },
+    },
+    responses: {
+      200: { description: 'Event applied, already applied, or of a type this system ignores' },
+      422: problem('Missing or invalid Stripe-Signature header, or a malformed event body'),
+      502: problem('The payment provider failed while verifying the signature'),
+    },
+  });
+
   // --- files ---------------------------------------------------------------
   registry.registerPath({
     method: 'get',

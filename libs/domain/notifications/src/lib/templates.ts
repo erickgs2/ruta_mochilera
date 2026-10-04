@@ -18,6 +18,8 @@ export type DeliveryEventType =
   | 'HOLD_EXPIRED'
   | 'PAYMENT_CONFIRMED'
   | 'PAYMENT_FAILED'
+  | 'VOUCHER_EXPIRED'
+  | 'PAYMENT_AFTER_EXPIRY'
   | 'RESERVATION_CANCELLED'
   | 'CANCELLATION_REQUESTED'
   | 'ORPHAN_PAYMENT'
@@ -29,6 +31,8 @@ export const DELIVERY_EVENT_TYPES: readonly DeliveryEventType[] = [
   'HOLD_EXPIRED',
   'PAYMENT_CONFIRMED',
   'PAYMENT_FAILED',
+  'VOUCHER_EXPIRED',
+  'PAYMENT_AFTER_EXPIRY',
   'RESERVATION_CANCELLED',
   'CANCELLATION_REQUESTED',
   'ORPHAN_PAYMENT',
@@ -105,6 +109,36 @@ const TEMPLATES: Record<DeliveryEventType, LocaleTemplates> = {
     en: template(
       "We couldn't process your payment for {{tripName}}",
       "We couldn't process your payment for {{tripName}}. Reason: {{reason}}. Please try again."
+    ),
+  },
+  // Business rule 5.3, customer side. An OXXO slip that reached its deadline
+  // unpaid is not a declined payment: nothing was refused, the time simply
+  // ran out, and `PAYMENT_FAILED`'s "try again" wording would be wrong about
+  // what happened. Carries no `{{reason}}`: the reason is the event.
+  VOUCHER_EXPIRED: {
+    es: template(
+      'Tu ficha de OXXO para {{tripName}} venció',
+      'Tu ficha de OXXO para {{tripName}} venció sin registrarse el pago, así que no se aplicó ningún cargo. Si todavía quieres viajar, genera una ficha nueva desde la app.'
+    ),
+    en: template(
+      'Your OXXO voucher for {{tripName}} expired',
+      'Your OXXO voucher for {{tripName}} expired with no payment recorded, so nothing was charged. If you still want to go, generate a new voucher from the app.'
+    ),
+  },
+  // Business rule 5.3, the race the spec singles out: money arrived for a
+  // reservation whose hold had already expired. Deliberately *not*
+  // `PAYMENT_CONFIRMED`, which would quote a remaining balance and read as
+  // "you are going" -- the seat was released and giving it back is a human
+  // decision, so this says the money is recorded and someone will be in
+  // touch, and quotes no balance at all.
+  PAYMENT_AFTER_EXPIRY: {
+    es: template(
+      'Recibimos tu pago para {{tripName}}, pero tu apartado ya había vencido',
+      'Recibimos tu pago de {{amount}} para {{tripName}}, pero tu apartado ya había vencido y el lugar se liberó. Tu pago está registrado y nadie lo va a perder: un asesor te contactará para resolverlo contigo.'
+    ),
+    en: template(
+      'We received your payment for {{tripName}}, but your hold had already expired',
+      'We received your payment of {{amount}} for {{tripName}}, but your hold had already expired and the seat was released. Your payment is on record and will not be lost: someone from the team will contact you to sort it out.'
     ),
   },
   RESERVATION_CANCELLED: {

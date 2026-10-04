@@ -159,11 +159,124 @@ apartado expiró:
 
 - El pago se registra como `SUCCEEDED` y `paid_cents` sube.
 - La reserva **no** se reactiva: sigue `EXPIRED`.
-- El aviso al cliente y al administrador lo genera el manejador del webhook
-  (Tarea 10).
+- Se avisa al cliente con `PAYMENT_AFTER_EXPIRY` y al administrador con
+  `ORPHAN_PAYMENT`, en la misma transacción.
 
 El dinero existe y debe verse; devolverlo o aplicarlo a otro viaje es decisión
 humana. Ningún movimiento de dinero es automático.
+
+El aviso al cliente **no** es `PAYMENT_CONFIRMED`. Esa plantilla cita el saldo
+restante y se leería como "sí vas"; a alguien cuyo lugar se liberó hay que
+decirle lo que de verdad pasó: su dinero está registrado, el lugar no, y una
+persona lo va a contactar. Las tres consecuencias —pago `SUCCEEDED`, reserva
+intacta en `EXPIRED`, y los dos avisos— se comprueban por separado en
+`webhook-handler.spec.ts`, porque es la regla más fácil de implementar a
+medias.
+
+## El webhook de Stripe: idempotencia por orden de inserción
+
+`handleStripeEvent(db, queue, event)` (`libs/domain/payments/src/lib/webhook-handler.ts`)
+aplica un evento **ya verificado**. La firma se comprueba antes, en el borde
+HTTP (`apps/api/src/app/api/v1/webhooks/stripe/route.ts`), sobre los bytes
+exactos que Stripe envió; cuando un evento llega aquí ya se sabe que viene de
+Stripe, y lo que **no** se sabe es si ya se procesó.
+
+### El orden dentro de la transacción es toda la regla
+
+La fila de `stripe_events` se inserta **primero**, antes de cualquier efecto, y
+una violación de su clave primaria (`stripe_events_pkey`) significa "este
+evento ya se procesó": se sale sin efecto y se responde 200. Esa inserción
+**es** el candado.
+
+- **Al final**, dos entregas simultáneas pasan las dos la pregunta "¿ya lo vi?"
+  y las dos ejecutan el efecto completo antes de que ninguna escriba su fila.
+  La transacción sigue siendo atómica, así que el dinero no se duplica, pero
+  la segunda entrega choca contra
+  `payments_provider_intent_id_key` y responde `CONFLICT` —un no-2xx— a un
+  reenvío perfectamente normal. Lo demuestra la prueba "never lets a
+  simultaneous redelivery reach the effect at all": pasa con la inserción
+  primero y falla con la inserción al final, mientras que **todas** las
+  pruebas secuenciales pasan en los dos casos.
+- **Fuera de la transacción** se abre otra ventana distinta: una caída entre
+  la inserción y el efecto deja un evento marcado como procesado que nunca se
+  aplicó, y el reintento de Stripe —que es lo único que podría arreglarlo— lo
+  descartaría por duplicado.
+- **Primero y dentro**, la segunda de dos entregas simultáneas se bloquea en
+  el índice de la clave primaria hasta que la primera confirma o deshace, y
+  entonces o encuentra la fila (descarta, nada se aplica dos veces) o inserta
+  la suya (la primera deshizo, así que aplicar es exactamente lo correcto).
+
+**Un fallo del efecto se lleva la fila de `stripe_events` con él.** El error
+sale del callback como excepción para que `$transaction` deshaga todo; así no
+queda nada marcado como procesado y el siguiente reenvío de Stripe arranca
+limpio en vez de descartarse. Los avisos encolados con `notifyCustomer` /
+`notifyAdmins` viven en esa misma transacción (Regla 11), así que también
+desaparecen: nadie recibe un correo sobre un pago que no se registró.
+
+### Qué eventos se atienden
+
+| Evento | Efecto | Aviso |
+|---|---|---|
+| `payment_intent.succeeded` | Confirma o registra el pago, sube `paid_cents`, activa la reserva si alcanza el anticipo | `PAYMENT_CONFIRMED` al cliente |
+| `payment_intent.succeeded` sobre una reserva `EXPIRED` | Pago `SUCCEEDED`, reserva intacta (§5.3 arriba) | `PAYMENT_AFTER_EXPIRY` al cliente y `ORPHAN_PAYMENT` al personal |
+| `payment_intent.succeeded` sin reserva a la que atarlo | Ninguno: un `Payment` necesita una reserva | `ORPHAN_PAYMENT` al personal, y **200** a Stripe |
+| `payment_intent.payment_failed` | Pago a `FAILED`, el saldo no se mueve | `PAYMENT_FAILED` al cliente |
+| `payment_intent.payment_failed` con `payment_intent_payment_attempt_expired` | Pago a `EXPIRED`, el saldo no se mueve | `VOUCHER_EXPIRED` al cliente |
+| `payment_intent.canceled` | Pago a `EXPIRED`, el saldo no se mueve | Ninguno |
+| Cualquier otro tipo | Ninguno | Ninguno |
+
+Stripe no tiene un evento propio de "la ficha de OXXO venció": llega como un
+`payment_intent.payment_failed` corriente, y el código
+`last_payment_error.code = payment_intent_payment_attempt_expired` es lo único
+que lo distingue de una tarjeta rechazada. La distinción importa —una ficha
+vencida no es un pago rechazado— así que el puerto expone el código
+(`OXXO_VOUCHER_EXPIRED_FAILURE_CODE`) en vez de juntar los dos casos.
+
+`payment_intent.canceled` **no es una anomalía**: es justo lo que llega cuando
+`expireHolds` cancela el intento de un apartado que acaba de vencer (Tarea 9).
+Por eso no genera aviso: el cliente ya recibió su `HOLD_EXPIRED` del job que
+provocó esta cancelación.
+
+**Un tipo de evento que no manejamos responde 200 y no hace nada.** Stripe
+reintenta ante cualquier respuesta que no sea 2xx, y devolver un error por un
+evento que no nos interesa provoca reintentos eternos. La fila de
+`stripe_events` se escribe igual: es la constancia de que esa entrega llegó.
+
+### Un `succeeded` de un intento que no tenemos registrado
+
+`confirmPayment` nació con una firma que sólo llevaba el id del intento y una
+fecha, así que únicamente podía mover una fila que ya existiera: un
+`payment_intent.succeeded` cuya fila `PENDING` nunca se confirmó respondía
+`NOT_FOUND` y **el dinero no se registraba en ninguna parte**. Es el peor
+desenlace posible: Stripe dice que cobró y nosotros no tenemos asiento.
+
+`ConfirmPaymentInput.recordIfMissing` cierra eso. El webhook lo rellena con el
+monto, el método y el `metadata[reservationId]` que `createIntent` siempre
+pone en el intento, de modo que:
+
+- si la fila existe, el camino es el de siempre (confirmarla);
+- si no existe pero el intento dice de qué reserva es, se **registra** el pago;
+- si no existe y el intento no dice de qué reserva es (un intento creado desde
+  el panel de Stripe, por ejemplo), no hay nada que escribir —un `Payment`
+  necesita una reserva—, así que se avisa a una persona con `ORPHAN_PAYMENT` y
+  se responde **200**. Devolver un error sólo haría que Stripe reenviara para
+  siempre un evento que nadie puede aplicar automáticamente.
+
+### `recordPayment` nunca lanza un `P2002`
+
+La comprobación previa de `provider_intent_id` no puede ver una fila que otra
+transacción todavía no confirmó, así que dos entregas en vuelo a la vez la
+pasan las dos y la perdedora choca contra `payments_provider_intent_id_key`.
+Eso salía como una excepción `P2002` cruda; dentro de un webhook, una
+excepción es un 500, y Stripe reintenta un 500 eternamente. Ahora se traduce a
+`CONFLICT`.
+
+**Cuando eso ocurre, la transacción de quien llama ya está abortada.**
+PostgreSQL aborta la transacción ante una violación de restricción y nada en
+la API de transacciones interactivas de Prisma lo deshace; la conversión sólo
+existe para que el llamador pueda razonar sobre un `Result` en vez de atrapar
+una excepción, y el llamador tiene que **deshacer**, no seguir escribiendo.
+`handleStripeEvent` hace exactamente eso.
 
 ## Cancelar el Payment Intent al expirar el apartado (Tarea 9, cierra el hueco de la Tarea 8)
 

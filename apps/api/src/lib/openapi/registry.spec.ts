@@ -26,6 +26,21 @@ const EVERY_ROUTE_FILE_PATH = [
   '/api/v1/trips/{tripId}/costing/items',
   '/api/v1/trips/{tripId}/costing/items/{itemId}',
   '/api/v1/files/{key}',
+  '/api/v1/webhooks/stripe',
+];
+
+/**
+ * The routes that are deliberately not gated on a token: the three auth
+ * endpoints that issue one, the local file server, and Stripe's webhook --
+ * which is authorised by an HMAC over the request body, not by an actor,
+ * and therefore has no 401 or 403 to document.
+ */
+const UNGATED_PATHS = [
+  '/api/v1/auth/login',
+  '/api/v1/auth/refresh',
+  '/api/v1/auth/logout',
+  '/api/v1/files/{key}',
+  '/api/v1/webhooks/stripe',
 ];
 
 describe('buildOpenApiDocument', () => {
@@ -53,7 +68,7 @@ describe('buildOpenApiDocument', () => {
   });
 
   it('documents both 401 and 403 on every gated route, so the client can tell an expired token apart from a real permission failure', () => {
-    const gatedPaths = EVERY_ROUTE_FILE_PATH.filter((path) => path !== '/api/v1/auth/login' && path !== '/api/v1/auth/refresh' && path !== '/api/v1/auth/logout' && path !== '/api/v1/files/{key}');
+    const gatedPaths = EVERY_ROUTE_FILE_PATH.filter((path) => !UNGATED_PATHS.includes(path));
 
     for (const path of gatedPaths) {
       const operations = Object.values(document.paths?.[path] ?? {}).filter(

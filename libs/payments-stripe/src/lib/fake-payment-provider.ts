@@ -3,6 +3,7 @@ import { fail, ok, type Result } from '@rm/shared-utils';
 import {
   isValidAmountCents,
   isValidCustomerEmail,
+  parseStripeEventBody,
   PROVIDER_CANCEL_REJECTED_TEST_RESERVATION_ID,
   PROVIDER_REJECTED_TEST_RESERVATION_ID,
   timingSafeEqualStrings,
@@ -10,7 +11,6 @@ import {
   type PaymentIntentResult,
   type PaymentProvider,
   type WebhookEvent,
-  type WebhookEventType,
 } from './payment-provider';
 
 type FakeIntentStatus = 'pending' | 'canceled';
@@ -22,16 +22,6 @@ interface FakeIntent {
   status: FakeIntentStatus;
   voucherExpiresAt?: Date;
   failCancel: boolean;
-}
-
-const KNOWN_EVENT_TYPES: readonly WebhookEventType[] = [
-  'payment_intent.succeeded',
-  'payment_intent.payment_failed',
-  'payment_intent.canceled',
-];
-
-function isKnownEventType(value: string): value is WebhookEventType {
-  return (KNOWN_EVENT_TYPES as readonly string[]).includes(value);
 }
 
 /**
@@ -107,31 +97,11 @@ export class FakePaymentProvider implements PaymentProvider {
       return fail('VALIDATION_FAILED', { reason: 'invalid_signature' });
     }
 
-    try {
-      const parsed = JSON.parse(payload) as {
-        type?: unknown;
-        providerIntentId?: unknown;
-        occurredAt?: unknown;
-      };
-      if (
-        typeof parsed.type !== 'string' ||
-        !isKnownEventType(parsed.type) ||
-        typeof parsed.providerIntentId !== 'string' ||
-        typeof parsed.occurredAt !== 'string'
-      ) {
-        return fail('VALIDATION_FAILED', { reason: 'malformed_webhook_payload' });
-      }
-      return ok({
-        type: parsed.type,
-        providerIntentId: parsed.providerIntentId,
-        occurredAt: new Date(parsed.occurredAt),
-      });
-    } catch {
-      // Not valid JSON. The signature already checked out, which only means
-      // the caller holds this fake's secret -- it says nothing about
-      // whether the body is well-formed.
-      return fail('VALIDATION_FAILED', { reason: 'malformed_webhook_payload' });
-    }
+    // The body is parsed by the exact same `parseStripeEventBody` the Stripe
+    // adapter uses, over Stripe's own event shape: the fake differs from the
+    // real provider in how a signature is computed and in nothing else, so a
+    // test driving this fake exercises the real parsing.
+    return parseStripeEventBody(payload);
   }
 
   /**

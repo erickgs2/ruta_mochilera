@@ -3,13 +3,13 @@ import { fail, ok, type Result } from '@rm/shared-utils';
 import {
   isValidAmountCents,
   isValidCustomerEmail,
+  parseStripeEventBody,
   timingSafeEqualStrings,
   type PaymentIntentMethod,
   type PaymentIntentRequest,
   type PaymentIntentResult,
   type PaymentProvider,
   type WebhookEvent,
-  type WebhookEventType,
 } from './payment-provider';
 
 const STRIPE_API_BASE_URL = 'https://api.stripe.com/v1';
@@ -17,16 +17,6 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 // Stripe's own default tolerance for a webhook signature's `t=` timestamp,
 // used by every official Stripe SDK to reject a replayed request.
 const SIGNATURE_TOLERANCE_SECONDS = 300;
-
-const KNOWN_EVENT_TYPES: readonly WebhookEventType[] = [
-  'payment_intent.succeeded',
-  'payment_intent.payment_failed',
-  'payment_intent.canceled',
-];
-
-function isKnownEventType(value: string): value is WebhookEventType {
-  return (KNOWN_EVENT_TYPES as readonly string[]).includes(value);
-}
 
 /** Stripe's `payment_method_types` value for each method this port exposes. */
 function stripePaymentMethodType(method: PaymentIntentMethod): string {
@@ -246,32 +236,11 @@ export class StripePaymentProvider implements PaymentProvider {
       return fail('VALIDATION_FAILED', { reason: 'invalid_signature' });
     }
 
-    try {
-      const event = JSON.parse(payload) as {
-        type?: unknown;
-        created?: unknown;
-        data?: { object?: { id?: unknown } };
-      };
-      const providerIntentId = event.data?.object?.id;
-      if (
-        typeof event.type !== 'string' ||
-        !isKnownEventType(event.type) ||
-        typeof providerIntentId !== 'string' ||
-        typeof event.created !== 'number'
-      ) {
-        return fail('VALIDATION_FAILED', { reason: 'malformed_webhook_payload' });
-      }
-      return ok({
-        type: event.type,
-        providerIntentId,
-        occurredAt: new Date(event.created * 1000),
-      });
-    } catch {
-      // Not valid JSON. The signature already checked out, which only means
-      // the caller holds this account's webhook secret -- it says nothing
-      // about whether the body is well-formed.
-      return fail('VALIDATION_FAILED', { reason: 'malformed_webhook_payload' });
-    }
+    // Shared with `FakePaymentProvider`: once the signature holds, both
+    // adapters read the same Stripe event shape through the same parser, so
+    // the fake can never quietly diverge from this one on what an event
+    // means (see `parseStripeEventBody`).
+    return parseStripeEventBody(payload);
   }
 }
 

@@ -37,3 +37,25 @@ of Stripe's documented API shape, never exercised against a live account:
 `STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET` are set; their absence (in
 every environment, not just development/test) is what selects
 `FakePaymentProvider` instead.
+
+## Un solo analizador de eventos, dos firmas (Tarea 10)
+
+`verifyWebhook` se partió en dos mitades: comprobar la firma, que es lo
+único en que las implementaciones difieren, y leer el cuerpo, que ahora
+hacen las dos con el mismo `parseStripeEventBody` sobre la forma real de un
+evento de Stripe. `FakePaymentProvider` ya no tiene un formato propio, así
+que una prueba que lo usa ejercita el mismo análisis que correría contra
+Stripe.
+
+El analizador **nunca rechaza un evento por su tipo**: sólo un cuerpo que no
+es JSON, o al que le faltan `id`, `type` o `created`, devuelve error. Un tipo
+que no atendemos se entrega igual y lo ignora `handleStripeEvent`, porque
+Stripe reintenta ante cualquier respuesta que no sea 2xx.
+
+Una tercera traducción no verificada contra una cuenta real se suma a las
+dos de arriba: **la expiración del voucher de OXXO**. Stripe no tiene un
+evento propio para eso; llega como un `payment_intent.payment_failed` con
+`last_payment_error.code = payment_intent_payment_attempt_expired`
+(`OXXO_VOUCHER_EXPIRED_FAILURE_CODE`). De ese código depende que el pago
+quede `EXPIRED` en vez de `FAILED`, así que es lo primero que hay que
+confirmar en cuanto exista una cuenta de Stripe.

@@ -2,8 +2,10 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { DateTime } from 'luxon';
 import { closeTestDb, prepareTestDb, resetDatabase, TEST_SCHEMA, withTestDb } from '@rm/db/testing';
 import type { Db, DbTransactionClient, Reservation, ReservationStatus } from '@rm/db';
+import type { Result } from '@rm/shared-utils';
 import {
   confirmPayment,
+  confirmPaymentWithin,
   listPaymentsForCustomer,
   recordPayment,
   suggestedMonthlyForReservation,
@@ -187,6 +189,37 @@ function clientPausingAt(client: Db, point: PausePoint, pause: () => Promise<voi
         target.$transaction((tx) => run(pausingTransactionClient(tx)));
     },
   }) as Db;
+}
+
+/**
+ * Calls `recordPayment` the way a real caller must: a failed `Result` rolls
+ * the transaction back instead of committing on top of it.
+ *
+ * This is not test ceremony. When the unique index on `provider_intent_id`
+ * is what rejected the insert, PostgreSQL has already aborted the
+ * transaction, so there is nothing left to commit -- `recordPayment`'s job
+ * is only to report that as a `Result` instead of a thrown `P2002`, and the
+ * caller's job is to roll back. `handleStripeEvent` has the same shape.
+ */
+class Rollback<T> extends Error {
+  constructor(readonly result: Result<T>) {
+    super('rollback');
+  }
+}
+
+async function recordPaymentRollingBackOnFailure(
+  input: Parameters<typeof recordPayment>[1]
+): Promise<Result<unknown>> {
+  try {
+    return await db.$transaction(async (tx: DbTransactionClient) => {
+      const result = await recordPayment(tx, input);
+      if (!result.ok) throw new Rollback(result);
+      return result;
+    });
+  } catch (error) {
+    if (error instanceof Rollback) return error.result;
+    throw error;
+  }
 }
 
 describe('payment service', () => {
@@ -616,6 +649,56 @@ describe('payment service', () => {
       expect(after.paidCents).toBe(300_000);
       expect(after.paidCents).toBe(await succeededTotal(db, reservation.id));
     });
+
+    it('returns a CONFLICT Result, never a thrown P2002, when the duplicate pre-check loses a race', async () => {
+      // Inherited Task 5 finding. The `findUnique` guarding
+      // `provider_intent_id` cannot see a row another transaction has not
+      // committed yet, so two deliveries in flight at once both pass it and
+      // the second one lands on `payments_provider_intent_id_key`. Before
+      // this, that surfaced as a raw `P2002` exception: inside a webhook
+      // handler that is a 500, and Stripe retries a 500 forever.
+      const reservation = await seedReservation(db, { totalPriceCents: 500_000 });
+
+      const firstHasInserted = deferred();
+      const firstMayCommit = deferred();
+      const pausing = clientPausingAt(
+        db,
+        { model: 'payment', operation: 'create', when: 'after' },
+        async () => {
+          firstHasInserted.resolve();
+          await firstMayCommit.promise;
+        }
+      );
+
+      const input = {
+        reservationId: reservation.id,
+        amountCents: 100_000,
+        method: 'CARD' as const,
+        status: 'SUCCEEDED' as const,
+        provider: 'STRIPE' as const,
+        providerIntentId: 'pi_duplicate_race',
+      };
+
+      const first = pausing.$transaction((tx: DbTransactionClient) => recordPayment(tx, input));
+      const second = (async () => {
+        await firstHasInserted.promise;
+        return recordPaymentRollingBackOnFailure(input);
+      })();
+
+      // Long enough for the second attempt to clear its own pre-check (which
+      // sees nothing: the first row is still uncommitted) and queue behind
+      // the reservation's row lock.
+      await settle(200);
+      firstMayCommit.resolve();
+
+      const [firstResult, secondResult] = await Promise.all([first, second]);
+
+      expect(firstResult.ok).toBe(true);
+      expect(secondResult).toMatchObject({ ok: false, error: { code: 'CONFLICT', details: { field: 'providerIntentId' } } });
+      expect(await db.payment.count({ where: { providerIntentId: 'pi_duplicate_race' } })).toBe(1);
+      const after = await db.reservation.findUniqueOrThrow({ where: { id: reservation.id } });
+      expect(after.paidCents).toBe(100_000);
+    });
   });
 
   describe('confirmPayment', () => {
@@ -841,6 +924,112 @@ describe('payment service', () => {
       expect(after.paidCents).toBe(150_000);
       expect(after.status).toBe('EXPIRED');
       expect(after.holdExpiresAt).toBeNull();
+    });
+  });
+
+  describe('confirmPayment for an intent with no local row', () => {
+    it('records the payment Stripe says it took, instead of answering NOT_FOUND', async () => {
+      // Inherited Task 5 finding. Stripe can deliver
+      // `payment_intent.succeeded` before the transaction that was going to
+      // write our own PENDING row ever committed -- or for an intent created
+      // outside this app entirely. Money Stripe has taken and we have no row
+      // for is the worst outcome available here, so `confirmPayment` is given
+      // enough to write the row rather than dropping the event.
+      const reservation = await seedReservation(db, { totalPriceCents: 500_000, minimumDepositCents: 100_000 });
+      const paidAt = new Date('2026-10-04T12:00:00.000Z');
+
+      const confirmed = await confirmPayment(db, {
+        providerIntentId: 'pi_never_seen',
+        paidAt,
+        recordIfMissing: {
+          reservationId: reservation.id,
+          amountCents: 150_000,
+          method: 'CARD',
+          provider: 'STRIPE',
+        },
+      });
+
+      expect(confirmed.ok).toBe(true);
+      if (!confirmed.ok) return;
+      expect(confirmed.value).toMatchObject({ amountCents: 150_000, status: 'SUCCEEDED', paidAt });
+
+      const after = await db.reservation.findUniqueOrThrow({ where: { id: reservation.id } });
+      expect(after.paidCents).toBe(150_000);
+      expect(after.paidCents).toBe(await succeededTotal(db, reservation.id));
+      expect(after.status).toBe('ACTIVE');
+    });
+
+    it('still answers NOT_FOUND when the caller has nothing to record it against', async () => {
+      // Without `recordIfMissing` the signature carries no amount, method or
+      // reservation, so there is nothing to write -- the old behaviour, kept
+      // explicit rather than left as an accident of the old signature.
+      const result = await confirmPayment(db, { providerIntentId: 'pi_unknown', paidAt: new Date() });
+
+      expect(result).toMatchObject({ ok: false, error: { code: 'NOT_FOUND', details: { field: 'providerIntentId' } } });
+      expect(await db.payment.count()).toBe(0);
+    });
+
+    it('prefers the row that already exists over recording a second one', async () => {
+      const reservation = await seedReservation(db, { totalPriceCents: 500_000 });
+      await db.payment.create({
+        data: {
+          reservationId: reservation.id,
+          amountCents: 150_000,
+          method: 'OXXO',
+          status: 'PENDING',
+          provider: 'STRIPE',
+          providerIntentId: 'pi_already_here',
+        },
+      });
+
+      const confirmed = await confirmPayment(db, {
+        providerIntentId: 'pi_already_here',
+        paidAt: new Date(),
+        // Deliberately disagrees with the row above: the row wins.
+        recordIfMissing: {
+          reservationId: reservation.id,
+          amountCents: 999_999,
+          method: 'CARD',
+          provider: 'STRIPE',
+        },
+      });
+
+      expect(confirmed).toMatchObject({ ok: true, value: { amountCents: 150_000, method: 'OXXO' } });
+      expect(await db.payment.count()).toBe(1);
+    });
+  });
+
+  describe('confirmPaymentWithin', () => {
+    it('runs inside the caller transaction, so a rollback takes the confirmation with it', async () => {
+      // This is what lets the Stripe webhook put the `StripeEvent`
+      // idempotency row and the money it authorises in one transaction.
+      const reservation = await seedReservation(db, { totalPriceCents: 500_000 });
+      await db.payment.create({
+        data: {
+          reservationId: reservation.id,
+          amountCents: 150_000,
+          method: 'CARD',
+          status: 'PENDING',
+          provider: 'STRIPE',
+          providerIntentId: 'pi_rolled_back',
+        },
+      });
+
+      await expect(
+        db.$transaction(async (tx: DbTransactionClient) => {
+          const confirmed = await confirmPaymentWithin(tx, {
+            providerIntentId: 'pi_rolled_back',
+            paidAt: new Date(),
+          });
+          expect(confirmed.ok).toBe(true);
+          throw new Error('caller changed its mind');
+        })
+      ).rejects.toThrow('caller changed its mind');
+
+      const payment = await db.payment.findUniqueOrThrow({ where: { providerIntentId: 'pi_rolled_back' } });
+      expect(payment.status).toBe('PENDING');
+      const after = await db.reservation.findUniqueOrThrow({ where: { id: reservation.id } });
+      expect(after.paidCents).toBe(0);
     });
   });
 

@@ -68,6 +68,34 @@ describe('renderTemplate', () => {
   it('type-checks DeliveryEventType as the exact union from the brief', () => {
     const sample: DeliveryEventType = 'ORPHAN_PAYMENT';
     expect(DELIVERY_EVENT_TYPES).toContain(sample);
-    expect(DELIVERY_EVENT_TYPES).toHaveLength(8);
+    // Eight from Task 7, plus the two the Stripe webhook needs (Task 10):
+    // an expired OXXO voucher and a payment that landed after its hold had
+    // already expired.
+    expect(DELIVERY_EVENT_TYPES).toHaveLength(10);
+  });
+
+  it('tells the customer their OXXO voucher expired, not that a payment was declined', () => {
+    // Business rule 5.3: an unpaid voucher reaching its deadline leaves the
+    // payment `EXPIRED`, which is a different thing from a card being
+    // refused, and the notice has to say so in the customer's own language.
+    const es = renderTemplate('VOUCHER_EXPIRED', 'es', { tripName: 'Oaxaca' });
+    const en = renderTemplate('VOUCHER_EXPIRED', 'en', { tripName: 'Oaxaca' });
+
+    expect(es.subject).toContain('Oaxaca');
+    expect(es.body.toLowerCase()).toContain('ficha');
+    expect(en.body.toLowerCase()).toContain('voucher');
+  });
+
+  it('tells a customer whose hold had already expired that the seat was not given back', () => {
+    // Business rule 5.3 again, the other half: the money is recorded, the
+    // reservation is not revived, and the customer must not be told a
+    // balance that implies they are still going.
+    const rendered = renderTemplate('PAYMENT_AFTER_EXPIRY', 'es', {
+      tripName: 'Oaxaca',
+      amount: '$1,000.00 MXN',
+    });
+
+    expect(rendered.body).toContain('$1,000.00 MXN');
+    expect(rendered.body).not.toContain('{{');
   });
 });

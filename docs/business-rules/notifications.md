@@ -120,6 +120,27 @@ bandeja es la fuente de verdad para el cliente; el correo es un refuerzo que
 puede fallar sin que el cliente se quede sin aviso. Esta garantía es la
 misma que la Tarea 7 dejó escrita aquí; sólo cambió de función.
 
+## Dos tipos de aviso que añadió el webhook (Tarea 10)
+
+`DeliveryEventType` creció con dos miembros, los dos para el cliente y los dos
+por la regla 5.3:
+
+- **`VOUCHER_EXPIRED`** — la ficha de OXXO llegó a su fecha límite sin pago.
+  No es `PAYMENT_FAILED`: no se rechazó nada, se acabó el tiempo, y el "vuelve
+  a intentarlo" de aquella plantilla diría algo falso sobre lo que pasó.
+- **`PAYMENT_AFTER_EXPIRY`** — el dinero llegó después de que el apartado
+  venciera. No es `PAYMENT_CONFIRMED`: esa plantilla cita el saldo restante y
+  se leería como "sí vas" para alguien cuyo lugar ya se liberó.
+
+En los dos casos la alternativa era reutilizar una plantilla existente
+pasándole un `{{reason}}` distinto, y en los dos casos se descartó por lo
+mismo: `{{reason}}` es **un solo** valor interpolado en la plantilla española
+y en la inglesa, así que no puede estar bien escrito en las dos. Un motivo que
+tiene que leerse como prosa necesita su propia plantilla por idioma. Donde sí
+viaja por `{{reason}}` es el código de fallo del proveedor en
+`PAYMENT_FAILED` (`card_declined`, por ejemplo): es un identificador estable,
+no prosa, y es lo que una persona buscaría en el panel de Stripe.
+
 ## `notifyAdmins`: tres avisos sin cliente al que ir
 
 Tres avisos de esta fase no tienen un cliente al que notificar porque son
@@ -128,6 +149,12 @@ sobre algo que el personal debe resolver, no el viajero:
 - la solicitud de cancelación (regla 5.6),
 - el pago huérfano de OXXO (regla 5.3),
 - la desviación de `paid_cents` que encuentra la conciliación nocturna.
+
+A partir de la Tarea 10 el pago huérfano llega por dos caminos, los dos desde
+el webhook de Stripe y los dos con la misma plantilla: un
+`payment_intent.succeeded` de una reserva que ya estaba `EXPIRED`, y uno de un
+intento que no trae reserva a la que atarse. En los dos casos hay dinero real
+y no hay nada que el sistema pueda decidir solo.
 
 `notifyAdmins` los envía a **todo usuario de personal vivo** (`status =
 ACTIVE`) que tenga el permiso `reservation.cancel` — el mismo permiso que

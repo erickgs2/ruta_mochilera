@@ -1,11 +1,12 @@
-import type {
-  Db,
-  DbTransactionClient,
-  Payment,
-  PaymentMethod,
-  PaymentProvider,
-  PaymentStatus,
-  Reservation,
+import {
+  uniqueViolationIndex,
+  type Db,
+  type DbTransactionClient,
+  type Payment,
+  type PaymentMethod,
+  type PaymentProvider,
+  type PaymentStatus,
+  type Reservation,
 } from '@rm/db';
 import { recordAudit } from '@rm/domain-audit';
 import { organizationTimeZone } from '@rm/domain-settings';
@@ -31,6 +32,30 @@ export interface RecordPaymentInput {
 export interface ConfirmPaymentInput {
   providerIntentId: string;
   paidAt: Date;
+  /**
+   * What to write when **no payment row exists for this intent yet** --
+   * the Task 5 review's first inherited finding.
+   *
+   * The old signature carried an intent id and a timestamp and nothing
+   * else, so it could only ever move a row that was already there; a
+   * `payment_intent.succeeded` for an intent whose `PENDING` row was never
+   * committed came back `NOT_FOUND` and the money was never recorded
+   * anywhere. That is the worst outcome available to a payment system:
+   * Stripe says it took the money and we have no row for it.
+   *
+   * The webhook fills this in from the intent's own metadata, so the
+   * normal path (confirm the row we already have) is unchanged and the
+   * missing-row path records the money instead of dropping it. Omit it and
+   * an unknown intent is still `NOT_FOUND` -- a caller with nothing to
+   * record it against (no reservation, no amount) genuinely cannot write
+   * the row, and must escalate instead.
+   */
+  recordIfMissing?: {
+    reservationId: string;
+    amountCents: number;
+    method: PaymentMethod;
+    provider: PaymentProvider;
+  };
 }
 
 /**
@@ -213,19 +238,42 @@ export async function recordPayment(
     return fail('PAYMENT_EXCEEDS_BALANCE', { amountCents: input.amountCents, balanceCents });
   }
 
-  const payment = await tx.payment.create({
-    data: {
-      reservationId: reservation.id,
-      amountCents: input.amountCents,
-      method: input.method,
-      status: input.status,
-      provider: input.provider,
-      providerIntentId: input.providerIntentId ?? null,
-      // Money already in hand always carries the moment it arrived; anything
-      // else has not been paid yet and must not pretend otherwise.
-      paidAt: input.paidAt ?? (input.status === 'SUCCEEDED' ? new Date() : null),
-    },
-  });
+  let payment: Payment;
+  try {
+    payment = await tx.payment.create({
+      data: {
+        reservationId: reservation.id,
+        amountCents: input.amountCents,
+        method: input.method,
+        status: input.status,
+        provider: input.provider,
+        providerIntentId: input.providerIntentId ?? null,
+        // Money already in hand always carries the moment it arrived; anything
+        // else has not been paid yet and must not pretend otherwise.
+        paidAt: input.paidAt ?? (input.status === 'SUCCEEDED' ? new Date() : null),
+      },
+    });
+  } catch (error) {
+    // The Task 5 review's second inherited finding. The pre-check above is
+    // the normal path, but it cannot see a row another transaction has not
+    // committed yet, so two deliveries in flight at once both pass it and
+    // the loser lands on `payments_provider_intent_id_key`. That used to
+    // escape as a raw `P2002`; inside the Stripe webhook a thrown exception
+    // is a 500, and Stripe retries a 500 forever.
+    //
+    // **The caller's transaction is already aborted when this returns.**
+    // PostgreSQL aborts a transaction on a constraint violation and nothing
+    // in Prisma's interactive-transaction API can undo that, so this
+    // converts the throw into the `Result` the caller can reason about and
+    // the caller must then roll back rather than commit more work on top.
+    // `handleStripeEvent` does exactly that: any failed `Result` rolls its
+    // transaction back, leaving the `StripeEvent` row unwritten so Stripe's
+    // next delivery of the same event gets a clean run.
+    if (uniqueViolationIndex(error) === 'payments_provider_intent_id_key') {
+      return fail('CONFLICT', { field: 'providerIntentId' });
+    }
+    throw error;
+  }
 
   if (payment.status === 'SUCCEEDED') {
     await applyConfirmedPayment(tx, reservation.id, payment.amountCents);
@@ -251,11 +299,17 @@ export async function recordPayment(
  * Confirms a payment the provider has told us succeeded, and applies it
  * (business rule 5.5).
  *
- * Opens its own transaction because its callers -- the Stripe webhook today,
- * a reconciliation tool tomorrow -- hand it an intent id and nothing else.
- * Inside it, the money is applied by the same `applyConfirmedPayment` that
- * `recordPayment` uses, so a payment confirmed later and a payment recorded
- * as already succeeded move the balance through one piece of code.
+ * Opens a transaction of its own for callers that have none --
+ * a reconciliation tool, a counter screen. The Stripe webhook uses
+ * `confirmPaymentWithin` instead, because its own `StripeEvent` row has to
+ * share the transaction. Either way the money is applied by the same
+ * `applyConfirmedPayment` that `recordPayment` uses, so a payment confirmed
+ * later and a payment recorded as already succeeded move the balance
+ * through one piece of code.
+ *
+ * **An intent with no local row.** See `ConfirmPaymentInput.recordIfMissing`:
+ * with it, the payment is recorded instead of being dropped; without it,
+ * an unknown intent is still `NOT_FOUND`.
  *
  * **Idempotency.** Confirming the same intent twice applies it once. Two
  * things make that true, and the second is the one that matters:
@@ -277,42 +331,72 @@ export async function confirmPayment(
   db: Db,
   input: ConfirmPaymentInput
 ): Promise<Result<PaymentDto>> {
-  return db.$transaction(async (tx: DbTransactionClient) => {
-    const payment = await tx.payment.findUnique({
-      where: { providerIntentId: input.providerIntentId },
-    });
-    if (!payment) return fail('NOT_FOUND', { field: 'providerIntentId' });
-    if (payment.status === 'SUCCEEDED') return ok(toDto(payment));
-    // FAILED, EXPIRED and REFUNDED are decided elsewhere and are not
-    // something a `succeeded` event may quietly undo.
-    if (payment.status !== 'PENDING') {
-      return fail('INVALID_STATUS_TRANSITION', { status: payment.status });
-    }
+  return db.$transaction((tx: DbTransactionClient) => confirmPaymentWithin(tx, input));
+}
 
-    const confirmed = await tx.payment.updateMany({
-      where: { id: payment.id, status: 'PENDING' },
-      data: { status: 'SUCCEEDED', paidAt: input.paidAt },
-    });
-    if (confirmed.count === 0) {
-      // Another confirmation won the race and already applied the money. Its
-      // row, its timestamp, its audit entry.
-      return ok(toDto(await tx.payment.findUniqueOrThrow({ where: { id: payment.id } })));
-    }
-
-    await applyConfirmedPayment(tx, payment.reservationId, payment.amountCents);
-
-    await recordAudit(tx, {
-      action: 'payment.confirmed',
-      entityType: 'Payment',
-      entityId: payment.id,
-      // Serialised rather than handed over as `Date`: the audit columns are
-      // `jsonb`, and the `after` side next to it is a string too.
-      before: { status: payment.status, paidAt: payment.paidAt?.toISOString() ?? null },
-      after: { status: 'SUCCEEDED', paidAt: input.paidAt.toISOString() },
-    });
-
-    return ok(toDto({ ...payment, status: 'SUCCEEDED', paidAt: input.paidAt }));
+/**
+ * `confirmPayment`'s body, running inside a transaction the caller already
+ * owns rather than opening one of its own.
+ *
+ * Exists for the Stripe webhook (Task 10), which cannot use
+ * `confirmPayment`: the `StripeEvent` row that makes the whole delivery
+ * idempotent has to be inserted **first and in the same transaction** as
+ * the money it authorises, and a function that opens its own transaction
+ * can never be part of that one. `confirmPayment` is now a two-line wrapper
+ * around this, so the counter and the webhook still confirm a payment
+ * through one piece of code.
+ */
+export async function confirmPaymentWithin(
+  tx: DbTransactionClient,
+  input: ConfirmPaymentInput
+): Promise<Result<PaymentDto>> {
+  const payment = await tx.payment.findUnique({
+    where: { providerIntentId: input.providerIntentId },
   });
+
+  if (!payment) {
+    // No row for this intent. See `ConfirmPaymentInput.recordIfMissing`:
+    // when the caller knows what the money was for, record it rather than
+    // answering NOT_FOUND and losing a payment that really happened.
+    if (!input.recordIfMissing) return fail('NOT_FOUND', { field: 'providerIntentId' });
+    return recordPayment(tx, {
+      ...input.recordIfMissing,
+      status: 'SUCCEEDED',
+      providerIntentId: input.providerIntentId,
+      paidAt: input.paidAt,
+    });
+  }
+
+  if (payment.status === 'SUCCEEDED') return ok(toDto(payment));
+  // FAILED, EXPIRED and REFUNDED are decided elsewhere and are not
+  // something a `succeeded` event may quietly undo.
+  if (payment.status !== 'PENDING') {
+    return fail('INVALID_STATUS_TRANSITION', { status: payment.status });
+  }
+
+  const confirmed = await tx.payment.updateMany({
+    where: { id: payment.id, status: 'PENDING' },
+    data: { status: 'SUCCEEDED', paidAt: input.paidAt },
+  });
+  if (confirmed.count === 0) {
+    // Another confirmation won the race and already applied the money. Its
+    // row, its timestamp, its audit entry.
+    return ok(toDto(await tx.payment.findUniqueOrThrow({ where: { id: payment.id } })));
+  }
+
+  await applyConfirmedPayment(tx, payment.reservationId, payment.amountCents);
+
+  await recordAudit(tx, {
+    action: 'payment.confirmed',
+    entityType: 'Payment',
+    entityId: payment.id,
+    // Serialised rather than handed over as `Date`: the audit columns are
+    // `jsonb`, and the `after` side next to it is a string too.
+    before: { status: payment.status, paidAt: payment.paidAt?.toISOString() ?? null },
+    after: { status: 'SUCCEEDED', paidAt: input.paidAt.toISOString() },
+  });
+
+  return ok(toDto({ ...payment, status: 'SUCCEEDED', paidAt: input.paidAt }));
 }
 
 /**
