@@ -444,7 +444,11 @@ model Payment {
   paidAt             DateTime?       @map("paid_at") @db.Timestamptz
   recordedAt         DateTime        @default(now()) @map("recorded_at") @db.Timestamptz
   provider           PaymentProvider
-  providerIntentId   String?         @map("provider_intent_id")
+  /// The provider's Payment Intent id, unique when present: one intent is
+  /// one payment, which is what makes a retried Stripe webhook idempotent.
+  /// NULL for cash at the counter and for backfilled history, and PostgreSQL
+  /// keeps NULLs distinct in a unique index, so those rows never collide.
+  providerIntentId   String?         @unique @map("provider_intent_id")
   // OXXO only. The voucher expires at the same time as the hold (see
   // `Reservation.holdExpiresAt`), so the system never confirms a payment for a
   // seat that has already been released.

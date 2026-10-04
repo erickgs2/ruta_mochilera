@@ -1,0 +1,17 @@
+-- One Payment Intent is one payment.
+--
+-- Stripe retries webhook deliveries, and two deliveries of the same
+-- `payment_intent.succeeded` can be in flight at once. `recordPayment` looks
+-- the intent up before inserting, but a pre-check cannot see a row another
+-- transaction has not committed yet, so this index is the final word: the
+-- loser's whole transaction rolls back instead of writing a second payment
+-- for money that moved once.
+--
+-- Deliberately a plain unique index and not a partial one. The column is
+-- NULL for cash at the counter and for the backfilled history of Phase 2B,
+-- and PostgreSQL keeps NULLs distinct in a unique index (the default,
+-- NULLS DISTINCT), so "unique when not null" is already what this enforces.
+-- Expressing it as `@unique` in `schema.prisma` instead of as hand-written
+-- SQL also keeps the Prisma client able to look a payment up by its intent,
+-- which `confirmPayment` relies on.
+CREATE UNIQUE INDEX "payments_provider_intent_id_key" ON "payments"("provider_intent_id");

@@ -191,4 +191,77 @@ describe('reservations schema', () => {
 
     expect(second.status).toBe('HELD');
   });
+
+  async function createReservation(db: Db, code: string) {
+    const { trip, customer } = await createTripAndCustomer(db);
+    return db.reservation.create({
+      data: {
+        code,
+        tripId: trip.id,
+        customerId: customer.id,
+        status: 'ACTIVE',
+        totalPriceCents: 500000,
+        minimumDepositCents: 100000,
+        paymentDeadline: new Date('2026-11-01'),
+        source: 'APP',
+      },
+    });
+  }
+
+  it('rejects two payments for the same provider intent', async () => {
+    const reservation = await createReservation(db, 'RES-0007');
+
+    await db.payment.create({
+      data: {
+        reservationId: reservation.id,
+        amountCents: 100000,
+        method: 'OXXO',
+        status: 'PENDING',
+        provider: 'STRIPE',
+        providerIntentId: 'pi_12345',
+      },
+    });
+
+    const error = await db.payment
+      .create({
+        data: {
+          reservationId: reservation.id,
+          amountCents: 100000,
+          method: 'OXXO',
+          status: 'SUCCEEDED',
+          provider: 'STRIPE',
+          providerIntentId: 'pi_12345',
+        },
+      })
+      .then(() => undefined)
+      .catch((thrown: unknown) => thrown);
+
+    // One Payment Intent is one payment. Stripe retries webhook deliveries,
+    // and `recordPayment`'s pre-check cannot see a row another transaction
+    // has not committed yet; this index is what makes a second one
+    // impossible no matter who writes it.
+    expect(error).toMatchObject({ code: 'P2002' });
+    expect(uniqueViolationIndex(error)).toBe('payments_provider_intent_id_key');
+  });
+
+  it('allows many payments with no provider intent at all', async () => {
+    const reservation = await createReservation(db, 'RES-0008');
+
+    // Cash at the counter and backfilled history carry no intent id. A unique
+    // index over a nullable column leaves NULLs distinct in PostgreSQL, which
+    // is exactly the "unique when not null" the rule asks for.
+    for (let i = 0; i < 2; i++) {
+      await db.payment.create({
+        data: {
+          reservationId: reservation.id,
+          amountCents: 10000,
+          method: 'CASH',
+          status: 'SUCCEEDED',
+          provider: 'MANUAL',
+        },
+      });
+    }
+
+    expect(await db.payment.count({ where: { reservationId: reservation.id } })).toBe(2);
+  });
 });
