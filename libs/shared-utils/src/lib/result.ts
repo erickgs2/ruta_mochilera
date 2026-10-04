@@ -31,6 +31,11 @@ export type DomainErrorCode =
   | 'HOLD_EXPIRED'
   | 'PAYMENT_EXCEEDS_BALANCE'
   | 'DEPOSIT_BELOW_MINIMUM'
+  // Notifications (Phase 2)
+  // 404 and not 403, same reasoning as `RESERVATION_NOT_OWNED`: a 403 would
+  // confirm the delivery exists, which lets a customer walking ids tell
+  // "not yours" from "no such delivery".
+  | 'DELIVERY_NOT_OWNED'
   // Outbound providers (Phase 2) -- the provider or network failed, not the
   // caller's input. Each of these is a 5xx in STATUS_BY_CODE, unlike every
   // other code in this union, which is a client-side fault.

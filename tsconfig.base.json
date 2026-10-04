@@ -36,6 +36,7 @@
       "@rm/domain-trips": ["./libs/domain/trips/src/index.ts"],
       "@rm/domain-reservations": ["./libs/domain/reservations/src/index.ts"],
       "@rm/domain-payments": ["./libs/domain/payments/src/index.ts"],
+      "@rm/domain-notifications": ["./libs/domain/notifications/src/index.ts"],
       "@rm/domain-costing": ["./libs/domain/costing/src/index.ts"],
       "@rm/domain-audit": ["./libs/domain/audit/src/index.ts"],
       "@rm/domain-settings": ["./libs/domain/settings/src/index.ts"],

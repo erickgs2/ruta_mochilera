@@ -1,0 +1,17 @@
+{
+  "name": "notifications",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/domain/notifications/src",
+  "projectType": "library",
+  "tags": [],
+  "// targets": "to see all targets run: nx show project notifications --web",
+  "targets": {
+    "typecheck": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "tsc -p tsconfig.typecheck.json",
+        "cwd": "{projectRoot}"
+      }
+    }
+  }
+}

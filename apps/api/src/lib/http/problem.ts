@@ -37,6 +37,9 @@ const STATUS_BY_CODE: Record<DomainErrorCode, number> = {
   HOLD_EXPIRED: 409,
   PAYMENT_EXCEEDS_BALANCE: 422,
   DEPOSIT_BELOW_MINIMUM: 422,
+  // Same reasoning as RESERVATION_NOT_OWNED above: a 403 would confirm the
+  // delivery exists.
+  DELIVERY_NOT_OWNED: 404,
   // The first 5xx in this map: every code above is a client-side fault, this
   // one is ours (or our upstream's) -- the email provider or the network
   // path to it failed, not the caller's input.

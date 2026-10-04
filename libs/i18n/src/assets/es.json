@@ -222,6 +222,7 @@
     "HOLD_EXPIRED": "El apartado expiró. Vuelve a intentarlo.",
     "PAYMENT_EXCEEDS_BALANCE": "El pago excede el saldo pendiente.",
     "DEPOSIT_BELOW_MINIMUM": "El anticipo es menor al mínimo requerido.",
+    "DELIVERY_NOT_OWNED": "No encontramos ese aviso en tu cuenta.",
     "EMAIL_PROVIDER_ERROR": "No pudimos enviar ese mensaje. Esto no se debe a algo que hiciste tú; inténtalo de nuevo en un momento.",
     "INTERNAL_ERROR": "Ocurrió un error en el servidor. Inténtalo más tarde.",
     "UNKNOWN": "Ocurrió un error inesperado."
