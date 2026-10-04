@@ -186,3 +186,105 @@ compara `paid_cents` contra la suma real de pagos y avisa si divergen —ver
 
 `credit_cents` se declara desde ahora en el esquema pero sólo lo llena la
 Fase 2B (saldo a favor por pagos retroactivos).
+
+## Crear una reserva (§5.2)
+
+`createReservation(db, { tripId, customerId })`
+(`libs/domain/reservations/src/lib/reservation-service.ts`) hace **todo**
+dentro de una sola transacción, y en este orden: bloquear el viaje, verificar
+que esté publicado, verificar la fecha límite de pago, verificar el correo,
+verificar que no haya ya una reserva viva, verificar el cupo, insertar y
+auditar. El orden no es estético: contar antes de bloquear deja la ventana
+que produce la sobreventa (ver «Por qué el cálculo exige el bloqueo»).
+
+1. **El viaje debe estar `PUBLISHED`.** Un `DRAFT` todavía no existe para el
+   cliente y un `CANCELLED`, `IN_PROGRESS` o `COMPLETED` ya no admite
+   reservas → `TRIP_NOT_PUBLISHED`.
+2. **La fecha límite de pago no puede haber pasado.** Se compara como día de
+   calendario en la zona de `SystemSetting['organization.timezone']`
+   (`isPastDate`), nunca contra `new Date()` crudo: `payment_deadline` es una
+   columna `date`, y en una zona detrás de UTC la comparación ingenua
+   convierte «hoy» en «ya pasó» durante las primeras horas de cada día →
+   `PAYMENT_DEADLINE_PASSED`.
+3. **El correo del cliente debe estar verificado.** Navegar el catálogo y
+   registrarse no lo exige; reservar sí → `EMAIL_NOT_VERIFIED`.
+4. **Una sola reserva viva por cliente y viaje.** La comprobación previa
+   reproduce el índice parcial *exactamente*, apartados vencidos incluidos:
+   un `HELD` cuyo `hold_expires_at` ya pasó no ocupa lugar, pero sigue siendo
+   una fila viva para el índice hasta que el job lo marca `EXPIRED`. La
+   consecuencia —hasta cinco minutos en los que el cliente no puede volver a
+   reservar ese viaje— es preferible a comprobar algo más estrecho que lo que
+   la base impone, que sólo convertiría un error amable en una violación de
+   restricción → `DUPLICATE_RESERVATION`.
+5. **Debe quedar cupo.** `availableSeats ≥ 1`, calculado bajo el bloqueo de
+   fila → `TRIP_SOLD_OUT`.
+6. **Los montos se congelan.** `total_price_cents` se copia de
+   `price_per_seat_cents` **en ese momento** y `minimum_deposit_cents` del
+   viaje; cambiar el precio del viaje después no mueve ninguna reserva
+   existente.
+7. **El apartado vence según el viaje.** `hold_expires_at = ahora +
+   trip.hold_ttl_hours`, nunca una constante del código, y **siempre** se
+   escribe: el `CHECK` `reservations_held_requires_hold_expiry` rechaza un
+   `HELD` sin fecha, y el conteo de cupo leería esa fila como lugar libre.
+8. **El folio es legible y único.** Formato `RM-XXXX-XXXX` sobre un alfabeto
+   de 30 caracteres que no contiene `0`/`O`, `1`/`I`/`L` ni `U`: el cliente
+   lo dicta por teléfono al mostrador. La unicidad la garantiza el índice
+   único `reservations_code_key` **más** un reintento, no el bucle de
+   generación: dos creaciones simultáneas pueden leer libre el mismo folio
+   antes de que ninguna inserte. Es el mismo reparto que `createTrip` usa
+   para el slug. Un segundo choque seguido se reporta como `CONFLICT`, no se
+   reintenta sin fin.
+
+El origen es `APP` y `created_by` es el propio cliente. La auditoría
+(`reservation.created`) se escribe **dentro** de la misma transacción, así que
+no puede existir una reserva sin su registro ni al revés.
+
+## Leer una reserva propia
+
+`getReservationForCustomer(db, reservationId, customerId)` responde lo mismo
+—`RESERVATION_NOT_OWNED`— a dos preguntas distintas: «esta reserva es de otro»
+y «esta reserva no existe». Es deliberado y es la razón de que ese código
+responda **404 y no 403**: un 403 confirmaría que la reserva existe, y dos
+códigos distintos lo confirmarían igual aunque ambos respondieran 404. Un
+cliente que prueba identificadores ajenos no debe poder distinguir los dos
+casos, así que no se distinguen en ningún punto observable: mismo código,
+mismo cuerpo, sin `details`.
+
+`listReservationsForCustomer` devuelve el historial completo del cliente —las
+canceladas y expiradas incluidas— de la más reciente a la más antigua.
+
+`balance_cents` nunca se almacena: es `total_price_cents − paid_cents` con
+piso en cero, recalculado en cada lectura.
+
+## Solicitud de cancelación (§5.6)
+
+`requestCancellation(db, reservationId, customerId, reason?)` sella
+`cancellation_requested_at` y `cancellation_reason`, audita
+(`reservation.cancellation_requested`) y **no toca el estado**: una reserva
+`HELD` sigue `HELD` y su apartado sigue corriendo, una `ACTIVE` sigue
+`ACTIVE`, el lugar sigue ocupado y ningún dinero se mueve. Es una solicitud,
+no una cancelación; cancelar es una decisión humana con el permiso
+`reservation.cancel`.
+
+- **Pedirlo dos veces no duplica ni falla.** La primera solicitud es la que
+  queda, con su motivo, y es la única auditada. La idempotencia se consigue
+  con un `UPDATE ... WHERE cancellation_requested_at IS NULL` en una sola
+  sentencia, no con una lectura seguida de una escritura que otra solicitud
+  podría intercalar.
+- **Una reserva terminal no admite solicitud.** `CANCELLED` y `EXPIRED` ya no
+  tienen nada que cancelar y sellarlas sólo pondría frente al administrador
+  un aviso que únicamente puede descartar → `INVALID_STATUS_TRANSITION`.
+
+## Errores de este módulo
+
+| Código | Cuándo | HTTP |
+|---|---|---|
+| `TRIP_NOT_PUBLISHED` | El viaje no está en `PUBLISHED`. | 409 |
+| `PAYMENT_DEADLINE_PASSED` | `payment_deadline` ya pasó en la zona de la organización. | 409 |
+| `EMAIL_NOT_VERIFIED` | El cliente no ha confirmado su correo. | 403 |
+| `DUPLICATE_RESERVATION` | El cliente ya tiene una reserva `HELD` o `ACTIVE` en ese viaje. | 409 |
+| `TRIP_SOLD_OUT` | No queda cupo disponible. | 409 |
+| `NOT_FOUND` | El viaje no existe, o el id de cliente no corresponde a un cliente. | 404 |
+| `RESERVATION_NOT_OWNED` | La reserva no existe **o** es de otro cliente. | 404 |
+| `INVALID_STATUS_TRANSITION` | Se solicita cancelar una reserva ya `CANCELLED` o `EXPIRED`. | 409 |
+| `CONFLICT` | Dos choques seguidos de folio: generador roto, no mala suerte. | 409 |

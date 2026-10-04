@@ -77,3 +77,60 @@ vencimiento: con `hold_expires_at` nulo la comparación no es cierta y la fila
 caería en «no ocupa» estando viva. El `CHECK`
 `reservations_held_requires_hold_expiry` impide esa fila, así que el diagrama
 no tiene un cuarto caso (ver `docs/business-rules/reservations.md`).
+
+## Del botón «Reservar» a `HELD`
+
+Las cinco bifurcaciones de rechazo, en el orden en que `createReservation` las
+evalúa, todas dentro de la misma transacción y todas después del bloqueo.
+`NOT_FOUND` (viaje o cliente inexistente) no aparece como bifurcación de
+negocio: es la ausencia del dato sobre el que se decide.
+
+```mermaid
+flowchart TD
+    A["El cliente pulsa «Reservar»"] --> B[("BEGIN")]
+    B --> C["lockTripForCapacity: SELECT ... FOR UPDATE"]
+    C --> D{"¿El viaje está PUBLISHED?"}
+    D -- No --> R1["TRIP_NOT_PUBLISHED"]
+    D -- Sí --> E{"¿payment_deadline sigue vigente<br/>en la zona de la organización?"}
+    E -- No --> R2["PAYMENT_DEADLINE_PASSED"]
+    E -- Sí --> F{"¿El correo está verificado?"}
+    F -- No --> R3["EMAIL_NOT_VERIFIED"]
+    F -- Sí --> G{"¿Ya tiene una reserva HELD o ACTIVE<br/>en este viaje?"}
+    G -- Sí --> R4["DUPLICATE_RESERVATION"]
+    G -- No --> H["countCommittedSeats + availableSeats"]
+    H --> I{"¿Queda al menos un lugar?"}
+    I -- No --> R5["TRIP_SOLD_OUT"]
+    I -- Sí --> J["Folio RM-XXXX-XXXX único"]
+    J --> K["INSERT en HELD:<br/>precio congelado,<br/>hold_expires_at = ahora + hold_ttl_hours"]
+    K --> L["recordAudit: reservation.created"]
+    L --> M[("COMMIT")]
+    R1 --> X[("ROLLBACK")]
+    R2 --> X
+    R3 --> X
+    R4 --> X
+    R5 --> X
+```
+
+El folio tiene dos redes: el bucle que descarta candidatos ya tomados y el
+índice único `reservations_code_key`, que es el que de verdad decide. Una
+violación de ese índice reintenta la transacción completa una vez; una
+violación de `reservations_live_trip_customer_key` se traduce a
+`DUPLICATE_RESERVATION`, que es la carrera que la comprobación previa no
+puede cerrar sola.
+
+## Solicitar la cancelación no cambia el estado
+
+```mermaid
+flowchart LR
+    A["El cliente solicita cancelar"] --> B{"¿Es suya y sigue viva?"}
+    B -- No --> C["RESERVATION_NOT_OWNED<br/>o INVALID_STATUS_TRANSITION"]
+    B -- Sí --> D{"¿Ya la había solicitado?"}
+    D -- Sí --> E["No escribe nada:<br/>la primera solicitud es la que queda"]
+    D -- No --> F["Sella cancellation_requested_at<br/>y cancellation_reason"]
+    F --> G["recordAudit:<br/>reservation.cancellation_requested"]
+    G --> H["El estado sigue igual:<br/>HELD sigue venciendo, el lugar sigue ocupado"]
+    E --> H
+```
+
+Cancelar de verdad —liberar el lugar y mover dinero— es una decisión humana
+con el permiso `reservation.cancel`, no un efecto de esta solicitud.

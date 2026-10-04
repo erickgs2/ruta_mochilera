@@ -2,7 +2,7 @@ import type { DomainError, DomainErrorCode } from '@rm/shared-utils';
 
 /**
  * Declared `Record<DomainErrorCode, number>` on purpose: TypeScript enforces
- * that every member of the 23-code union has an entry here. Adding a new
+ * that every member of the 27-code union has an entry here. Adding a new
  * `DomainErrorCode` without updating this map is a typecheck failure, not a
  * silent 500 discovered later.
  */
@@ -26,8 +26,14 @@ const STATUS_BY_CODE: Record<DomainErrorCode, number> = {
   TRIP_NOT_PUBLISHABLE: 409,
   INVALID_STATUS_TRANSITION: 409,
   TRIP_SOLD_OUT: 409,
+  TRIP_NOT_PUBLISHED: 409,
   MISSING_REQUIRED_TRANSLATION: 422,
   DUPLICATE_RESERVATION: 409,
+  // 404 and not 403 on purpose: a 403 would confirm that the reservation
+  // exists, which lets a customer walking ids tell "not yours" from "no such
+  // reservation". The domain returns this same code for both cases.
+  RESERVATION_NOT_OWNED: 404,
+  PAYMENT_DEADLINE_PASSED: 409,
   HOLD_EXPIRED: 409,
   PAYMENT_EXCEEDS_BALANCE: 422,
   DEPOSIT_BELOW_MINIMUM: 422,
