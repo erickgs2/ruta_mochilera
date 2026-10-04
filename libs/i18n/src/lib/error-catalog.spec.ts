@@ -47,6 +47,7 @@ const ALL_DOMAIN_ERROR_CODES: readonly DomainErrorCode[] = [
   'DEPOSIT_BELOW_MINIMUM',
   'DELIVERY_NOT_OWNED',
   'EMAIL_PROVIDER_ERROR',
+  'PAYMENT_PROVIDER_ERROR',
 ];
 
 /** Compile-time guard: fails to build if `DomainErrorCode` gains a case not listed above. */
@@ -81,6 +82,7 @@ function assertKnownCode(code: DomainErrorCode): void {
     case 'DEPOSIT_BELOW_MINIMUM':
     case 'DELIVERY_NOT_OWNED':
     case 'EMAIL_PROVIDER_ERROR':
+    case 'PAYMENT_PROVIDER_ERROR':
       return;
     default: {
       const exhaustive: never = code;

@@ -44,6 +44,10 @@ const STATUS_BY_CODE: Record<DomainErrorCode, number> = {
   // one is ours (or our upstream's) -- the email provider or the network
   // path to it failed, not the caller's input.
   EMAIL_PROVIDER_ERROR: 502,
+  // Same split as EMAIL_PROVIDER_ERROR, Ruling 10: Stripe (or the network
+  // path to it) failed, not the caller's input, so it is a 502 and never
+  // VALIDATION_FAILED.
+  PAYMENT_PROVIDER_ERROR: 502,
 };
 
 export function statusForCode(code: DomainErrorCode): number {

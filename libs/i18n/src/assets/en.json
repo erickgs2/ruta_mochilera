@@ -224,6 +224,7 @@
     "DEPOSIT_BELOW_MINIMUM": "The deposit is below the required minimum.",
     "DELIVERY_NOT_OWNED": "We could not find that notification in your account.",
     "EMAIL_PROVIDER_ERROR": "We could not send that message. This isn't something you did — please try again shortly.",
+    "PAYMENT_PROVIDER_ERROR": "We could not reach the payment provider. This isn't something you did — please try again shortly.",
     "INTERNAL_ERROR": "A server error occurred. Please try again later.",
     "UNKNOWN": "An unexpected error occurred."
   },

@@ -39,7 +39,8 @@ export type DomainErrorCode =
   // Outbound providers (Phase 2) -- the provider or network failed, not the
   // caller's input. Each of these is a 5xx in STATUS_BY_CODE, unlike every
   // other code in this union, which is a client-side fault.
-  | 'EMAIL_PROVIDER_ERROR';
+  | 'EMAIL_PROVIDER_ERROR'
+  | 'PAYMENT_PROVIDER_ERROR';
 
 export interface DomainError {
   code: DomainErrorCode;

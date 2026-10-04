@@ -68,4 +68,31 @@ describe('loadEnv', () => {
     const env = loadEnv({ ...valid, EMAIL_VERBOSE_LOGGING: 'yes' });
     expect(env.emailVerboseLogging).toBe(false);
   });
+
+  it('leaves the Stripe credentials undefined when none are configured, in every NODE_ENV', () => {
+    const env = loadEnv({ ...valid, NODE_ENV: 'production', RESEND_API_KEY: 'k', RESEND_FROM_ADDRESS: 'a@b.com' });
+    expect(env.stripeSecretKey).toBeUndefined();
+    expect(env.stripeWebhookSecret).toBeUndefined();
+    expect(env.stripePublishableKey).toBeUndefined();
+  });
+
+  it('accepts all three Stripe variables once configured', () => {
+    const env = loadEnv({
+      ...valid,
+      STRIPE_SECRET_KEY: 'sk_test_x',
+      STRIPE_WEBHOOK_SECRET: 'whsec_x',
+      STRIPE_PUBLISHABLE_KEY: 'pk_test_x',
+    });
+    expect(env.stripeSecretKey).toBe('sk_test_x');
+    expect(env.stripeWebhookSecret).toBe('whsec_x');
+    expect(env.stripePublishableKey).toBe('pk_test_x');
+  });
+
+  it('rejects a lone STRIPE_SECRET_KEY without its matching webhook secret', () => {
+    expect(() => loadEnv({ ...valid, STRIPE_SECRET_KEY: 'sk_test_x' })).toThrow(/STRIPE_SECRET_KEY/);
+  });
+
+  it('rejects a lone STRIPE_WEBHOOK_SECRET without its matching secret key', () => {
+    expect(() => loadEnv({ ...valid, STRIPE_WEBHOOK_SECRET: 'whsec_x' })).toThrow(/STRIPE_WEBHOOK_SECRET/);
+  });
 });

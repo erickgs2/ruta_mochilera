@@ -14,6 +14,14 @@ const schema = z
     STORAGE_S3_REGION: z.string().optional(),
     RESEND_API_KEY: z.string().optional(),
     RESEND_FROM_ADDRESS: z.string().optional(),
+    // Optional in every environment, not just development/test: there is no
+    // Stripe account anywhere in this phase, so their absence is what
+    // selects FakePaymentProvider (see createPaymentProvider), not a
+    // misconfiguration to fail fast on the way missing Resend credentials
+    // are outside development and test.
+    STRIPE_SECRET_KEY: z.string().optional(),
+    STRIPE_WEBHOOK_SECRET: z.string().optional(),
+    STRIPE_PUBLISHABLE_KEY: z.string().optional(),
     // Deliberately a plain optional string, not z.coerce.boolean(): coercion
     // treats any non-empty string (including the literal "false") as true,
     // which is exactly the "on by accident" failure mode this flag must
@@ -37,6 +45,19 @@ const schema = z
     if (needsResendCredentials && !value.RESEND_FROM_ADDRESS) {
       ctx.addIssue({ code: 'custom', message: 'RESEND_FROM_ADDRESS is required when NODE_ENV is not development or test' });
     }
+    // Both or neither: a lone STRIPE_SECRET_KEY or STRIPE_WEBHOOK_SECRET is
+    // a half-finished configuration that createPaymentProvider cannot act
+    // on (it only switches to Stripe once both are present), so catching it
+    // here beats silently falling back to the fake while someone believes
+    // Stripe is wired up.
+    const hasSecretKey = Boolean(value.STRIPE_SECRET_KEY);
+    const hasWebhookSecret = Boolean(value.STRIPE_WEBHOOK_SECRET);
+    if (hasSecretKey !== hasWebhookSecret) {
+      ctx.addIssue({
+        code: 'custom',
+        message: 'STRIPE_SECRET_KEY and STRIPE_WEBHOOK_SECRET must both be set, or both left unset',
+      });
+    }
   });
 
 export interface AppEnv {
@@ -52,6 +73,10 @@ export interface AppEnv {
   storageS3Region?: string;
   resendApiKey?: string;
   resendFromAddress?: string;
+  /** Optional in every environment -- see `createPaymentProvider`. */
+  stripeSecretKey?: string;
+  stripeWebhookSecret?: string;
+  stripePublishableKey?: string;
   /**
    * Prints email `html`/`text` bodies to the console (ConsoleEmailProvider
    * only). Off by default and off for any value other than the literal
@@ -86,6 +111,9 @@ export function loadEnv(source: Record<string, string | undefined>): AppEnv {
     storageS3Region: value.STORAGE_S3_REGION,
     resendApiKey: value.RESEND_API_KEY,
     resendFromAddress: value.RESEND_FROM_ADDRESS,
+    stripeSecretKey: value.STRIPE_SECRET_KEY,
+    stripeWebhookSecret: value.STRIPE_WEBHOOK_SECRET,
+    stripePublishableKey: value.STRIPE_PUBLISHABLE_KEY,
     emailVerboseLogging: value.EMAIL_VERBOSE_LOGGING === 'true',
   };
 }
