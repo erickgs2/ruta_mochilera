@@ -154,6 +154,9 @@ suggested_monthly_cents = min(balance_cents,
                                                     max(months_remaining, 1)))
 ```
 
+La zona horaria se lee con `organizationTimeZone` (`@rm/domain-settings`) —
+antes copiada aquí, en `trips` y en `reservations`; sin cambio de regla.
+
 **Se recalcula en cada lectura y nunca se almacena.** No hay columna para
 ella, y una prueba lo comprueba contra `information_schema`: una copia
 guardada quedaría obsoleta en cuanto entrara un abono.

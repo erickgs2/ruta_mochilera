@@ -156,8 +156,8 @@ describe('trip service', () => {
 
   it('reads the backfill date gate from the configured organization.timezone, not the fallback constant', async () => {
     // Every other test in this file runs with no `SystemSetting` row at all,
-    // so `organizationTimeZone` (trip-service.ts) always falls back to its
-    // `America/Mexico_City` constant -- the fallback branch is exercised
+    // so `organizationTimeZone` (`@rm/domain-settings`) always falls back to
+    // its `America/Mexico_City` constant -- the fallback branch is exercised
     // everywhere, the configured-row branch nowhere. This test seeds a row
     // with a different timezone and proves the gate's decision actually
     // changes with it.

@@ -63,6 +63,10 @@ flowchart TD
 Medido: 3 consultas para un viaje y 3 para cinco. Un conteo por viaje daría 7
 para cinco.
 
+La «timezone de la organización» del nodo H se lee con `organizationTimeZone`
+(`@rm/domain-settings`) — antes copiada aquí, en `reservations` y en
+`payments`; sin cambio de regla.
+
 ## Editar el cupo bloquea la fila del viaje
 
 ```mermaid

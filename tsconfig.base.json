@@ -36,6 +36,7 @@
       "@rm/domain-payments": ["./libs/domain/payments/src/index.ts"],
       "@rm/domain-costing": ["./libs/domain/costing/src/index.ts"],
       "@rm/domain-audit": ["./libs/domain/audit/src/index.ts"],
+      "@rm/domain-settings": ["./libs/domain/settings/src/index.ts"],
       "@rm/ui": ["./libs/ui/src/index.ts"]
     }
   }

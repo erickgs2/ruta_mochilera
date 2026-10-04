@@ -9,6 +9,7 @@ import type {
   Reservation,
 } from '@rm/db';
 import { recordAudit } from '@rm/domain-audit';
+import { organizationTimeZone } from '@rm/domain-settings';
 import { fail, monthStartsBetween, ok, type Result } from '@rm/shared-utils';
 import { suggestedMonthly } from './instalment';
 
@@ -53,29 +54,6 @@ export interface PaymentDto {
   recordedAt: Date;
   providerVoucherUrl: string | null;
   voucherExpiresAt: Date | null;
-}
-
-const DEFAULT_TIMEZONE = 'America/Mexico_City';
-const TIMEZONE_SETTING_KEY = 'organization.timezone';
-
-/**
- * Reads the organisation's IANA timezone from `SystemSetting`, falling back to
- * the seed's own default when the row is missing -- e.g. a database that has
- * run migrations but never the seed.
- *
- * This is the **third** copy of these four lines: `trip-service.ts` and
- * `reservation-service.ts` carry the other two. They are duplicated rather
- * than shared because the only dependency edge between those two libraries
- * runs `trips -> reservations`, and `payments` is a leaf that neither of them
- * imports; reaching into either for this would create an edge for four lines.
- * At three copies the right home is a tiny `@rm/db`-only leaf library, the
- * way `@rm/domain-audit` already is. That is an architectural call for the
- * next person to make deliberately, not a side effect of this task, so it is
- * flagged here rather than taken.
- */
-async function organizationTimeZone(db: DbTransactionClient): Promise<string> {
-  const setting = await db.systemSetting.findUnique({ where: { key: TIMEZONE_SETTING_KEY } });
-  return typeof setting?.value === 'string' ? setting.value : DEFAULT_TIMEZONE;
 }
 
 /** `total_price_cents - paid_cents`, never negative (business rule 5.5). */

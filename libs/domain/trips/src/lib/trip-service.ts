@@ -8,6 +8,7 @@ import {
   countCommittedSeatsForTrips,
   lockTripForCapacity,
 } from '@rm/domain-reservations';
+import { organizationTimeZone } from '@rm/domain-settings';
 import { fail, isPastDate, ok, type Result } from '@rm/shared-utils';
 import { slugify } from './slug';
 import { canTransition, type TripStatus } from './trip-status';
@@ -77,22 +78,6 @@ const TRIP_SHAPE = {
   translations: true,
   images: { orderBy: { position: 'asc' } },
 } as const;
-
-const DEFAULT_TIMEZONE = 'America/Mexico_City';
-const TIMEZONE_SETTING_KEY = 'organization.timezone';
-
-/**
- * Reads the organisation's IANA timezone from `SystemSetting`, falling back
- * to the seed's own default when the row is missing -- e.g. a database that
- * has run migrations but never the seed, which is exactly this file's own
- * test suite. Calendar rules must never hardcode a timezone (a workspace-wide
- * constraint), so every date comparison below resolves it through here
- * instead of a literal.
- */
-async function organizationTimeZone(db: Db): Promise<string> {
-  const setting = await db.systemSetting.findUnique({ where: { key: TIMEZONE_SETTING_KEY } });
-  return typeof setting?.value === 'string' ? setting.value : DEFAULT_TIMEZONE;
-}
 
 /**
  * The seats a trip has already committed: `ACTIVE` reservations plus `HELD`

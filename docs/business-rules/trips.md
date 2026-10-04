@@ -215,3 +215,6 @@ calendario de "hoy" en `SystemSetting.organization.timezone` (por defecto
 comparación ingenua clasificaría mal un viaje que sale "hoy" durante las
 primeras horas del día en UTC, seis horas antes de que empiece el día en
 Ciudad de México. Implementado en `isPastDate` (`@rm/shared-utils/calendar.ts`).
+La lectura de `SystemSetting['organization.timezone']` en sí vive en
+`organizationTimeZone` (`@rm/domain-settings`) — antes copiada aquí, en
+`reservations` y en `payments`; sin cambio de regla.

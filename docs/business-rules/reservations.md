@@ -205,7 +205,9 @@ que produce la sobreventa (ver «Por qué el cálculo exige el bloqueo»).
    (`isPastDate`), nunca contra `new Date()` crudo: `payment_deadline` es una
    columna `date`, y en una zona detrás de UTC la comparación ingenua
    convierte «hoy» en «ya pasó» durante las primeras horas de cada día →
-   `PAYMENT_DEADLINE_PASSED`.
+   `PAYMENT_DEADLINE_PASSED`. La zona se lee con `organizationTimeZone`
+   (`@rm/domain-settings`) — antes copiada aquí, en `trips` y en `payments`;
+   sin cambio de regla.
 3. **El correo del cliente debe estar verificado.** Navegar el catálogo y
    registrarse no lo exige; reservar sí → `EMAIL_NOT_VERIFIED`.
 4. **Una sola reserva viva por cliente y viaje.** La comprobación previa

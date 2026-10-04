@@ -6,6 +6,7 @@ import {
   type ReservationStatus,
 } from '@rm/db';
 import { recordAudit } from '@rm/domain-audit';
+import { organizationTimeZone } from '@rm/domain-settings';
 import { fail, isPastDate, ok, type Result } from '@rm/shared-utils';
 import { availableSeats, countCommittedSeats, lockTripForCapacity } from './capacity';
 import { generateReservationCode } from './reservation-code';
@@ -55,9 +56,6 @@ export interface ReservationSummaryDto {
 
 const HOUR_MS = 60 * 60 * 1000;
 
-const DEFAULT_TIMEZONE = 'America/Mexico_City';
-const TIMEZONE_SETTING_KEY = 'organization.timezone';
-
 /** The unique index behind `Reservation.code` (see the `reservations_payments_notifications` migration). */
 const RESERVATION_CODE_INDEX = 'reservations_code_key';
 
@@ -81,26 +79,6 @@ const CODE_INSERT_ATTEMPTS = 2;
  * list is not one.
  */
 const LIVE_STATUSES = ['HELD', 'ACTIVE'] as const satisfies readonly ReservationStatus[];
-
-/**
- * Reads the organisation's IANA timezone from `SystemSetting`, falling back to
- * the seed's own default when the row is missing -- e.g. a database that has
- * run migrations but never the seed, which is exactly this file's own test
- * suite. Calendar rules must never hardcode a timezone (a workspace-wide
- * constraint), so the payment-deadline comparison below resolves it through
- * here instead of a literal.
- *
- * `@rm/domain-trips` has the same four lines. It is not imported from there
- * on purpose: the only dependency edge between these two libraries runs
- * `trips -> reservations`, and importing it back would reinstate the cycle
- * that moving `availableSeats` here was meant to remove. A shared home for
- * it belongs with the first module that needs a third copy, not with the
- * second.
- */
-async function organizationTimeZone(db: DbTransactionClient): Promise<string> {
-  const setting = await db.systemSetting.findUnique({ where: { key: TIMEZONE_SETTING_KEY } });
-  return typeof setting?.value === 'string' ? setting.value : DEFAULT_TIMEZONE;
-}
 
 function balanceOf(reservation: Reservation): number {
   return Math.max(0, reservation.totalPriceCents - reservation.paidCents);

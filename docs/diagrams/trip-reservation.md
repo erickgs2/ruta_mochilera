@@ -118,6 +118,10 @@ violación de `reservations_live_trip_customer_key` se traduce a
 `DUPLICATE_RESERVATION`, que es la carrera que la comprobación previa no
 puede cerrar sola.
 
+La «zona de la organización» del nodo E se lee con `organizationTimeZone`
+(`@rm/domain-settings`) — antes copiada aquí, en `trips` y en `payments`; sin
+cambio de regla.
+
 ## Solicitar la cancelación no cambia el estado
 
 ```mermaid
