@@ -14,8 +14,8 @@ function trip(overrides: Partial<PublicTripSummary>): PublicTripSummary {
   return {
     slug: 'oaxaca-magica',
     name: 'Oaxaca Mágica',
-    departureDate: '2026-11-20T06:00:00.000Z',
-    returnDate: '2026-11-24T06:00:00.000Z',
+    departureDate: '2026-11-20T00:00:00.000Z',
+    returnDate: '2026-11-24T00:00:00.000Z',
     pricePerSeatCents: 850_000,
     availableSeats: 12,
     images: [],
@@ -106,5 +106,22 @@ describe('TripListComponent', () => {
     expect(text).toContain(shown('errors.UNKNOWN'));
     expect(text).not.toContain('SOMETHING_ODD');
     expect(text).not.toContain('Backend text');
+  });
+
+  describe('for a visitor west of UTC', () => {
+    // The API serializes a @db.Date column as midnight UTC. A calendar date
+    // must render as that day everywhere, not shift to the day before. The
+    // suite runs in America/Mexico_City (UTC-6), pinned in jest.config.cts.
+
+    it('shows the departure and return dates as stored, without shifting them a day', () => {
+      const { fixture, http } = setup();
+
+      http.expectOne('/api/v1/public/trips').flush([trip({})]);
+      fixture.detectChanges();
+
+      const dates: string = fixture.nativeElement.querySelector('.trip-dates').textContent;
+      expect(dates).toContain('Nov 20, 2026');
+      expect(dates).toContain('Nov 24, 2026');
+    });
   });
 });

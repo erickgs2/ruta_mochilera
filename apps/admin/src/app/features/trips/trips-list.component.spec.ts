@@ -146,4 +146,34 @@ describe('TripsListComponent', () => {
     expect(html.querySelectorAll('.trips-card')).toHaveLength(2);
     expect(html.textContent).toContain('Oaxaca Mágica');
   });
+
+  describe('for a viewer west of UTC', () => {
+    // The API serializes `departure_date` (a @db.Date) as midnight UTC; the
+    // list must show that calendar day, not the day before. The suite runs in
+    // America/Mexico_City (UTC-6), pinned in jest.config.cts.
+
+    it('shows the departure date as stored in the table layout', () => {
+      configure();
+      const fixture = TestBed.createComponent(TripsListComponent);
+      fixture.detectChanges();
+      TestBed.inject(HttpTestingController).expectOne((req) => req.url === '/api/v1/trips').flush(trips);
+      fixture.detectChanges();
+
+      const text = (fixture.nativeElement as HTMLElement).textContent ?? '';
+      expect(text).toContain('Nov 1, 2026');
+      expect(text).toContain('Dec 1, 2026');
+    });
+
+    it('shows the departure date as stored in the handset card layout', () => {
+      configureHandset();
+      const fixture = TestBed.createComponent(TripsListComponent);
+      fixture.detectChanges();
+      TestBed.inject(HttpTestingController).expectOne((req) => req.url === '/api/v1/trips').flush(trips);
+      fixture.detectChanges();
+
+      const text = (fixture.nativeElement as HTMLElement).querySelector('.trips-cards')!.textContent ?? '';
+      expect(text).toContain('Nov 1, 2026');
+      expect(text).toContain('Dec 1, 2026');
+    });
+  });
 });

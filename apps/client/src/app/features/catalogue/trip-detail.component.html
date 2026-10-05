@@ -29,7 +29,7 @@
             </div>
           }
 
-          <p class="trip-dates">{{ trip.departureDate | date: 'mediumDate' }} – {{ trip.returnDate | date: 'mediumDate' }}</p>
+          <p class="trip-dates">{{ trip.departureDate | rmCalendarDate }} – {{ trip.returnDate | rmCalendarDate }}</p>
           <p class="trip-price">{{ trip.pricePerSeatCents | rmMoney }}</p>
 
           @if (trip.availableSeats > 0) {

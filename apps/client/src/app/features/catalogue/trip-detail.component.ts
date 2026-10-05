@@ -1,4 +1,3 @@
-import { DatePipe } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
@@ -6,7 +5,7 @@ import { ActivatedRoute, RouterLink } from '@angular/router';
 import { catchError, map, of, switchMap, tap } from 'rxjs';
 import { TranslatePipe } from '@ngx-translate/core';
 import { PublicCatalogueApi, type components } from '@rm/api-client';
-import { LanguageService } from '@rm/i18n';
+import { CalendarDatePipe, LanguageService } from '@rm/i18n';
 import { ErrorCodePipe } from '../../shared/error-code.pipe';
 import { MoneyPipe } from '../../shared/money.pipe';
 
@@ -21,7 +20,7 @@ type PublicTripDetail = components['schemas']['PublicTripDetail'];
  */
 @Component({
   selector: 'rm-trip-detail',
-  imports: [DatePipe, RouterLink, TranslatePipe, ErrorCodePipe, MoneyPipe],
+  imports: [CalendarDatePipe, RouterLink, TranslatePipe, ErrorCodePipe, MoneyPipe],
   templateUrl: './trip-detail.component.html',
   styleUrl: './trip-detail.component.scss',
 })

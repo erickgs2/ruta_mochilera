@@ -1,10 +1,10 @@
-import { DatePipe } from '@angular/common';
 import { Component, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { RouterLink } from '@angular/router';
 import { TranslatePipe } from '@ngx-translate/core';
 import { PublicCatalogueApi, type components } from '@rm/api-client';
 import { AuthService } from '@rm/auth-web';
+import { CalendarDatePipe } from '@rm/i18n';
 import { ErrorCodePipe } from '../../shared/error-code.pipe';
 import { MoneyPipe } from '../../shared/money.pipe';
 import { coverImage } from './cover-image';
@@ -19,7 +19,7 @@ type PublicTripSummary = components['schemas']['PublicTripSummary'];
  */
 @Component({
   selector: 'rm-trip-list',
-  imports: [DatePipe, RouterLink, TranslatePipe, ErrorCodePipe, MoneyPipe],
+  imports: [CalendarDatePipe, RouterLink, TranslatePipe, ErrorCodePipe, MoneyPipe],
   templateUrl: './trip-list.component.html',
   styleUrl: './trip-list.component.scss',
 })
