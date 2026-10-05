@@ -9,11 +9,43 @@ import { requestPasswordReset, resetPassword } from './password-reset';
 
 const db = withTestDb();
 
+/**
+ * A send latency chosen to be loud: the timing test's own tolerance below
+ * is 50ms, so an accidentally-`await`ed send would blow past it by roughly
+ * 4x, not get lost in noise. A fake that resolves instantly (as an earlier
+ * version of this file's `FakeEmailProvider` did) would let a regression
+ * that reintroduced `await emailProvider.send(...)` on the request path
+ * pass this test anyway -- the test would never have exercised the one
+ * thing it claims to prove. See this file's "fix report" entry in
+ * `task-11-12-report.md` for the before/after proof.
+ */
+const SEND_LATENCY_MS = 200;
+
 class FakeEmailProvider implements EmailProvider {
   sent: EmailMessage[] = [];
   async send(message: EmailMessage) {
+    await new Promise((resolve) => setTimeout(resolve, SEND_LATENCY_MS));
     this.sent.push(message);
     return ok({ providerMessageId: `fake-${this.sent.length}` });
+  }
+}
+
+/**
+ * `requestPasswordReset` deliberately never awaits `emailProvider.send(...)`
+ * (see its doc comment) -- which means, with `FakeEmailProvider`'s now-real
+ * `SEND_LATENCY_MS` delay, a test that wants to inspect `email.sent` must
+ * wait for that detached send to actually land rather than assume it beat
+ * the function's own (fast) return, the way the old zero-delay fake let
+ * every call-site get away with. Polls rather than a single fixed sleep so
+ * this does not itself become a flaky, timing-tuned test.
+ */
+async function waitForSentEmails(provider: FakeEmailProvider, count: number): Promise<void> {
+  const deadline = Date.now() + 2000;
+  while (provider.sent.length < count) {
+    if (Date.now() > deadline) {
+      throw new Error(`timed out waiting for ${count} email(s) to be sent (got ${provider.sent.length})`);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 10));
   }
 }
 
@@ -102,6 +134,7 @@ describe('requestPasswordReset / resetPassword', () => {
     it('stores only a hash of the token, never the plaintext, and the row is single-use', async () => {
       const user = await seedCustomer();
       await requestPasswordReset(db, 'traveler@example.com', email, '10.1.2.1');
+      await waitForSentEmails(email, 1);
       const token = extractToken(email.sent[0]!);
 
       const row = await db.passwordReset.findFirstOrThrow({ where: { userId: user.id } });
@@ -119,6 +152,7 @@ describe('requestPasswordReset / resetPassword', () => {
       await db.systemSetting.create({ data: { key: 'password_reset.ttl_minutes', value: 5 } });
       const user = await seedCustomer();
       await requestPasswordReset(db, 'traveler@example.com', email, '10.1.3.1');
+      await waitForSentEmails(email, 1);
       const token = extractToken(email.sent[0]!);
 
       const row = await db.passwordReset.findFirstOrThrow({ where: { userId: user.id } });
@@ -149,6 +183,7 @@ describe('requestPasswordReset / resetPassword', () => {
       await seedSessionFor(user.id, 'session-b');
 
       await requestPasswordReset(db, 'traveler@example.com', email, '10.1.5.1');
+      await waitForSentEmails(email, 1);
       const token = extractToken(email.sent[0]!);
 
       const result = await resetPassword(db, token, 'Brand-New-Pass-1');
@@ -161,6 +196,7 @@ describe('requestPasswordReset / resetPassword', () => {
     it('actually changes the password: the old password no longer verifies, the new one does', async () => {
       const user = await seedCustomer();
       await requestPasswordReset(db, 'traveler@example.com', email, '10.1.6.1');
+      await waitForSentEmails(email, 1);
       const token = extractToken(email.sent[0]!);
 
       await resetPassword(db, token, 'Brand-New-Pass-1');

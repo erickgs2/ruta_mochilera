@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { closeTestDb, prepareTestDb, resetDatabase, withTestDb } from '@rm/db/testing';
+import type { Db, DbTransactionClient } from '@rm/db';
 import type { EmailMessage, EmailProvider } from '@rm/email';
 import { ok } from '@rm/shared-utils';
 import { hashOtpCode } from './otp';
@@ -7,6 +8,64 @@ import { resetRateLimiterForTesting } from './rate-limiter';
 import { registerCustomer, resendVerificationCode, verifyEmail, type RegisterCustomerInput } from './customer-registration';
 
 const db = withTestDb();
+
+/** Gives the other transaction time to reach the row lock before this one commits. */
+function settle(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/** A promise plus the handle that settles it, used to pin down an interleaving. */
+function deferred(): { promise: Promise<void>; resolve: () => void } {
+  let resolve!: () => void;
+  const promise = new Promise<void>((settleIt) => {
+    resolve = settleIt;
+  });
+  return { promise, resolve };
+}
+
+/**
+ * Same shape as `clientPausingBeforeInsert` in
+ * `reservation-service.spec.ts` / `clientPausingAt` in
+ * `payment-service.spec.ts`: a proxy over the injected client that parks
+ * the first `registerCustomer` call's `tx.user.create` at a chosen point,
+ * so a second concurrent call for the same email can run its own full
+ * read-decide-insert sequence into that open window. A plain `Promise.all`
+ * of two attempts is not enough on this machine -- the first transaction
+ * commits before the second even reads -- so this is what actually forces
+ * the interleaving the unique-violation fallback in `registerCustomer` is
+ * meant to survive.
+ */
+function clientPausingBeforeUserInsert(db: Db, pause: () => Promise<void>): Db {
+  const forward = (target: object, property: string | symbol) => {
+    const value = Reflect.get(target, property) as unknown;
+    return typeof value === 'function' ? value.bind(target) : value;
+  };
+
+  const pausingTransactionClient = (tx: DbTransactionClient): DbTransactionClient =>
+    new Proxy(tx, {
+      get(target, property) {
+        if (property !== 'user') return forward(target, property);
+        const users = Reflect.get(target, property) as DbTransactionClient['user'];
+        return new Proxy(users, {
+          get(delegate, operation) {
+            if (operation !== 'create') return forward(delegate, operation);
+            return async (...args: Parameters<DbTransactionClient['user']['create']>) => {
+              await pause();
+              return delegate.create(...args);
+            };
+          },
+        });
+      },
+    }) as DbTransactionClient;
+
+  return new Proxy(db, {
+    get(target, property) {
+      if (property !== '$transaction') return forward(target, property);
+      return (run: (tx: DbTransactionClient) => Promise<unknown>) =>
+        target.$transaction((tx) => run(pausingTransactionClient(tx)));
+    },
+  }) as Db;
+}
 
 class FakeEmailProvider implements EmailProvider {
   sent: EmailMessage[] = [];
@@ -117,6 +176,59 @@ describe('registerCustomer / verifyEmail / resendVerificationCode', () => {
       expect(sixth.ok).toBe(false);
       if (!sixth.ok) expect(sixth.error.code).toBe('RATE_LIMITED');
     });
+
+    it('closes the forced race on a brand-new email: the loser falls back to the enumeration-safe response instead of throwing', async () => {
+      const raceEmail = 'racer@example.com';
+
+      const firstHasReachedInsert = deferred();
+      const firstMayInsert = deferred();
+
+      const pausing = clientPausingBeforeUserInsert(db, async () => {
+        firstHasReachedInsert.resolve();
+        await firstMayInsert.promise;
+      });
+
+      // The first call parks inside its own transaction, right before the
+      // INSERT, with its pre-check already having seen no existing row.
+      const first = registerCustomer(pausing, email, { ...validInput, email: raceEmail }, '10.0.7.1');
+
+      // The second call only starts once the first has reached that park
+      // point, and runs its own full read-decide-insert sequence into the
+      // open window on a plain (non-paused) client -- it wins the race and
+      // commits first.
+      const second = (async () => {
+        await firstHasReachedInsert.promise;
+        return registerCustomer(db, email, { ...validInput, email: raceEmail }, '10.0.7.2');
+      })();
+
+      // Long enough for the second attempt to reach and commit its INSERT.
+      // Not load-bearing precision -- too short and the second attempt
+      // simply has not committed yet when the first resumes, which would
+      // make the first the race's accidental winner instead of its loser;
+      // the assertions below only care that exactly one row and one
+      // six-digit-code email exist afterward, not which call produced them.
+      await settle(200);
+      firstMayInsert.resolve();
+
+      const results = await Promise.all([first, second]);
+
+      // Both calls return the same enumeration-safe ok(null), win or lose.
+      expect(results[0].ok).toBe(true);
+      expect(results[1].ok).toBe(true);
+
+      // Exactly one user row exists despite two concurrent attempts for the
+      // same brand-new email.
+      const users = await db.user.findMany({ where: { email: raceEmail } });
+      expect(users).toHaveLength(1);
+
+      // Exactly one real verification code went out (from whichever call
+      // actually won the insert); the loser sent the code-free "someone
+      // tried to register" notice instead of crashing with an unhandled
+      // unique-constraint exception.
+      expect(email.sent).toHaveLength(2);
+      const codeEmails = email.sent.filter((message) => /\d{6}/.test(message.text));
+      expect(codeEmails).toHaveLength(1);
+    });
   });
 
   describe('verifyEmail', () => {
@@ -194,6 +306,37 @@ describe('registerCustomer / verifyEmail / resendVerificationCode', () => {
       expect(sixth.ok).toBe(false);
       if (!sixth.ok) expect(sixth.error.code).toBe('RATE_LIMITED');
     });
+
+    it('does not let an unauthenticated caller distinguish a real pending registration from an unknown email (account-status oracle)', async () => {
+      // Real population: a customer with a pending, unverified code.
+      await registerCustomer(db, email, validInput, '10.0.9.1');
+      // Fake population: no account at all.
+
+      // At the seeded default (otp.max_attempts = 5, and the generic
+      // limiter's own fixed cap of 5), max_attempts + 1 = 6 wrong codes
+      // against *either* population must land on the exact same terminal
+      // code. Different IPs per call isolate the email-keyed bucket, the
+      // same way the login rate-limit tests do.
+      const realCodes: string[] = [];
+      for (let i = 0; i < 6; i += 1) {
+        const result = await verifyEmail(db, { email: validInput.email, code: '000000' }, `10.0.9.${10 + i}`);
+        realCodes.push(result.ok ? 'OK' : result.error.code);
+      }
+
+      const fakeCodes: string[] = [];
+      for (let i = 0; i < 6; i += 1) {
+        const result = await verifyEmail(db, { email: 'nobody-else@example.com', code: '000000' }, `10.0.9.${20 + i}`);
+        fakeCodes.push(result.ok ? 'OK' : result.error.code);
+      }
+
+      // Before the fix, the real population's 6th call returned
+      // OTP_MAX_ATTEMPTS (only reachable when a pending row exists) while
+      // the fake population's 6th call returned RATE_LIMITED -- an
+      // account-status oracle. Both must now be RATE_LIMITED.
+      expect(realCodes[5]).toBe('RATE_LIMITED');
+      expect(fakeCodes[5]).toBe('RATE_LIMITED');
+      expect(realCodes[5]).toBe(fakeCodes[5]);
+    });
   });
 
   describe('resendVerificationCode', () => {
@@ -221,17 +364,20 @@ describe('registerCustomer / verifyEmail / resendVerificationCode', () => {
       if (!result.ok) expect(result.error.code).toBe('OTP_RESEND_TOO_SOON');
     });
 
-    it('refuses more than otp.max_resends_per_hour with RATE_LIMITED', async () => {
+    it('allows exactly otp.max_resends_per_hour actual resends, not one fewer for having silently counted the original registration code', async () => {
       await db.systemSetting.create({ data: { key: 'otp.resend_cooldown_seconds', value: 0 } });
       await db.systemSetting.create({ data: { key: 'otp.max_resends_per_hour', value: 2 } });
-      await registerCustomer(db, email, validInput, '10.0.3.3'); // 1 code already sent
+      await registerCustomer(db, email, validInput, '10.0.3.3'); // the original code -- never itself a "resend"
 
-      const second = await resendVerificationCode(db, email, validInput.email, '10.0.3.3');
-      expect(second.ok).toBe(true); // 2nd code: still within the cap of 2
+      const firstResend = await resendVerificationCode(db, email, validInput.email, '10.0.3.3');
+      expect(firstResend.ok).toBe(true); // resend 1 of 2
 
-      const third = await resendVerificationCode(db, email, validInput.email, '10.0.3.3');
-      expect(third.ok).toBe(false);
-      if (!third.ok) expect(third.error.code).toBe('RATE_LIMITED');
+      const secondResend = await resendVerificationCode(db, email, validInput.email, '10.0.3.3');
+      expect(secondResend.ok).toBe(true); // resend 2 of 2 -- the setting's name promises two, so two must succeed
+
+      const thirdResend = await resendVerificationCode(db, email, validInput.email, '10.0.3.3');
+      expect(thirdResend.ok).toBe(false);
+      if (!thirdResend.ok) expect(thirdResend.error.code).toBe('RATE_LIMITED');
     });
 
     it('is rate-limited by the shared in-memory limiter regardless of the hourly cap', async () => {

@@ -149,6 +149,12 @@ export async function registerCustomer(
     // guards against for staff accounts (see its own `isEmailConflict`).
     // The loser must fall back to the same enumeration-safe response as the
     // pre-check branch, not an unhandled exception surfacing as a bare 500.
+    // Forced-interleaving test: `closes the forced race on a brand-new
+    // email...` in `customer-registration.spec.ts`, using the same
+    // pausing-proxy technique `reservation-service.spec.ts` and
+    // `payment-service.spec.ts` establish. Removing this try/catch makes
+    // that one test fail with an unhandled `PrismaClientKnownRequestError`
+    // (verified; see `task-11-12-report.md`'s fix log for the transcript).
     if (uniqueViolationIndex(error) === USER_EMAIL_UNIQUE_INDEX) {
       await sendRegistrationAttemptNotice(db, email, emailProvider);
       return ok(null);
@@ -183,38 +189,53 @@ interface VerifyEmailInput {
  * requesting a resend therefore implicitly supersedes any earlier code
  * without needing to mark it consumed.
  *
- * The generic per-process rate limiter (`./rate-limiter.ts`, scope
- * `verify-email`) is deliberately only consulted on the "no such user" /
- * "no pending verification" paths, never while an active code is being
- * guessed. Guessing an active code is already capped, precisely and
- * durably, by `otp.max_attempts` on the row itself -- layering the generic
- * limiter on top of that would collide at the default value both happen to
- * share (5): a test that exhausts `max_attempts` with wrong guesses and
- * then tries the correct code (expecting `OTP_MAX_ATTEMPTS`) would instead
- * observe `RATE_LIMITED` on that same call if every guess also counted
- * against the generic limiter. Keeping the generic limiter scoped to the
- * "nothing to guess against" paths avoids that collision while still
- * meeting the brief's requirement that this endpoint be rate-limited.
+ * **Account-status oracle, found in review and closed here.** An earlier
+ * version of this function only consulted the generic per-process rate
+ * limiter (`./rate-limiter.ts`, scope `verify-email`) on the "no such user"
+ * / "no pending verification" paths, to avoid colliding with
+ * `otp.max_attempts` (see the removed paragraph this replaces, in git
+ * history). That left a real, unauthenticated-caller-visible oracle:
+ * `OTP_MAX_ATTEMPTS` is only ever reachable when a pending row actually
+ * exists, so sending `otp.max_attempts + 1` wrong codes at an address
+ * revealed, via the terminal error code alone, whether that address belongs
+ * to a real account with a pending registration -- exactly the kind of
+ * signal `registerCustomer` and `requestPasswordReset` are built to deny.
+ *
+ * The fix: the generic limiter is now checked and recorded unconditionally,
+ * for *every* call, before any row is ever looked up -- the same
+ * "consume limiter budget regardless of outcome" shape `resendVerificationCode`
+ * already used. At the seeded production defaults (`otp.max_attempts = 5`,
+ * matching the limiter's own fixed `MAX_ATTEMPTS = 5`), this guarantees the
+ * generic limiter trips on exactly the same call, for both a real pending
+ * registration and a nonexistent email alike, and it is checked *before*
+ * the row-specific logic -- so `RATE_LIMITED` is always what an outside
+ * caller sees on that call, for either population, and `OTP_MAX_ATTEMPTS`
+ * is never reached by guessing alone at those defaults.
+ *
+ * This still leaves one narrower, *configuration-dependent* gap, documented
+ * rather than silently left for someone to rediscover: if an administrator
+ * ever sets `otp.max_attempts` strictly below the limiter's fixed 5, the
+ * business rule fires before the generic limiter does, and the oracle
+ * reopens in that narrower window. Clamping `otp.max_attempts` to the
+ * limiter's constant would close it completely, but would also silently
+ * override an administrator's deliberately stricter setting -- a worse
+ * trade than documenting the interaction. See `task-11-12-report.md`'s fix
+ * log for the decision.
  */
 export async function verifyEmail(db: Db, input: VerifyEmailInput, ip = 'unknown'): Promise<Result<null>> {
   const email = normalizeEmail(input.email);
 
+  if (isRateLimited('verify-email', email, ip)) return fail('RATE_LIMITED');
+  recordFailedAttempt('verify-email', email, ip);
+
   const user = await db.user.findFirst({ where: { email: { equals: email, mode: 'insensitive' }, type: 'CUSTOMER' } });
-  if (!user) {
-    if (isRateLimited('verify-email', email, ip)) return fail('RATE_LIMITED');
-    recordFailedAttempt('verify-email', email, ip);
-    return fail('OTP_INVALID');
-  }
+  if (!user) return fail('OTP_INVALID');
 
   const row = await db.emailVerification.findFirst({
     where: { userId: user.id },
     orderBy: { createdAt: 'desc' },
   });
-  if (!row || row.consumedAt) {
-    if (isRateLimited('verify-email', email, ip)) return fail('RATE_LIMITED');
-    recordFailedAttempt('verify-email', email, ip);
-    return fail('OTP_INVALID');
-  }
+  if (!row || row.consumedAt) return fail('OTP_INVALID');
 
   if (row.expiresAt <= new Date()) return fail('OTP_EXPIRED');
 
@@ -248,10 +269,13 @@ export async function verifyEmail(db: Db, input: VerifyEmailInput, ip = 'unknown
  * 2. `otp.resend_cooldown_seconds` since the last code was issued
  *    (`OTP_RESEND_TOO_SOON`);
  * 3. `otp.max_resends_per_hour`, counted from actual `EmailVerification`
- *    rows created in the last hour -- a durable, DB-backed business rule
- *    (survives a restart, unlike the in-memory limiter above) that maps to
- *    the same `RATE_LIMITED` code as the generic limiter, since both mean
- *    "you are going too fast" to the caller.
+ *    rows created in the last hour -- **excluding** the one row
+ *    `registerCustomer` created, which is the original code, not a resend
+ *    (found in review: an earlier version counted it, so setting this to N
+ *    silently allowed only N-1 real resends). A durable, DB-backed business
+ *    rule (survives a restart, unlike the in-memory limiter above) that
+ *    maps to the same `RATE_LIMITED` code as the generic limiter, since
+ *    both mean "you are going too fast" to the caller.
  *
  * Does not reveal whether `email` belongs to an account, or whether that
  * account is already verified: either case returns the same success shape
@@ -274,19 +298,30 @@ export async function resendVerificationCode(
 
   const settings = await loadOtpSettings(db);
 
-  const lastRow = await db.emailVerification.findFirst({
+  // Fetched once, oldest first: `rows[0]` (if any) is the code
+  // `registerCustomer` created -- never itself a "resend" -- and the last
+  // element is the most recent row, used for the cooldown check below.
+  const rows = await db.emailVerification.findMany({
     where: { userId: user.id },
-    orderBy: { createdAt: 'desc' },
+    orderBy: { createdAt: 'asc' },
   });
+  const originalRow = rows[0];
+  const lastRow = rows[rows.length - 1];
+
   if (lastRow) {
     const secondsSinceLast = (Date.now() - lastRow.createdAt.getTime()) / 1000;
     if (secondsSinceLast < settings.resendCooldownSeconds) return fail('OTP_RESEND_TOO_SOON');
   }
 
+  // `otp.max_resends_per_hour` means exactly what its name says: the
+  // original registration code is excluded, so setting it to N actually
+  // allows N resends, not N-1 while one slot is silently spent on a row the
+  // caller never asked to be resent. Found in review: the straight `count`
+  // this replaced counted every row, including the original.
   const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
-  const resendsInLastHour = await db.emailVerification.count({
-    where: { userId: user.id, createdAt: { gte: oneHourAgo } },
-  });
+  const resendsInLastHour = rows.filter(
+    (row) => row.id !== originalRow?.id && row.createdAt >= oneHourAgo
+  ).length;
   if (resendsInLastHour >= settings.maxResendsPerHour) return fail('RATE_LIMITED');
 
   const { code } = await createEmailVerification(db, user.id, settings.ttlMinutes);
