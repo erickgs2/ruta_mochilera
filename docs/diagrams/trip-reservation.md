@@ -132,9 +132,13 @@ flowchart LR
     D -- Sí --> E["No escribe nada:<br/>la primera solicitud es la que queda"]
     D -- No --> F["Sella cancellation_requested_at<br/>y cancellation_reason"]
     F --> G["recordAudit:<br/>reservation.cancellation_requested"]
-    G --> H["El estado sigue igual:<br/>HELD sigue venciendo, el lugar sigue ocupado"]
+    G --> G2["notifyAdmins:<br/>CANCELLATION_REQUESTED (Tarea 14)"]
+    G2 --> H["El estado sigue igual:<br/>HELD sigue venciendo, el lugar sigue ocupado"]
     E --> H
 ```
 
 Cancelar de verdad —liberar el lugar y mover dinero— es una decisión humana
-con el permiso `reservation.cancel`, no un efecto de esta solicitud.
+con el permiso `reservation.cancel`, no un efecto de esta solicitud. El aviso
+a quien sí tiene ese permiso (nodo `G2`, Tarea 14) es lo que pone la
+solicitud frente a esa persona; sin él, sellar la columna no alcanza por
+nadie a menos que alguien revise la base a mano.

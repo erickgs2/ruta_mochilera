@@ -344,6 +344,18 @@ no una cancelación; cancelar es una decisión humana con el permiso
 - **Una reserva terminal no admite solicitud.** `CANCELLED` y `EXPIRED` ya no
   tienen nada que cancelar y sellarlas sólo pondría frente al administrador
   un aviso que únicamente puede descartar → `INVALID_STATUS_TRANSITION`.
+- **Avisa al personal (Tarea 14).** `requestCancellation` ahora recibe
+  también una `NotificationQueue` y, sólo cuando el `UPDATE` de arriba de
+  verdad selló la primera solicitud (`sealed.count === 1` — la misma guarda
+  que decide si se audita), llama a `notifyAdmins` con
+  `CANCELLATION_REQUESTED`: sin ese aviso nadie se entera de que hay algo
+  que resolver. Pedirlo dos veces audita una sola vez y **notifica una sola
+  vez**, por la misma guarda. `@rm/domain-payments`' `webhook-handler.ts` ya
+  dependía de `@rm/domain-notifications` para este mismo tipo de alerta de
+  sólo-personal (`ORPHAN_PAYMENT`, `PAID_CENTS_MISMATCH`); esta es la misma
+  clase de dependencia, no una nueva — lo que esta nota de arquitectura
+  prohíbe de verdad es que `reservations` y `payments` se importen entre sí,
+  no que cualquiera de los dos dependa de `notifications`.
 
 ## Errores de este módulo
 

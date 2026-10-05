@@ -2,6 +2,8 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { DateTime } from 'luxon';
 import { closeTestDb, prepareTestDb, resetDatabase, withTestDb } from '@rm/db/testing';
 import type { Db, DbTransactionClient } from '@rm/db';
+import type { NotificationQueue } from '@rm/domain-notifications';
+import { closeTestQueue, resetTestQueue, withTestQueue } from '@rm/jobs/testing';
 import {
   createReservation,
   getReservationForCustomer,
@@ -62,6 +64,30 @@ async function seedTrip(
       createdById: staffId,
     },
   });
+}
+
+/**
+ * A STAFF user holding `reservation.cancel` -- `notifyAdmins` routes every
+ * staff-only alert (including `CANCELLATION_REQUESTED`) to whoever holds
+ * exactly this permission (`ADMIN_ALERT_PERMISSION` in
+ * `delivery-service.ts`). Mirrors `seedAdmin` in
+ * `payment-service`'s sibling `webhook-handler.spec.ts`.
+ */
+async function seedAdmin(db: Db): Promise<string> {
+  const permission = await db.permission.create({
+    data: { key: 'reservation.cancel', category: 'reservations', description: 'Cancel reservations' },
+  });
+  const role = await db.role.create({ data: { name: `agent-${next()}`, description: 'Front desk' } });
+  await db.rolePermission.create({ data: { roleId: role.id, permissionId: permission.id } });
+  const user = await db.user.create({
+    data: {
+      email: `agent-${next()}@agency.test`,
+      type: 'STAFF',
+      staffProfile: { create: { fullName: 'Agente' } },
+      roles: { create: { roleId: role.id } },
+    },
+  });
+  return user.id;
 }
 
 async function seedCustomer(db: Db, overrides: { emailVerified?: boolean } = {}) {
@@ -136,11 +162,17 @@ function clientPausingBeforeInsert(db: Db, pause: () => Promise<void>): Db {
   }) as Db;
 }
 
+let queue: NotificationQueue;
+
 describe('reservation service', () => {
-  beforeAll(() => prepareTestDb());
+  beforeAll(async () => {
+    await prepareTestDb();
+    queue = await withTestQueue();
+  });
 
   beforeEach(async () => {
     await resetDatabase(db);
+    await resetTestQueue();
     sequence = 0;
     const staff = await db.user.create({
       data: {
@@ -152,7 +184,10 @@ describe('reservation service', () => {
     staffId = staff.id;
   });
 
-  afterAll(() => closeTestDb());
+  afterAll(async () => {
+    await closeTestDb();
+    await closeTestQueue();
+  });
 
   describe('createReservation', () => {
     it('creates a HELD reservation with the trip price frozen into it', async () => {
@@ -488,7 +523,7 @@ describe('reservation service', () => {
       expect(created.ok).toBe(true);
       if (!created.ok) return;
 
-      const requested = await requestCancellation(db, created.value.id, customerId, 'Me enfermé');
+      const requested = await requestCancellation(db, created.value.id, customerId, queue, 'Me enfermé');
 
       expect(requested.ok).toBe(true);
       if (!requested.ok) return;
@@ -508,17 +543,59 @@ describe('reservation service', () => {
       expect(committed).toBe(1);
     });
 
+    it('notifies every staff member holding reservation.cancel, once', async () => {
+      const trip = await seedTrip(db);
+      const customerId = await seedCustomer(db);
+      const adminId = await seedAdmin(db);
+      const created = await createReservation(db, { tripId: trip.id, customerId });
+      expect(created.ok).toBe(true);
+      if (!created.ok) return;
+
+      const requested = await requestCancellation(db, created.value.id, customerId, queue, 'Me enfermé');
+
+      expect(requested.ok).toBe(true);
+      // One EMAIL row and one INBOX row, same pair every `notifyAdmins` call
+      // writes (delivery-service.ts) -- addressed to the staff member
+      // holding `reservation.cancel`, never to the customer who asked.
+      const deliveries = await db.notificationDelivery.findMany({
+        where: { userId: adminId, eventType: 'CANCELLATION_REQUESTED' },
+      });
+      expect(deliveries).toHaveLength(2);
+      expect(deliveries.map((d) => d.channel).sort()).toEqual(['EMAIL', 'INBOX']);
+      expect(deliveries[0]?.reservationId).toBe(created.value.id);
+      expect(deliveries.every((d) => d.renderedBody.includes(created.value.code))).toBe(true);
+      const customerDeliveries = await db.notificationDelivery.count({ where: { userId: customerId } });
+      expect(customerDeliveries).toBe(0);
+    });
+
+    it('does not notify twice when the customer asks twice', async () => {
+      const trip = await seedTrip(db);
+      const customerId = await seedCustomer(db);
+      const adminId = await seedAdmin(db);
+      const created = await createReservation(db, { tripId: trip.id, customerId });
+      expect(created.ok).toBe(true);
+      if (!created.ok) return;
+
+      await requestCancellation(db, created.value.id, customerId, queue, 'Me enfermé');
+      await requestCancellation(db, created.value.id, customerId, queue, 'Otro motivo');
+
+      const deliveries = await db.notificationDelivery.count({
+        where: { userId: adminId, eventType: 'CANCELLATION_REQUESTED' },
+      });
+      expect(deliveries).toBe(2);
+    });
+
     it('keeps the first request when the customer asks twice', async () => {
       const trip = await seedTrip(db);
       const customerId = await seedCustomer(db);
       const created = await createReservation(db, { tripId: trip.id, customerId });
       expect(created.ok).toBe(true);
       if (!created.ok) return;
-      const first = await requestCancellation(db, created.value.id, customerId, 'Me enfermé');
+      const first = await requestCancellation(db, created.value.id, customerId, queue, 'Me enfermé');
       expect(first.ok).toBe(true);
       if (!first.ok) return;
 
-      const second = await requestCancellation(db, created.value.id, customerId, 'Otro motivo');
+      const second = await requestCancellation(db, created.value.id, customerId, queue, 'Otro motivo');
 
       expect(second.ok).toBe(true);
       if (!second.ok) return;
@@ -538,7 +615,7 @@ describe('reservation service', () => {
       expect(created.ok).toBe(true);
       if (!created.ok) return;
 
-      const requested = await requestCancellation(db, created.value.id, customerId);
+      const requested = await requestCancellation(db, created.value.id, customerId, queue);
 
       expect(requested.ok).toBe(true);
       const stored = await db.reservation.findUniqueOrThrow({ where: { id: created.value.id } });
@@ -554,7 +631,7 @@ describe('reservation service', () => {
       expect(created.ok).toBe(true);
       if (!created.ok) return;
 
-      const requested = await requestCancellation(db, created.value.id, stranger, 'No es mía');
+      const requested = await requestCancellation(db, created.value.id, stranger, queue, 'No es mía');
 
       expect(requested.ok).toBe(false);
       if (!requested.ok) expect(requested.error.code).toBe('RESERVATION_NOT_OWNED');
@@ -573,7 +650,7 @@ describe('reservation service', () => {
         if (!created.ok) return;
         await db.reservation.update({ where: { id: created.value.id }, data: { status } });
 
-        const requested = await requestCancellation(db, created.value.id, customerId);
+        const requested = await requestCancellation(db, created.value.id, customerId, queue);
 
         expect(requested.ok).toBe(false);
         if (!requested.ok) expect(requested.error.code).toBe('INVALID_STATUS_TRANSITION');

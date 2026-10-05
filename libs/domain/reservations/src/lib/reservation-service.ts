@@ -6,6 +6,7 @@ import {
   type ReservationStatus,
 } from '@rm/db';
 import { recordAudit } from '@rm/domain-audit';
+import { notifyAdmins, type NotificationQueue } from '@rm/domain-notifications';
 import { organizationTimeZone } from '@rm/domain-settings';
 import { fail, isPastDate, ok, type Result } from '@rm/shared-utils';
 import { availableSeats, countCommittedSeats, lockTripForCapacity } from './capacity';
@@ -310,16 +311,23 @@ export async function listReservationsForCustomer(
  *
  * Deliberately does **not** change the status: the hold keeps running, the
  * seat stays taken and nothing paid moves. A person with `reservation.cancel`
- * decides from the panel; this only puts the request in front of them.
+ * decides from the panel; this only puts the request in front of them --
+ * which is also why this function notifies them (`CANCELLATION_REQUESTED`,
+ * via `notifyAdmins`): without that alert nobody would ever see the request
+ * to act on it.
  *
  * Asking twice is a no-op rather than an error -- a customer who does not see
  * an immediate change will press the button again. The first request is the
- * one that stands, reason included, and only it is audited.
+ * one that stands, reason included, and only it is audited and notified --
+ * a second alert for the same request would train staff to ignore the
+ * second one on sight, exactly the outcome a real second request needs them
+ * not to have.
  */
 export async function requestCancellation(
   db: Db,
   reservationId: string,
   customerId: string,
+  queue: NotificationQueue,
   reason?: string
 ): Promise<Result<ReservationDto>> {
   const reservation = await ownedReservation(db, reservationId, customerId);
@@ -352,6 +360,27 @@ export async function requestCancellation(
         entityType: 'Reservation',
         entityId: reservationId,
         after: { reason: reason ?? null },
+      });
+
+      // `@rm/domain-payments`' webhook handler already depends on
+      // `@rm/domain-notifications` for this exact shape of staff-only
+      // alert (ORPHAN_PAYMENT, PAID_CENTS_MISMATCH); this is the same kind
+      // of edge, not a new one -- `@rm/domain-reservations` does not import
+      // `@rm/domain-payments` or vice versa, which is the dependency this
+      // module's own architecture note (`docs/business-rules/
+      // reservations.md`) actually forbids.
+      const customer = await tx.customerProfile.findUniqueOrThrow({
+        where: { userId: customerId },
+        select: { fullName: true },
+      });
+      await notifyAdmins(tx, queue, {
+        reservationId,
+        eventType: 'CANCELLATION_REQUESTED',
+        params: {
+          reservationCode: reservation.code,
+          customerName: customer.fullName,
+          reason: reason ?? '',
+        },
       });
     }
 
