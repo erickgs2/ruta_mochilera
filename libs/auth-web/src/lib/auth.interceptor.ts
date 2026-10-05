@@ -22,6 +22,27 @@ function consumesRefreshToken(url: string): boolean {
 }
 
 /**
+ * Public auth endpoints whose 401 is an answer about the request itself --
+ * a wrong password, a bad code, a used reset token -- never about the
+ * session. A refresh cannot fix any of them, and a failed refresh would
+ * clear the session and navigate to /login before the screen that made the
+ * call could show its own error.
+ */
+const PUBLIC_AUTH_PATHS = [
+  '/api/v1/auth/login',
+  '/api/v1/auth/register',
+  '/api/v1/auth/verify-email',
+  '/api/v1/auth/resend-code',
+  '/api/v1/auth/forgot-password',
+  '/api/v1/auth/reset-password',
+  '/api/v1/auth/oauth/',
+] as const;
+
+function isPublicAuthCall(url: string): boolean {
+  return PUBLIC_AUTH_PATHS.some((path) => url.includes(path));
+}
+
+/**
  * Shared module-level state so a burst of requests that all fail with 401 at
  * roughly the same time triggers exactly one refresh call. Every request that
  * hits a 401 while a refresh is already in flight subscribes to this same
@@ -67,8 +88,14 @@ export const authInterceptor: HttpInterceptorFn = (request, next) => {
       // (it lives in an httpOnly cookie, or -- native only -- inside
       // `store`) so "was there ever a session" is now judged from
       // `isAuthenticated()` -- a visitor who never logged in on this device
-      // has no local session to refresh, cookie or not.
-      if (!isUnauthorized || request.url.includes(REFRESH_PATH) || !auth.isAuthenticated()) {
+      // has no local session to refresh, cookie or not. A public auth call's
+      // 401 goes straight back to its caller -- see `PUBLIC_AUTH_PATHS`.
+      if (
+        !isUnauthorized ||
+        request.url.includes(REFRESH_PATH) ||
+        isPublicAuthCall(request.url) ||
+        !auth.isAuthenticated()
+      ) {
         return throwError(() => error);
       }
 

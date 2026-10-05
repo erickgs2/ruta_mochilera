@@ -161,6 +161,35 @@ describe('authInterceptor', () => {
     expect((receivedError as HttpErrorResponse).status).toBe(401);
     expect((receivedError as HttpErrorResponse).url).toContain('/api/v1/trips');
   });
+
+  // A 401 from one of these is an answer about the request itself (a wrong
+  // password, a bad code, a used reset token), not about the session. With
+  // a session open, treating it as an expired token would start a refresh
+  // and, if that failed, clear the session and leave the screen before the
+  // user ever saw the error.
+  it.each([
+    '/api/v1/auth/login',
+    '/api/v1/auth/register',
+    '/api/v1/auth/verify-email',
+    '/api/v1/auth/resend-code',
+    '/api/v1/auth/forgot-password',
+    '/api/v1/auth/reset-password',
+    '/api/v1/auth/oauth/google',
+    '/api/v1/auth/oauth/apple',
+  ])('passes a 401 from the public auth endpoint %s to the caller without refreshing', (path) => {
+    auth.setSessionForTesting('access-1', { id: 'u1', email: 'a@b.test', type: 'CUSTOMER', locale: 'es', fullName: 'Ana', permissions: [] });
+    const navigateSpy = vi.spyOn(router, 'navigate').mockResolvedValue(true);
+
+    let receivedError: unknown;
+    http.post(path, {}).subscribe({ error: (error) => (receivedError = error) });
+    controller.expectOne(path).flush({ code: 'TOKEN_INVALID' }, { status: 401, statusText: 'Unauthorized' });
+
+    controller.verify(); // no refresh call was made
+    expect(auth.isAuthenticated()).toBe(true);
+    expect(navigateSpy).not.toHaveBeenCalled();
+    expect(receivedError).toBeInstanceOf(HttpErrorResponse);
+    expect((receivedError as HttpErrorResponse).error).toEqual({ code: 'TOKEN_INVALID' });
+  });
 });
 
 // Task 15b: a platform-aware RefreshTokenStore. The interceptor must attach
