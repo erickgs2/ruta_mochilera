@@ -7,6 +7,7 @@ import {
   resendCodeRequestSchema,
   resetPasswordRequestSchema,
   sessionResponseSchema,
+  socialLoginRequestSchema,
   verifyEmailRequestSchema,
 } from './auth';
 
@@ -140,5 +141,23 @@ describe('resetPasswordRequestSchema', () => {
 
   it('rejects a short new password', () => {
     expect(resetPasswordRequestSchema.safeParse({ token: 'abc', newPassword: 'short' }).success).toBe(false);
+  });
+});
+
+describe('socialLoginRequestSchema', () => {
+  it('accepts a bare idToken', () => {
+    expect(socialLoginRequestSchema.safeParse({ idToken: 'header.payload.signature' }).success).toBe(true);
+  });
+
+  it('accepts an idToken with an optional deviceId', () => {
+    expect(socialLoginRequestSchema.safeParse({ idToken: 'x', deviceId: 'device-1' }).success).toBe(true);
+  });
+
+  it('rejects an empty idToken', () => {
+    expect(socialLoginRequestSchema.safeParse({ idToken: '' }).success).toBe(false);
+  });
+
+  it('rejects a missing idToken', () => {
+    expect(socialLoginRequestSchema.safeParse({}).success).toBe(false);
   });
 });

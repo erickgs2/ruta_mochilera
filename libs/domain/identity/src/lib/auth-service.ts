@@ -27,7 +27,8 @@ export interface AuthenticatedUser {
   permissions: string[];
 }
 
-interface SessionInput {
+/** Shared by every flow that ends in `issueSession`: a password login, a token refresh, and (Task 13) a social login. */
+export interface SessionInput {
   deviceId?: string;
   userAgent?: string;
 }
@@ -55,7 +56,12 @@ const DUMMY_PASSWORD_HASH =
  * (refresh rotation) with no cast at either call site: a full `Db` is
  * structurally assignable to `DbTransactionClient`.
  */
-async function issueSession(
+/**
+ * Exported so `loginWithProvider` (Task 13, `./social-login.ts`) issues a
+ * session the exact same way a password login does -- no social-login-only
+ * copy of refresh-token generation or access-token signing.
+ */
+export async function issueSession(
   db: DbTransactionClient,
   config: AuthConfig,
   userId: string,

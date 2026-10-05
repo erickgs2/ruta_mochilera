@@ -25,6 +25,7 @@ const ALL_DOMAIN_ERROR_CODES: readonly DomainErrorCode[] = [
   'EMAIL_ALREADY_REGISTERED',
   'ACCOUNT_DISABLED',
   'RATE_LIMITED',
+  'PROVIDER_DISABLED',
   'OTP_EXPIRED',
   'OTP_INVALID',
   'OTP_MAX_ATTEMPTS',
@@ -64,6 +65,7 @@ function assertKnownCode(code: DomainErrorCode): void {
     case 'EMAIL_ALREADY_REGISTERED':
     case 'ACCOUNT_DISABLED':
     case 'RATE_LIMITED':
+    case 'PROVIDER_DISABLED':
     case 'OTP_EXPIRED':
     case 'OTP_INVALID':
     case 'OTP_MAX_ATTEMPTS':

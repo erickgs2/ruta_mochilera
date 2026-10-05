@@ -78,3 +78,18 @@ export type VerifyEmailRequest = z.infer<typeof verifyEmailRequestSchema>;
 export type ResendCodeRequest = z.infer<typeof resendCodeRequestSchema>;
 export type ForgotPasswordRequest = z.infer<typeof forgotPasswordRequestSchema>;
 export type ResetPasswordRequest = z.infer<typeof resetPasswordRequestSchema>;
+
+/**
+ * Body for `POST /auth/oauth/google` and `POST /auth/oauth/apple` (Task 13).
+ * Which provider to verify against is the URL path, not a field here -- each
+ * route calls `loginWithProvider` with its own fixed `provider`. Responds
+ * with `sessionResponseSchema`, the same as `/auth/login`: a social sign-in
+ * produces a session the exact same way a password one does, refresh token
+ * included only as the httpOnly cookie, never in this response body.
+ */
+export const socialLoginRequestSchema = z.object({
+  idToken: z.string().min(1),
+  deviceId: z.string().max(128).optional(),
+});
+
+export type SocialLoginRequest = z.infer<typeof socialLoginRequestSchema>;

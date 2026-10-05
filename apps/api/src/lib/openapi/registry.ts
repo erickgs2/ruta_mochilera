@@ -17,6 +17,7 @@ import {
   roleInputSchema as roleInputSchemaImport,
   roleSchema as roleSchemaImport,
   sessionResponseSchema as sessionResponseSchemaImport,
+  socialLoginRequestSchema as socialLoginRequestSchemaImport,
   staffSchema as staffSchemaImport,
   tripTranslationSchema,
   updateStaffRequestSchema as updateStaffRequestSchemaImport,
@@ -47,6 +48,7 @@ const verifyEmailRequestSchema = verifyEmailRequestSchemaImport.meta({ id: 'Veri
 const resendCodeRequestSchema = resendCodeRequestSchemaImport.meta({ id: 'ResendCodeRequest' });
 const forgotPasswordRequestSchema = forgotPasswordRequestSchemaImport.meta({ id: 'ForgotPasswordRequest' });
 const resetPasswordRequestSchema = resetPasswordRequestSchemaImport.meta({ id: 'ResetPasswordRequest' });
+const socialLoginRequestSchema = socialLoginRequestSchemaImport.meta({ id: 'SocialLoginRequest' });
 const authenticatedUserSchema = authenticatedUserSchemaImport.meta({ id: 'AuthenticatedUser' });
 const sessionResponseSchema = sessionResponseSchemaImport.meta({ id: 'Session' });
 const permissionSchema = permissionSchemaImport.meta({ id: 'Permission' });
@@ -374,6 +376,42 @@ export function buildOpenApiDocument() {
       200: { description: 'Password changed and every session revoked', ...json(z.null()) },
       401: problem('Unknown, expired or already-used token (TOKEN_INVALID)'),
       422: problem('Validation failed'),
+    },
+  });
+
+  registry.registerPath({
+    method: 'post',
+    path: '/api/v1/auth/oauth/google',
+    tags: ['auth'],
+    description:
+      'Signs in (or signs up) with a Google id token, verified against signature, issuer, audience ' +
+      '(our own client id) and expiry. Responds 503 PROVIDER_DISABLED, never a 500, when ' +
+      'GOOGLE_OAUTH_CLIENT_ID is unconfigured.',
+    request: { body: requestBody(socialLoginRequestSchema) },
+    responses: {
+      200: { description: 'Session issued', ...json(sessionResponseSchema) },
+      401: problem('TOKEN_INVALID -- the id token failed signature, issuer, audience or expiry verification'),
+      403: problem('Account disabled'),
+      422: problem('Validation failed'),
+      503: problem('PROVIDER_DISABLED -- Google sign-in is not configured'),
+    },
+  });
+
+  registry.registerPath({
+    method: 'post',
+    path: '/api/v1/auth/oauth/apple',
+    tags: ['auth'],
+    description:
+      'Signs in (or signs up) with an Apple id token, verified against signature, issuer, audience ' +
+      '(our own client id) and expiry. Responds 503 PROVIDER_DISABLED, never a 500, when ' +
+      'APPLE_OAUTH_CLIENT_ID is unconfigured.',
+    request: { body: requestBody(socialLoginRequestSchema) },
+    responses: {
+      200: { description: 'Session issued', ...json(sessionResponseSchema) },
+      401: problem('TOKEN_INVALID -- the id token failed signature, issuer, audience or expiry verification'),
+      403: problem('Account disabled'),
+      422: problem('Validation failed'),
+      503: problem('PROVIDER_DISABLED -- Apple sign-in is not configured'),
     },
   });
 

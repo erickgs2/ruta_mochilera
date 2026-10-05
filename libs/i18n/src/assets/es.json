@@ -202,6 +202,7 @@
     "EMAIL_ALREADY_REGISTERED": "Ese correo ya está registrado.",
     "ACCOUNT_DISABLED": "Esta cuenta está deshabilitada.",
     "RATE_LIMITED": "Demasiados intentos. Espera un momento e inténtalo de nuevo.",
+  "PROVIDER_DISABLED": "Este método de inicio de sesión no está disponible por el momento. Intenta con otro.",
     "OTP_EXPIRED": "Ese código ya venció. Solicita uno nuevo.",
     "OTP_INVALID": "El código no es correcto.",
     "OTP_MAX_ATTEMPTS": "Superaste el número de intentos permitidos. Solicita un nuevo código.",

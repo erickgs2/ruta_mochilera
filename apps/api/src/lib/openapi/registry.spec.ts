@@ -16,6 +16,8 @@ const EVERY_ROUTE_FILE_PATH = [
   '/api/v1/auth/reset-password',
   '/api/v1/auth/refresh',
   '/api/v1/auth/logout',
+  '/api/v1/auth/oauth/google',
+  '/api/v1/auth/oauth/apple',
   '/api/v1/me',
   '/api/v1/rbac/permissions',
   '/api/v1/rbac/roles',
@@ -36,9 +38,10 @@ const EVERY_ROUTE_FILE_PATH = [
 
 /**
  * The routes that are deliberately not gated on a token: the three auth
- * endpoints that issue one, the local file server, and Stripe's webhook --
- * which is authorised by an HMAC over the request body, not by an actor,
- * and therefore has no 401 or 403 to document.
+ * endpoints that issue one, the two social sign-in endpoints (Task 13,
+ * `auth: 'public'` the same as `/auth/login`), the local file server, and
+ * Stripe's webhook -- which is authorised by an HMAC over the request body,
+ * not by an actor, and therefore has no 401 or 403 to document.
  */
 const UNGATED_PATHS = [
   '/api/v1/auth/login',
@@ -49,6 +52,8 @@ const UNGATED_PATHS = [
   '/api/v1/auth/reset-password',
   '/api/v1/auth/refresh',
   '/api/v1/auth/logout',
+  '/api/v1/auth/oauth/google',
+  '/api/v1/auth/oauth/apple',
   '/api/v1/files/{key}',
   '/api/v1/webhooks/stripe',
 ];

@@ -7,6 +7,11 @@ export type DomainErrorCode =
   | 'EMAIL_ALREADY_REGISTERED'
   | 'ACCOUNT_DISABLED'
   | 'RATE_LIMITED'
+  // Social login (Phase 2A, Task 13) -- returned instead of ever reaching the
+  // provider's key endpoint when its client id is unconfigured. Distinct
+  // from TOKEN_INVALID: that code means "we checked and this token does not
+  // work", this one means "we never checked, this sign-in method is off".
+  | 'PROVIDER_DISABLED'
   // Email verification and password reset (Phase 2A, Tasks 11-12)
   | 'OTP_EXPIRED'
   | 'OTP_INVALID'

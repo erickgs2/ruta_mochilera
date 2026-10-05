@@ -202,6 +202,7 @@
     "EMAIL_ALREADY_REGISTERED": "That email is already registered.",
     "ACCOUNT_DISABLED": "This account is disabled.",
     "RATE_LIMITED": "Too many attempts. Please wait a moment and try again.",
+  "PROVIDER_DISABLED": "This sign-in method is not available right now. Please try another one.",
     "OTP_EXPIRED": "That code has expired. Request a new one.",
     "OTP_INVALID": "That code is not correct.",
     "OTP_MAX_ATTEMPTS": "You've exceeded the allowed number of attempts. Request a new code.",

@@ -22,6 +22,17 @@ const schema = z
     STRIPE_SECRET_KEY: z.string().optional(),
     STRIPE_WEBHOOK_SECRET: z.string().optional(),
     STRIPE_PUBLISHABLE_KEY: z.string().optional(),
+    // Optional in every environment, same reasoning as the Stripe keys above:
+    // there is no Google Cloud project and no Apple developer account for
+    // this build. Deliberately left as a plain optional string rather than
+    // transformed to `undefined` on empty -- `loginWithProvider` (see
+    // `@rm/domain-identity`) checks truthiness, so both an absent variable
+    // and one set to the empty string (as `.env.example` ships them) mean
+    // "this provider is switched off", and the social sign-in endpoint
+    // answers with a stable `PROVIDER_DISABLED` instead of ever reaching a
+    // Google/Apple key endpoint it has no client id to authenticate against.
+    GOOGLE_OAUTH_CLIENT_ID: z.string().optional(),
+    APPLE_OAUTH_CLIENT_ID: z.string().optional(),
     // Deliberately a plain optional string, not z.coerce.boolean(): coercion
     // treats any non-empty string (including the literal "false") as true,
     // which is exactly the "on by accident" failure mode this flag must
@@ -78,6 +89,14 @@ export interface AppEnv {
   stripeWebhookSecret?: string;
   stripePublishableKey?: string;
   /**
+   * Empty or absent means this provider is switched off -- see
+   * `loginWithProvider` in `@rm/domain-identity`. Never transformed to
+   * `undefined` on empty input; callers must check truthiness, not
+   * `=== undefined`, since `.env.example` ships these as the empty string.
+   */
+  googleOauthClientId?: string;
+  appleOauthClientId?: string;
+  /**
    * Prints email `html`/`text` bodies to the console (ConsoleEmailProvider
    * only). Off by default and off for any value other than the literal
    * "true": Task 11 sends six-digit email-verification codes through this
@@ -114,6 +133,8 @@ export function loadEnv(source: Record<string, string | undefined>): AppEnv {
     stripeSecretKey: value.STRIPE_SECRET_KEY,
     stripeWebhookSecret: value.STRIPE_WEBHOOK_SECRET,
     stripePublishableKey: value.STRIPE_PUBLISHABLE_KEY,
+    googleOauthClientId: value.GOOGLE_OAUTH_CLIENT_ID,
+    appleOauthClientId: value.APPLE_OAUTH_CLIENT_ID,
     emailVerboseLogging: value.EMAIL_VERBOSE_LOGGING === 'true',
   };
 }

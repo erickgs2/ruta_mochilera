@@ -14,6 +14,12 @@ const STATUS_BY_CODE: Record<DomainErrorCode, number> = {
   EMAIL_ALREADY_REGISTERED: 409,
   ACCOUNT_DISABLED: 403,
   RATE_LIMITED: 429,
+  // Not a 5xx: this is a known, stable configuration state (no Google/Apple
+  // developer account for this build yet), not an unexpected failure on our
+  // side -- so not EMAIL_PROVIDER_ERROR/PAYMENT_PROVIDER_ERROR's 502 either.
+  // 503 reads correctly to a client: this specific sign-in method is
+  // unavailable right now, try a different one.
+  PROVIDER_DISABLED: 503,
   // 422: the caller's input (the code itself) is what is wrong, the same
   // status VALIDATION_FAILED uses -- not 401, which would suggest a missing
   // or malformed credential rather than a wrong one-time code.

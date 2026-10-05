@@ -95,4 +95,22 @@ describe('loadEnv', () => {
   it('rejects a lone STRIPE_WEBHOOK_SECRET without its matching secret key', () => {
     expect(() => loadEnv({ ...valid, STRIPE_WEBHOOK_SECRET: 'whsec_x' })).toThrow(/STRIPE_WEBHOOK_SECRET/);
   });
+
+  it('leaves the social login client ids undefined when absent, in every NODE_ENV', () => {
+    const env = loadEnv({ ...valid, NODE_ENV: 'production', RESEND_API_KEY: 'k', RESEND_FROM_ADDRESS: 'a@b.com' });
+    expect(env.googleOauthClientId).toBeUndefined();
+    expect(env.appleOauthClientId).toBeUndefined();
+  });
+
+  it('treats an explicitly empty GOOGLE_OAUTH_CLIENT_ID / APPLE_OAUTH_CLIENT_ID the same as absent, never throwing', () => {
+    const env = loadEnv({ ...valid, GOOGLE_OAUTH_CLIENT_ID: '', APPLE_OAUTH_CLIENT_ID: '' });
+    expect(env.googleOauthClientId).toBe('');
+    expect(env.appleOauthClientId).toBe('');
+  });
+
+  it('accepts a configured GOOGLE_OAUTH_CLIENT_ID / APPLE_OAUTH_CLIENT_ID', () => {
+    const env = loadEnv({ ...valid, GOOGLE_OAUTH_CLIENT_ID: 'google-client-id', APPLE_OAUTH_CLIENT_ID: 'apple-client-id' });
+    expect(env.googleOauthClientId).toBe('google-client-id');
+    expect(env.appleOauthClientId).toBe('apple-client-id');
+  });
 });
