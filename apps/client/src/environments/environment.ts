@@ -8,4 +8,8 @@ export const environment = {
   // so the native build points this at an absolute API URL instead via
   // `environment.capacitor.ts`.
   apiBaseUrl: '',
+  // Stripe's publishable key. Empty in every committed file on purpose: the
+  // real key is injected per build and never committed. With no key the
+  // payment screen shows "payments unavailable" instead of loading Stripe.
+  stripePublishableKey: '',
 };

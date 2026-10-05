@@ -2,7 +2,7 @@ import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
 import { API_BASE_URL } from './api-client';
-import { AuthApi, CostingApi, PublicCatalogueApi, RbacApi, StaffApi, TripsApi } from './endpoints';
+import { AuthApi, CostingApi, PublicCatalogueApi, RbacApi, ReservationsApi, StaffApi, TripsApi } from './endpoints';
 
 describe('endpoints', () => {
   let httpMock: HttpTestingController;
@@ -62,6 +62,29 @@ describe('endpoints', () => {
     expect(req.request.method).toBe('POST');
     expect(req.request.body).toEqual({ token: 'tok', newPassword: 'a-long-enough-password' });
     req.flush(null);
+  });
+
+  it('ReservationsApi.create posts only the trip id', () => {
+    TestBed.inject(ReservationsApi).create('trip-1').subscribe();
+    const req = httpMock.expectOne('https://api.test/api/v1/reservations');
+    expect(req.request.method).toBe('POST');
+    expect(req.request.body).toEqual({ tripId: 'trip-1' });
+    req.flush({});
+  });
+
+  it('ReservationsApi.get calls GET /api/v1/reservations/{id}', () => {
+    TestBed.inject(ReservationsApi).get('res-1').subscribe();
+    const req = httpMock.expectOne('https://api.test/api/v1/reservations/res-1');
+    expect(req.request.method).toBe('GET');
+    req.flush({});
+  });
+
+  it('ReservationsApi.createPaymentIntent posts an intent and a method -- never an amount', () => {
+    TestBed.inject(ReservationsApi).createPaymentIntent('res-1', { intent: 'DEPOSIT', method: 'OXXO' }).subscribe();
+    const req = httpMock.expectOne('https://api.test/api/v1/reservations/res-1/payment-intents');
+    expect(req.request.method).toBe('POST');
+    expect(req.request.body).toEqual({ intent: 'DEPOSIT', method: 'OXXO' });
+    req.flush({});
   });
 
   it('PublicCatalogueApi.list calls GET /api/v1/public/trips', () => {

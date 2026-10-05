@@ -1,0 +1,44 @@
+<div class="reservation-page">
+  <header class="reservation-header">
+    <a [routerLink]="['/trips', slug]">← {{ 'reserve.backToTrip' | translate }}</a>
+  </header>
+
+  @if (tripError()) {
+    <p class="reservation-error">{{ tripError() | rmErrorCode }}</p>
+  } @else if (trip()) {
+    <h1>{{ 'reserve.title' | translate }}: {{ tripName() }}</h1>
+
+    @if (reservation(); as reservation) {
+      <section class="reservation-amounts">
+        <p class="reservation-notice">{{ 'reserve.holdCreated' | translate: { code: reservation.code } }}</p>
+        <dl>
+          <dt>{{ 'reserve.total' | translate }}</dt>
+          <dd class="amount-total">{{ reservation.totalPriceCents | rmMoney }}</dd>
+          <dt>{{ 'reserve.minimumDeposit' | translate }}</dt>
+          <dd class="amount-deposit">{{ reservation.minimumDepositCents | rmMoney }}</dd>
+          <dt>{{ 'reserve.suggestedMonthly' | translate }}</dt>
+          <dd class="amount-monthly">{{ reservation.suggestedMonthlyCents | rmMoney }}</dd>
+        </dl>
+        <p class="reservation-hint">{{ 'reserve.suggestedMonthlyHint' | translate }}</p>
+      </section>
+
+      <rm-payment-method [reservation]="reservation" (cardConfirmed)="onCardConfirmed()" />
+
+      <a [routerLink]="['/reservations', reservation.id]">{{ 'reserve.viewReservation' | translate }}</a>
+    } @else if (showVerifyInvite()) {
+      <div class="reserve-verify-invite">
+        <p>{{ 'reserve.verifyInvite' | translate }}</p>
+        <a routerLink="/verify-email" [queryParams]="{ email: user()?.email }">{{ 'reserve.verifyAction' | translate }}</a>
+      </div>
+    } @else {
+      @if (error()) {
+        <p class="reservation-error">{{ error() | rmErrorCode }}</p>
+      }
+      <button type="button" class="reserve-submit" [disabled]="loading()" (click)="reserve()">
+        {{ loading() ? ('reserve.submitting' | translate) : ('reserve.submit' | translate) }}
+      </button>
+    }
+  } @else {
+    <p class="reservation-status">{{ 'common.loading' | translate }}</p>
+  }
+</div>

@@ -17,6 +17,18 @@ export const appRoutes: Routes = [
     loadComponent: () => import('./features/catalogue/trip-detail.component').then((m) => m.TripDetailComponent),
   },
   {
+    // Exactly the path the trip detail's reserve button links to.
+    path: 'trips/:slug/reserve',
+    canActivate: [authGuard],
+    loadComponent: () => import('./features/reservations/reserve.component').then((m) => m.ReserveComponent),
+  },
+  {
+    path: 'reservations/:id',
+    canActivate: [authGuard],
+    loadComponent: () =>
+      import('./features/reservations/reservation-detail.component').then((m) => m.ReservationDetailComponent),
+  },
+  {
     path: 'login',
     loadComponent: () => import('./features/auth/login.component').then((m) => m.LoginComponent),
   },

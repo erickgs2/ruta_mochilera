@@ -17,4 +17,8 @@ export const environment = {
   // pointed at the host's LAN IP would need one -- add it to a Debug-only
   // configuration then, never to the Info.plist a release build ships.
   apiBaseUrl: 'http://localhost:3000',
+  // Stripe's publishable key. Empty in every committed file on purpose: the
+  // real key is injected per build and never committed. With no key the
+  // payment screen shows "payments unavailable" instead of loading Stripe.
+  stripePublishableKey: '',
 };

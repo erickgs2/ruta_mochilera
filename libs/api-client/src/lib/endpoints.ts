@@ -162,6 +162,36 @@ export class PublicCatalogueApi {
   }
 }
 
+/**
+ * The authenticated customer's own reservations and the payment flow that
+ * starts from one. Ownership is checked by the API on every call.
+ */
+@Injectable({ providedIn: 'root' })
+export class ReservationsApi {
+  private readonly api = inject(ApiClient);
+
+  /** Creates a `HELD` reservation (the hold). The answer carries total, minimum deposit and `suggestedMonthlyCents`. */
+  create(tripId: string): Observable<Ok<'/api/v1/reservations', 'post'>> {
+    return this.api.post('/api/v1/reservations', { tripId });
+  }
+
+  get(reservationId: string): Observable<Ok<'/api/v1/reservations/{reservationId}', 'get'>> {
+    return this.api.get(`/api/v1/reservations/${reservationId}`);
+  }
+
+  /**
+   * The body is an intent (`FULL` or `DEPOSIT`) and a method, never a number
+   * of cents: the API decides the amount from the reservation's own balance
+   * and echoes it back as `amountCents`.
+   */
+  createPaymentIntent(
+    reservationId: string,
+    body: Body<'/api/v1/reservations/{reservationId}/payment-intents', 'post'>
+  ): Observable<Ok<'/api/v1/reservations/{reservationId}/payment-intents', 'post'>> {
+    return this.api.post(`/api/v1/reservations/${reservationId}/payment-intents`, body);
+  }
+}
+
 /** Trips: catalog CRUD, status transitions and gallery images. */
 @Injectable({ providedIn: 'root' })
 export class TripsApi {

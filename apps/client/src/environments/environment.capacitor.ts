@@ -20,4 +20,8 @@ export const environment = {
   // the `capacitor-development` configuration instead
   // (`environment.capacitor.development.ts`), not this one.
   apiBaseUrl: 'https://CHANGE_ME',
+  // Stripe's publishable key. Empty in every committed file on purpose: the
+  // real key is injected per build and never committed. With no key the
+  // payment screen shows "payments unavailable" instead of loading Stripe.
+  stripePublishableKey: '',
 };

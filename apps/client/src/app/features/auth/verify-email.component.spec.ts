@@ -5,10 +5,12 @@ import { provideRouter } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
 import { provideTranslateService, TranslateService } from '@ngx-translate/core';
 import { API_BASE_URL } from '@rm/api-client';
+import { AuthService } from '@rm/auth-web';
 import { keyedTranslations, shown } from '../../testing/keyed-translations';
 import { RESEND_COOLDOWN_SECONDS, VerifyEmailComponent } from './verify-email.component';
 
 async function open(url = '/verify-email?email=ana%40example.com') {
+  localStorage.clear();
   TestBed.configureTestingModule({
     providers: [
       provideHttpClient(),
@@ -72,6 +74,35 @@ describe('VerifyEmailComponent', () => {
 
     expect(request.request.body).toEqual({ email: 'ana@example.com', code: '123456' });
     expect(text(harness)).toContain(shown('auth.verify.success'));
+  });
+
+  it('refreshes the cached user after verifying, so a signed-in customer can reserve without signing in again', async () => {
+    const { component, http } = await open();
+    const auth = TestBed.inject(AuthService);
+    auth.setSessionForTesting('access-1', {
+      id: 'c1',
+      email: 'ana@example.com',
+      type: 'CUSTOMER',
+      locale: 'es',
+      fullName: 'Ana',
+      permissions: [],
+      emailVerified: false,
+    });
+
+    await submitCode(component, http, '123456', null);
+    http.expectOne('/api/v1/me').flush({ ...auth.user(), emailVerified: true });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(auth.user()?.emailVerified).toBe(true);
+    expect(auth.accessToken()).toBe('access-1');
+  });
+
+  it('does not call /me after verifying when nobody is signed in on this device', async () => {
+    const { component, http } = await open();
+
+    await submitCode(component, http, '123456', null);
+
+    http.expectNone('/api/v1/me');
   });
 
   it('does not call the API for a code that is not six digits', async () => {

@@ -86,6 +86,64 @@
     "includes": "Incluye",
     "excludes": "No incluye"
   },
+  "reserve": {
+    "title": "Reservar",
+    "backToTrip": "Volver al viaje",
+    "submit": "Apartar mi lugar",
+    "submitting": "Apartando…",
+    "holdCreated": "Apartamos tu lugar. Tu código de reserva es {{code}}.",
+    "total": "Total del viaje",
+    "minimumDeposit": "Anticipo mínimo",
+    "suggestedMonthly": "Mensualidad sugerida",
+    "suggestedMonthlyHint": "La mensualidad es una sugerencia para liquidar antes de la fecha límite; puedes abonar lo que quieras.",
+    "verifyInvite": "Para reservar necesitas verificar tu correo.",
+    "verifyAction": "Verificar mi correo",
+    "viewReservation": "Ver mi reserva"
+  },
+  "reservation": {
+    "title": "Reserva",
+    "status": {
+      "HELD": "Apartada",
+      "ACTIVE": "Activa",
+      "CANCELLED": "Cancelada",
+      "EXPIRED": "Vencida"
+    },
+    "holdExpiresIn": "Tu apartado vence en",
+    "holdExpired": "El tiempo de tu apartado terminó. Actualiza para ver su estado.",
+    "total": "Total",
+    "paid": "Pagado",
+    "balance": "Saldo",
+    "minimumDeposit": "Anticipo mínimo",
+    "suggestedMonthly": "Mensualidad sugerida",
+    "paymentDeadline": "Fecha límite de pago",
+    "refresh": "Actualizar",
+    "processing": "Estamos procesando tu pago. Esta pantalla se actualizará en cuanto se confirme.",
+    "processingSlow": "Tu pago sigue en proceso. Actualiza en unos minutos para ver si ya se acreditó."
+  },
+  "payments": {
+    "whatToPay": "¿Qué quieres pagar?",
+    "payFull": "Todo el saldo",
+    "payDeposit": "El anticipo mínimo",
+    "how": "¿Cómo quieres pagar?",
+    "card": "Tarjeta",
+    "oxxo": "Efectivo en OXXO",
+    "youPay": "Pagarás",
+    "continue": "Continuar",
+    "submitting": "Procesando…",
+    "chooseAnother": "Elegir otra forma de pago",
+    "loadingCard": "Cargando el formulario de pago…",
+    "cardSubmit": "Pagar",
+    "cardFailed": "No se pudo cobrar la tarjeta. Revisa los datos o intenta con otra.",
+    "unavailable": "Los pagos en línea no están disponibles por ahora. Intenta más tarde o paga en OXXO.",
+    "voucher": {
+      "title": "Tu ficha de pago en OXXO",
+      "amount": "Monto",
+      "expiresAt": "Paga antes de",
+      "open": "Abrir la ficha",
+      "balanceUnchanged": "Tu saldo sigue en",
+      "notice": "El pago se acreditará cuando lo hagas en la tienda; hasta entonces tu saldo no cambia."
+    }
+  },
   "nav": {
     "trips": "Viajes",
     "staff": "Administradores",

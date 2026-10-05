@@ -10,6 +10,12 @@ export interface SessionUser {
   locale: 'es' | 'en';
   fullName: string;
   permissions: string[];
+  /**
+   * Sent by login, refresh and `/me` since Task 17. Optional because a
+   * session persisted before then lacks it; the client app re-reads `/me`
+   * where the answer matters (the reserve screen) instead of trusting it.
+   */
+  emailVerified?: boolean;
 }
 
 /**

@@ -86,6 +86,64 @@
     "includes": "Includes",
     "excludes": "Not included"
   },
+  "reserve": {
+    "title": "Reserve",
+    "backToTrip": "Back to the trip",
+    "submit": "Hold my seat",
+    "submitting": "Holding…",
+    "holdCreated": "Your seat is on hold. Your reservation code is {{code}}.",
+    "total": "Trip total",
+    "minimumDeposit": "Minimum deposit",
+    "suggestedMonthly": "Suggested monthly payment",
+    "suggestedMonthlyHint": "The monthly payment is a suggestion to pay off before the deadline; you can pay any amount.",
+    "verifyInvite": "You need to verify your email to make a reservation.",
+    "verifyAction": "Verify my email",
+    "viewReservation": "See my reservation"
+  },
+  "reservation": {
+    "title": "Reservation",
+    "status": {
+      "HELD": "On hold",
+      "ACTIVE": "Active",
+      "CANCELLED": "Cancelled",
+      "EXPIRED": "Expired"
+    },
+    "holdExpiresIn": "Your hold ends in",
+    "holdExpired": "Your hold time is up. Refresh to see its status.",
+    "total": "Total",
+    "paid": "Paid",
+    "balance": "Balance",
+    "minimumDeposit": "Minimum deposit",
+    "suggestedMonthly": "Suggested monthly payment",
+    "paymentDeadline": "Payment deadline",
+    "refresh": "Refresh",
+    "processing": "We are processing your payment. This screen will update as soon as it is confirmed.",
+    "processingSlow": "Your payment is still being processed. Refresh in a few minutes to see whether it was credited."
+  },
+  "payments": {
+    "whatToPay": "What do you want to pay?",
+    "payFull": "The full balance",
+    "payDeposit": "The minimum deposit",
+    "how": "How do you want to pay?",
+    "card": "Card",
+    "oxxo": "Cash at OXXO",
+    "youPay": "You will pay",
+    "continue": "Continue",
+    "submitting": "Processing…",
+    "chooseAnother": "Choose another payment method",
+    "loadingCard": "Loading the payment form…",
+    "cardSubmit": "Pay",
+    "cardFailed": "The card could not be charged. Check the details or try another card.",
+    "unavailable": "Online payments are not available right now. Try again later or pay at OXXO.",
+    "voucher": {
+      "title": "Your OXXO payment voucher",
+      "amount": "Amount",
+      "expiresAt": "Pay before",
+      "open": "Open the voucher",
+      "balanceUnchanged": "Your balance is still",
+      "notice": "The payment is credited once you pay at the store; until then your balance does not change."
+    }
+  },
   "nav": {
     "trips": "Trips",
     "staff": "Administrators",

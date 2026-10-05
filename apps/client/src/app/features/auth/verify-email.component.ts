@@ -4,6 +4,7 @@ import { ActivatedRoute, RouterLink } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
 import { TranslatePipe } from '@ngx-translate/core';
 import { AuthApi } from '@rm/api-client';
+import { SessionUserRefresher } from '../../core/session-user';
 import { ErrorCodePipe } from '../../shared/error-code.pipe';
 import { emailAddress } from './auth-validators';
 
@@ -31,6 +32,7 @@ export const RESEND_COOLDOWN_SECONDS = 60;
 export class VerifyEmailComponent {
   private readonly api = inject(AuthApi);
   private readonly formBuilder = inject(FormBuilder);
+  private readonly sessionUser = inject(SessionUserRefresher);
 
   readonly loading = signal(false);
   readonly verified = signal(false);
@@ -68,6 +70,11 @@ export class VerifyEmailComponent {
       await firstValueFrom(this.api.verifyEmail({ email, code }));
       this.verified.set(true);
       this.stopTimer();
+      // A customer already signed in on this device (login does not require
+      // a verified email) would otherwise keep a cached `emailVerified:
+      // false` and still see "verify your email" on the reserve screen.
+      // Best effort: the verification itself already succeeded.
+      void this.sessionUser.refresh().catch(() => undefined);
     } catch (error) {
       this.error.set(error);
     } finally {
