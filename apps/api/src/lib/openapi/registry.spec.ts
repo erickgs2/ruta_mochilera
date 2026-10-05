@@ -9,6 +9,9 @@ import { buildOpenApiDocument } from './registry';
  */
 const EVERY_ROUTE_FILE_PATH = [
   '/api/v1/auth/login',
+  '/api/v1/auth/register',
+  '/api/v1/auth/verify-email',
+  '/api/v1/auth/resend-code',
   '/api/v1/auth/refresh',
   '/api/v1/auth/logout',
   '/api/v1/me',
@@ -37,6 +40,9 @@ const EVERY_ROUTE_FILE_PATH = [
  */
 const UNGATED_PATHS = [
   '/api/v1/auth/login',
+  '/api/v1/auth/register',
+  '/api/v1/auth/verify-email',
+  '/api/v1/auth/resend-code',
   '/api/v1/auth/refresh',
   '/api/v1/auth/logout',
   '/api/v1/files/{key}',

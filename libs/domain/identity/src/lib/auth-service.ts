@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type { Db, DbTransactionClient } from '@rm/db';
 import { loadActorPermissions } from '@rm/domain-rbac';
 import { fail, ok, type Result } from '@rm/shared-utils';
-import { clearLoginRateLimit, isLoginRateLimited, recordFailedLoginAttempt } from './login-rate-limiter';
+import { clearRateLimit, isRateLimited, recordFailedAttempt } from './rate-limiter';
 import { verifyPassword } from './password';
 import { generateRefreshToken, hashRefreshToken, signAccessToken } from './tokens';
 
@@ -120,7 +120,7 @@ export async function login(
   // Checked before any password work at all -- including the dummy-hash
   // timing defence below -- so a rate-limited burst never spends argon2 time,
   // which is the whole point of limiting it.
-  if (isLoginRateLimited(email, ip)) return fail('RATE_LIMITED');
+  if (isRateLimited('login', email, ip)) return fail('RATE_LIMITED');
 
   const user = await db.user.findFirst({
     where: { email: { equals: email, mode: 'insensitive' } },
@@ -133,16 +133,16 @@ export async function login(
   // through timing what the shared error code hides.
   if (!user?.passwordHash) {
     await verifyPassword(DUMMY_PASSWORD_HASH, input.password);
-    recordFailedLoginAttempt(email, ip);
+    recordFailedAttempt('login', email, ip);
     return fail('INVALID_CREDENTIALS');
   }
   if (!(await verifyPassword(user.passwordHash, input.password))) {
-    recordFailedLoginAttempt(email, ip);
+    recordFailedAttempt('login', email, ip);
     return fail('INVALID_CREDENTIALS');
   }
   if (user.status === 'DISABLED') return fail('ACCOUNT_DISABLED');
 
-  clearLoginRateLimit(email, ip);
+  clearRateLimit('login', email, ip);
   const tokens = await issueSession(db, config, user.id, randomUUID(), input);
   return ok({ user: await describeUser(db, user.id), tokens });
 }

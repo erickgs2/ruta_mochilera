@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { authenticatedUserSchema, loginRequestSchema, sessionResponseSchema } from './auth';
+import {
+  authenticatedUserSchema,
+  loginRequestSchema,
+  registerRequestSchema,
+  resendCodeRequestSchema,
+  sessionResponseSchema,
+  verifyEmailRequestSchema,
+} from './auth';
 
 describe('loginRequestSchema', () => {
   it('accepts a valid login payload', () => {
@@ -75,5 +82,50 @@ describe('sessionResponseSchema', () => {
       tokens: { accessToken: 'token', refreshToken: 'refresh', expiresInSeconds: 900 },
     });
     expect(parsed.success && parsed.data.tokens).not.toHaveProperty('refreshToken');
+  });
+});
+
+describe('registerRequestSchema', () => {
+  const valid = {
+    email: 'new@example.com',
+    password: 'Correct-Horse-1',
+    fullName: 'Nueva Clienta',
+    phone: '+52 55 1234 5678',
+    birthDate: '1990-01-01',
+    acceptTerms: true,
+  };
+
+  it('accepts a valid registration payload', () => {
+    expect(registerRequestSchema.safeParse(valid).success).toBe(true);
+  });
+
+  it('rejects acceptTerms: false', () => {
+    expect(registerRequestSchema.safeParse({ ...valid, acceptTerms: false }).success).toBe(false);
+  });
+
+  it('rejects a missing acceptTerms', () => {
+    const { acceptTerms: _acceptTerms, ...withoutAcceptTerms } = valid;
+    expect(registerRequestSchema.safeParse(withoutAcceptTerms).success).toBe(false);
+  });
+
+  it('rejects a short password', () => {
+    expect(registerRequestSchema.safeParse({ ...valid, password: 'short' }).success).toBe(false);
+  });
+});
+
+describe('verifyEmailRequestSchema', () => {
+  it('accepts a six-digit code', () => {
+    expect(verifyEmailRequestSchema.safeParse({ email: 'a@example.com', code: '123456' }).success).toBe(true);
+  });
+
+  it('rejects a code that is not six digits', () => {
+    expect(verifyEmailRequestSchema.safeParse({ email: 'a@example.com', code: '123' }).success).toBe(false);
+    expect(verifyEmailRequestSchema.safeParse({ email: 'a@example.com', code: 'abcdef' }).success).toBe(false);
+  });
+});
+
+describe('resendCodeRequestSchema', () => {
+  it('accepts a bare email', () => {
+    expect(resendCodeRequestSchema.safeParse({ email: 'a@example.com' }).success).toBe(true);
   });
 });

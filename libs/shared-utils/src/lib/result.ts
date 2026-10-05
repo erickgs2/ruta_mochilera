@@ -7,6 +7,11 @@ export type DomainErrorCode =
   | 'EMAIL_ALREADY_REGISTERED'
   | 'ACCOUNT_DISABLED'
   | 'RATE_LIMITED'
+  // Email verification and password reset (Phase 2A, Tasks 11-12)
+  | 'OTP_EXPIRED'
+  | 'OTP_INVALID'
+  | 'OTP_MAX_ATTEMPTS'
+  | 'OTP_RESEND_TOO_SOON'
   // Authorization
   | 'PERMISSION_DENIED'
   | 'SYSTEM_ROLE_IMMUTABLE'

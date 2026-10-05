@@ -14,6 +14,13 @@ const STATUS_BY_CODE: Record<DomainErrorCode, number> = {
   EMAIL_ALREADY_REGISTERED: 409,
   ACCOUNT_DISABLED: 403,
   RATE_LIMITED: 429,
+  // 422: the caller's input (the code itself) is what is wrong, the same
+  // status VALIDATION_FAILED uses -- not 401, which would suggest a missing
+  // or malformed credential rather than a wrong one-time code.
+  OTP_EXPIRED: 422,
+  OTP_INVALID: 422,
+  OTP_MAX_ATTEMPTS: 422,
+  OTP_RESEND_TOO_SOON: 429,
   PERMISSION_DENIED: 403,
   SYSTEM_ROLE_IMMUTABLE: 403,
   ROLE_IN_USE: 409,

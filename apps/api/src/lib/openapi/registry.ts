@@ -10,6 +10,8 @@ import {
   permissionSchema as permissionSchemaImport,
   pricingPolicyRequestSchema as pricingPolicyRequestSchemaImport,
   problemSchema as problemSchemaImport,
+  registerRequestSchema as registerRequestSchemaImport,
+  resendCodeRequestSchema as resendCodeRequestSchemaImport,
   roleInputSchema as roleInputSchemaImport,
   roleSchema as roleSchemaImport,
   sessionResponseSchema as sessionResponseSchemaImport,
@@ -17,6 +19,7 @@ import {
   tripTranslationSchema,
   updateStaffRequestSchema as updateStaffRequestSchemaImport,
   updateTripRequestSchema as updateTripRequestSchemaImport,
+  verifyEmailRequestSchema as verifyEmailRequestSchemaImport,
 } from '@rm/contracts';
 import type { TripCostingDto, BudgetItemDto } from '@rm/domain-costing';
 import type { TripDto, TripImageDto, TripSummaryDto } from '@rm/domain-trips';
@@ -37,6 +40,9 @@ import type { TripDto, TripImageDto, TripSummaryDto } from '@rm/domain-trips';
  */
 const problemSchema = problemSchemaImport.meta({ id: 'Problem' });
 const loginRequestSchema = loginRequestSchemaImport.meta({ id: 'LoginRequest' });
+const registerRequestSchema = registerRequestSchemaImport.meta({ id: 'RegisterRequest' });
+const verifyEmailRequestSchema = verifyEmailRequestSchemaImport.meta({ id: 'VerifyEmailRequest' });
+const resendCodeRequestSchema = resendCodeRequestSchemaImport.meta({ id: 'ResendCodeRequest' });
 const authenticatedUserSchema = authenticatedUserSchemaImport.meta({ id: 'AuthenticatedUser' });
 const sessionResponseSchema = sessionResponseSchemaImport.meta({ id: 'Session' });
 const permissionSchema = permissionSchemaImport.meta({ id: 'Permission' });
@@ -292,6 +298,50 @@ export function buildOpenApiDocument() {
       200: { description: 'Session issued', ...json(sessionResponseSchema) },
       401: problem('Invalid email or password'),
       422: problem('Validation failed'),
+    },
+  });
+
+  registry.registerPath({
+    method: 'post',
+    path: '/api/v1/auth/register',
+    tags: ['auth'],
+    description:
+      'Always responds 200 with a null body, whether or not the email is already registered -- see ' +
+      "`registerCustomer`'s doc comment in @rm/domain-identity for the enumeration argument. A new " +
+      'account receives a six-digit email verification code; an existing one receives a different, ' +
+      'code-free notice instead.',
+    request: { body: requestBody(registerRequestSchema) },
+    responses: {
+      200: { description: 'Registration accepted (same response either way)', ...json(z.null()) },
+      422: problem('Validation failed'),
+      429: problem('Rate limited'),
+    },
+  });
+
+  registry.registerPath({
+    method: 'post',
+    path: '/api/v1/auth/verify-email',
+    tags: ['auth'],
+    request: { body: requestBody(verifyEmailRequestSchema) },
+    responses: {
+      200: { description: 'Email verified', ...json(z.null()) },
+      422: problem('OTP_EXPIRED, OTP_INVALID, OTP_MAX_ATTEMPTS, or validation failed'),
+      429: problem('Rate limited'),
+    },
+  });
+
+  registry.registerPath({
+    method: 'post',
+    path: '/api/v1/auth/resend-code',
+    tags: ['auth'],
+    description:
+      'Does not reveal whether the email has an account, or whether it is already verified -- either ' +
+      'case returns the same response with nothing sent.',
+    request: { body: requestBody(resendCodeRequestSchema) },
+    responses: {
+      200: { description: 'A fresh code was sent, or nothing to resend to (same response either way)', ...json(z.null()) },
+      422: problem('OTP_RESEND_TOO_SOON, or validation failed'),
+      429: problem('Rate limited (the shared in-memory limiter, or otp.max_resends_per_hour)'),
     },
   });
 

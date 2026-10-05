@@ -34,3 +34,36 @@ export const sessionResponseSchema = z.object({
 export type LoginRequest = z.infer<typeof loginRequestSchema>;
 export type AuthenticatedUserDto = z.infer<typeof authenticatedUserSchema>;
 export type SessionResponse = z.infer<typeof sessionResponseSchema>;
+
+/**
+ * The five public endpoints Tasks 11-12 add on top of `/auth/login`. Every
+ * one of them responds with a bare `null` body on success (never a DTO that
+ * could differ between branches) -- see `registerCustomer`,
+ * `resendVerificationCode` and `requestPasswordReset` in
+ * `@rm/domain-identity` for why: none of these may leak, through response
+ * shape, whether the email they were given belongs to an existing account.
+ */
+export const registerRequestSchema = z.object({
+  email: z.string().email(),
+  password: z.string().min(10).max(128),
+  fullName: z.string().min(3).max(120),
+  phone: z.string().min(7).max(30),
+  birthDate: z.iso.date(),
+  // `z.literal(true)`, not `z.boolean()`: an omitted or `false` value must
+  // fail validation outright rather than silently registering someone who
+  // never accepted the terms.
+  acceptTerms: z.literal(true),
+});
+
+export const verifyEmailRequestSchema = z.object({
+  email: z.string().email(),
+  code: z.string().regex(/^\d{6}$/, 'must be six digits'),
+});
+
+export const resendCodeRequestSchema = z.object({
+  email: z.string().email(),
+});
+
+export type RegisterRequest = z.infer<typeof registerRequestSchema>;
+export type VerifyEmailRequest = z.infer<typeof verifyEmailRequestSchema>;
+export type ResendCodeRequest = z.infer<typeof resendCodeRequestSchema>;
