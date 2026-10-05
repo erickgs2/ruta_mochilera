@@ -34,6 +34,15 @@ const EVERY_ROUTE_FILE_PATH = [
   '/api/v1/trips/{tripId}/costing/items/{itemId}',
   '/api/v1/files/{key}',
   '/api/v1/webhooks/stripe',
+  '/api/v1/public/trips',
+  '/api/v1/public/trips/{slug}',
+  '/api/v1/reservations',
+  '/api/v1/reservations/{reservationId}',
+  '/api/v1/reservations/{reservationId}/cancellation-requests',
+  '/api/v1/reservations/{reservationId}/payment-intents',
+  '/api/v1/payments',
+  '/api/v1/notifications',
+  '/api/v1/notifications/{deliveryId}/read',
 ];
 
 /**
@@ -56,6 +65,30 @@ const UNGATED_PATHS = [
   '/api/v1/auth/oauth/apple',
   '/api/v1/files/{key}',
   '/api/v1/webhooks/stripe',
+  '/api/v1/public/trips',
+  '/api/v1/public/trips/{slug}',
+];
+
+/**
+ * Routes that require a valid access token but check no permission from the
+ * RBAC catalogue at all -- `/api/v1/me` (there is no "view your own
+ * profile" permission to hold), and every customer-facing reservations /
+ * payments / notifications endpoint Task 14 adds: those are gated on
+ * ownership (a reservation or inbox delivery belonging to the caller),
+ * never on a permission a STAFF role could hold or lack, so none of them
+ * can ever answer 403. See `docs/business-rules/reservations.md` and this
+ * task's own doc comments in each `route.ts` for why that check lives in
+ * the domain rather than as a route-level `permission`.
+ */
+const NO_PERMISSION_CHECK_PATHS = [
+  '/api/v1/me',
+  '/api/v1/reservations',
+  '/api/v1/reservations/{reservationId}',
+  '/api/v1/reservations/{reservationId}/cancellation-requests',
+  '/api/v1/reservations/{reservationId}/payment-intents',
+  '/api/v1/payments',
+  '/api/v1/notifications',
+  '/api/v1/notifications/{deliveryId}/read',
 ];
 
 describe('buildOpenApiDocument', () => {
@@ -92,9 +125,10 @@ describe('buildOpenApiDocument', () => {
       );
       for (const operation of operations) {
         expect(operation.responses['401'], `${path} is missing 401`).toBeDefined();
-        // /api/v1/me is authenticated but does not gate on a permission, so it
-        // never returns 403 -- every other gated route requires a permission.
-        if (path !== '/api/v1/me') {
+        // See `NO_PERMISSION_CHECK_PATHS`: these are authenticated but gate
+        // on ownership, never on a permission, so none of them can ever
+        // return 403.
+        if (!NO_PERMISSION_CHECK_PATHS.includes(path)) {
           expect(operation.responses['403'], `${path} is missing 403`).toBeDefined();
         }
       }

@@ -4,14 +4,25 @@ import {
   authenticatedUserSchema as authenticatedUserSchemaImport,
   budgetItemRequestSchema as budgetItemRequestSchemaImport,
   changeStatusRequestSchema as changeStatusRequestSchemaImport,
+  createPaymentIntentRequestSchema as createPaymentIntentRequestSchemaImport,
+  createReservationRequestSchema as createReservationRequestSchemaImport,
   createStaffRequestSchema as createStaffRequestSchemaImport,
   createTripRequestSchema as createTripRequestSchemaImport,
+  createdPaymentIntentSchema as createdPaymentIntentSchemaImport,
   forgotPasswordRequestSchema as forgotPasswordRequestSchemaImport,
+  inboxItemSchema as inboxItemSchemaImport,
+  inboxPageSchema as inboxPageSchemaImport,
   loginRequestSchema as loginRequestSchemaImport,
+  paymentSchema as paymentSchemaImport,
   permissionSchema as permissionSchemaImport,
   pricingPolicyRequestSchema as pricingPolicyRequestSchemaImport,
   problemSchema as problemSchemaImport,
+  publicTripDetailSchema as publicTripDetailSchemaImport,
+  publicTripSummarySchema as publicTripSummarySchemaImport,
   registerRequestSchema as registerRequestSchemaImport,
+  requestCancellationRequestSchema as requestCancellationRequestSchemaImport,
+  reservationSchema as reservationSchemaImport,
+  reservationSummarySchema as reservationSummarySchemaImport,
   resendCodeRequestSchema as resendCodeRequestSchemaImport,
   resetPasswordRequestSchema as resetPasswordRequestSchemaImport,
   roleInputSchema as roleInputSchemaImport,
@@ -25,7 +36,10 @@ import {
   verifyEmailRequestSchema as verifyEmailRequestSchemaImport,
 } from '@rm/contracts';
 import type { TripCostingDto, BudgetItemDto } from '@rm/domain-costing';
-import type { TripDto, TripImageDto, TripSummaryDto } from '@rm/domain-trips';
+import type { InboxItemDto, InboxPageDto } from '@rm/domain-notifications';
+import type { CreatedPaymentIntentDto, PaymentDto } from '@rm/domain-payments';
+import type { ReservationDto, ReservationSummaryDto } from '@rm/domain-reservations';
+import type { PublicTripDetailDto, PublicTripSummaryDto, TripDto, TripImageDto, TripSummaryDto } from '@rm/domain-trips';
 
 /**
  * `@rm/contracts` schemas are tagged with `.meta({ id })` here, rather than
@@ -62,6 +76,20 @@ const updateTripRequestSchema = updateTripRequestSchemaImport.meta({ id: 'Update
 const changeStatusRequestSchema = changeStatusRequestSchemaImport.meta({ id: 'ChangeStatusRequest' });
 const budgetItemRequestSchema = budgetItemRequestSchemaImport.meta({ id: 'BudgetItemRequest' });
 const pricingPolicyRequestSchema = pricingPolicyRequestSchemaImport.meta({ id: 'PricingPolicyRequest' });
+const createReservationRequestSchema = createReservationRequestSchemaImport.meta({ id: 'CreateReservationRequest' });
+const requestCancellationRequestSchema = requestCancellationRequestSchemaImport.meta({
+  id: 'RequestCancellationRequest',
+});
+const reservationSchema = reservationSchemaImport.meta({ id: 'Reservation' });
+const reservationSummarySchema = reservationSummarySchemaImport.meta({ id: 'ReservationSummary' });
+const createPaymentIntentRequestSchema = createPaymentIntentRequestSchemaImport.meta({
+  id: 'CreatePaymentIntentRequest',
+});
+const paymentSchema = paymentSchemaImport.meta({ id: 'Payment' });
+const createdPaymentIntentSchema = createdPaymentIntentSchemaImport.meta({ id: 'CreatedPaymentIntent' });
+const inboxPageSchema = inboxPageSchemaImport.meta({ id: 'InboxPage' });
+const publicTripSummarySchema = publicTripSummarySchemaImport.meta({ id: 'PublicTripSummary' });
+const publicTripDetailSchema = publicTripDetailSchemaImport.meta({ id: 'PublicTripDetail' });
 
 const json = (schema: z.ZodTypeAny) => ({ content: { 'application/json': { schema } } });
 
@@ -259,6 +287,37 @@ type _budgetItemSchemaMatchesDto = Expect<Equals<z.infer<typeof budgetItemSchema
 type _tripCostingSchemaMatchesDto = Expect<Equals<z.infer<typeof tripCostingSchema>, DateToString<TripCostingDto>>>;
 
 /**
+ * Task 14's own set of these assertions, same reasoning as the five above:
+ * each of these response shapes is hand-maintained (in `@rm/contracts`
+ * rather than inline here, but that changes nothing about the risk --
+ * `reservationSchema` etc. are still typed independently of the domain DTO
+ * they claim to mirror) and nothing short of a compile-time check catches
+ * the two drifting apart.
+ */
+type _reservationSchemaMatchesDto = Expect<Equals<z.infer<typeof reservationSchema>, DateToString<ReservationDto>>>;
+type _reservationSummarySchemaMatchesDto = Expect<
+  Equals<z.infer<typeof reservationSummarySchema>, DateToString<ReservationSummaryDto>>
+>;
+type _paymentSchemaMatchesDto = Expect<Equals<z.infer<typeof paymentSchema>, DateToString<PaymentDto>>>;
+type _createdPaymentIntentSchemaMatchesDto = Expect<
+  Equals<z.infer<typeof createdPaymentIntentSchema>, DateToString<CreatedPaymentIntentDto>>
+>;
+// `inboxItemSchemaImport` is checked rather than a locally re-tagged
+// version: it is only ever used nested inside `inboxPageSchemaImport`'s own
+// `items` array (built that way already, inside `@rm/contracts`), the same
+// way `tripTranslationSchema` is used nested and untagged inside `tripSchema`
+// below -- there is no separate "InboxItem" path response for a `.meta()`
+// tag here to attach to.
+type _inboxItemSchemaMatchesDto = Expect<Equals<z.infer<typeof inboxItemSchemaImport>, DateToString<InboxItemDto>>>;
+type _inboxPageSchemaMatchesDto = Expect<Equals<z.infer<typeof inboxPageSchema>, DateToString<InboxPageDto>>>;
+type _publicTripSummarySchemaMatchesDto = Expect<
+  Equals<z.infer<typeof publicTripSummarySchema>, WithImageUrls<DateToString<PublicTripSummaryDto>>>
+>;
+type _publicTripDetailSchemaMatchesDto = Expect<
+  Equals<z.infer<typeof publicTripDetailSchema>, WithImageUrls<DateToString<PublicTripDetailDto>>>
+>;
+
+/**
  * `noUnusedLocals` would otherwise flag the five type aliases above as
  * unused -- they only exist to be evaluated by the compiler, never
  * referenced at a value position. Re-exporting them as a single type (never
@@ -271,6 +330,14 @@ export type _OpenApiDtoAssertions = [
   _tripImageSchemaMatchesDto,
   _budgetItemSchemaMatchesDto,
   _tripCostingSchemaMatchesDto,
+  _reservationSchemaMatchesDto,
+  _reservationSummarySchemaMatchesDto,
+  _paymentSchemaMatchesDto,
+  _createdPaymentIntentSchemaMatchesDto,
+  _inboxItemSchemaMatchesDto,
+  _inboxPageSchemaMatchesDto,
+  _publicTripSummarySchemaMatchesDto,
+  _publicTripDetailSchemaMatchesDto,
 ];
 
 /**
@@ -769,6 +836,163 @@ export function buildOpenApiDocument() {
       200: { description: 'Event applied, already applied, or of a type this system ignores' },
       422: problem('Missing or invalid Stripe-Signature header, or a malformed event body'),
       502: problem('The payment provider failed while verifying the signature'),
+    },
+  });
+
+  // --- public trip catalogue (no authentication) --------------------------
+  registry.registerPath({
+    method: 'get',
+    path: '/api/v1/public/trips',
+    tags: ['public-trips'],
+    description:
+      'The public trip catalogue, no authentication. Lists only PUBLISHED trips, and deliberately ' +
+      'carries no budget, margin, pre-sold-seats or authorship field -- see ' +
+      '`docs/business-rules/trips.md`, "El catálogo público".',
+    responses: {
+      200: { description: 'Published trips', ...json(publicTripSummarySchema.array()) },
+    },
+  });
+
+  registry.registerPath({
+    method: 'get',
+    path: '/api/v1/public/trips/{slug}',
+    tags: ['public-trips'],
+    description:
+      'A published trip, by slug. A trip that is not PUBLISHED answers 404 -- the same code as a ' +
+      'slug that does not exist at all -- never an empty detail.',
+    request: { params: z.object({ slug: z.string() }) },
+    responses: {
+      200: { description: 'Trip detail: photos, itinerary, price and available seats', ...json(publicTripDetailSchema) },
+      404: problem('Trip not found, or not published'),
+    },
+  });
+
+  // --- reservations (customer, authenticated) -------------------------------
+  registry.registerPath({
+    method: 'get',
+    path: '/api/v1/reservations',
+    tags: ['reservations'],
+    security: [{ bearerAuth: [] }],
+    description: 'The authenticated customer\'s own reservations, newest first. No permission check: the scope is ownership, not the RBAC catalogue.',
+    responses: {
+      200: { description: 'Reservation summaries', ...json(reservationSummarySchema.array()) },
+      401: problem('Missing or invalid access token'),
+    },
+  });
+
+  registry.registerPath({
+    method: 'post',
+    path: '/api/v1/reservations',
+    tags: ['reservations'],
+    security: [{ bearerAuth: [] }],
+    description:
+      'Creates a HELD reservation for the authenticated customer on one PUBLISHED trip (spec §5.2). ' +
+      'A STAFF actor is refused with NOT_FOUND: createReservation requires the caller to own a ' +
+      'CustomerProfile, which no staff user has.',
+    request: { body: requestBody(createReservationRequestSchema) },
+    responses: {
+      201: { description: 'Reservation created in HELD', ...json(reservationSchema) },
+      401: problem('Missing or invalid access token'),
+      403: problem('EMAIL_NOT_VERIFIED'),
+      404: problem('Trip not found (includes a STAFF actor, who owns no CustomerProfile)'),
+      409: problem('DUPLICATE_RESERVATION, TRIP_SOLD_OUT, or PAYMENT_DEADLINE_PASSED'),
+      422: problem('TRIP_NOT_PUBLISHED, or validation failed'),
+    },
+  });
+
+  registry.registerPath({
+    method: 'get',
+    path: '/api/v1/reservations/{reservationId}',
+    tags: ['reservations'],
+    security: [{ bearerAuth: [] }],
+    description:
+      'One of the authenticated customer\'s own reservations. A reservation that does not exist and ' +
+      'one that belongs to someone else answer the identical RESERVATION_NOT_OWNED (404, never 403).',
+    request: { params: uuidParam('reservationId') },
+    responses: {
+      200: { description: 'Reservation detail', ...json(reservationSchema) },
+      401: problem('Missing or invalid access token'),
+      404: problem('RESERVATION_NOT_OWNED -- no such reservation, or it is not the caller\'s'),
+    },
+  });
+
+  registry.registerPath({
+    method: 'post',
+    path: '/api/v1/reservations/{reservationId}/cancellation-requests',
+    tags: ['reservations'],
+    security: [{ bearerAuth: [] }],
+    description:
+      'Seals cancellation_requested_at and notifies staff -- it never changes the reservation\'s ' +
+      'status (spec §5.6). Asking twice is a no-op, not an error.',
+    request: { params: uuidParam('reservationId'), body: requestBody(requestCancellationRequestSchema) },
+    responses: {
+      200: { description: 'Cancellation request recorded; status unchanged', ...json(reservationSchema) },
+      401: problem('Missing or invalid access token'),
+      404: problem('RESERVATION_NOT_OWNED'),
+      409: problem('INVALID_STATUS_TRANSITION -- the reservation is already CANCELLED or EXPIRED'),
+    },
+  });
+
+  registry.registerPath({
+    method: 'post',
+    path: '/api/v1/reservations/{reservationId}/payment-intents',
+    tags: ['reservations', 'payments'],
+    security: [{ bearerAuth: [] }],
+    description:
+      'The entry point of the payment flow (spec §9). The request carries only `intent` (FULL or ' +
+      'DEPOSIT) and `method` -- never a number of cents: the amount is always computed from the ' +
+      'reservation\'s own balance (`createPaymentIntentForReservation`, @rm/domain-payments). An OXXO ' +
+      'intent\'s voucher never outlives the reservation\'s hold; when less than a day remains, the ' +
+      'request is refused with VALIDATION_FAILED rather than rounded up past the hold.',
+    request: { params: uuidParam('reservationId'), body: requestBody(createPaymentIntentRequestSchema) },
+    responses: {
+      201: { description: 'Payment Intent created and a matching PENDING payment recorded', ...json(createdPaymentIntentSchema) },
+      401: problem('Missing or invalid access token'),
+      404: problem('RESERVATION_NOT_OWNED'),
+      409: problem('INVALID_STATUS_TRANSITION -- the reservation is CANCELLED or EXPIRED'),
+      422: problem('Nothing left to charge, or an OXXO window shorter than a day'),
+      502: problem('PAYMENT_PROVIDER_ERROR'),
+    },
+  });
+
+  // --- payments (customer, authenticated) -----------------------------------
+  registry.registerPath({
+    method: 'get',
+    path: '/api/v1/payments',
+    tags: ['payments'],
+    security: [{ bearerAuth: [] }],
+    description: 'Every payment of the authenticated customer, across all their reservations, newest first.',
+    responses: {
+      200: { description: 'Payments', ...json(paymentSchema.array()) },
+      401: problem('Missing or invalid access token'),
+    },
+  });
+
+  // --- notifications (customer inbox, authenticated) ------------------------
+  registry.registerPath({
+    method: 'get',
+    path: '/api/v1/notifications',
+    tags: ['notifications'],
+    security: [{ bearerAuth: [] }],
+    description: 'The authenticated customer\'s own in-app inbox, newest first, paginated by an opaque cursor.',
+    request: { query: z.object({ cursor: z.string().optional(), limit: z.coerce.number().int().positive().optional() }) },
+    responses: {
+      200: { description: 'One page of the inbox', ...json(inboxPageSchema) },
+      401: problem('Missing or invalid access token'),
+    },
+  });
+
+  registry.registerPath({
+    method: 'post',
+    path: '/api/v1/notifications/{deliveryId}/read',
+    tags: ['notifications'],
+    security: [{ bearerAuth: [] }],
+    description: 'Marks one of the authenticated customer\'s own INBOX deliveries as read.',
+    request: { params: uuidParam('deliveryId') },
+    responses: {
+      204: { description: 'Marked read' },
+      401: problem('Missing or invalid access token'),
+      404: problem('DELIVERY_NOT_OWNED -- no such delivery, or it is not the caller\'s'),
     },
   });
 
