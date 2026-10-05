@@ -11,6 +11,7 @@ import {
   createdPaymentIntentSchema as createdPaymentIntentSchemaImport,
   forgotPasswordRequestSchema as forgotPasswordRequestSchemaImport,
   inboxItemSchema as inboxItemSchemaImport,
+  listInboxQuerySchema,
   inboxPageSchema as inboxPageSchemaImport,
   loginRequestSchema as loginRequestSchemaImport,
   paymentSchema as paymentSchemaImport,
@@ -975,7 +976,12 @@ export function buildOpenApiDocument() {
     tags: ['notifications'],
     security: [{ bearerAuth: [] }],
     description: 'The authenticated customer\'s own in-app inbox, newest first, paginated by an opaque cursor.',
-    request: { query: z.object({ cursor: z.string().optional(), limit: z.coerce.number().int().positive().optional() }) },
+    // The exact schema object the route handler validates against at
+    // request time (`apps/api/.../notifications/route.ts`) -- not a second,
+    // separately-typed-out copy of the same shape, which is what let the
+    // documented contract and the real validation drift apart in the first
+    // place.
+    request: { query: listInboxQuerySchema },
     responses: {
       200: { description: 'One page of the inbox', ...json(inboxPageSchema) },
       401: problem('Missing or invalid access token'),

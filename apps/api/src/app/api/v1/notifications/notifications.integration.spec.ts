@@ -62,6 +62,15 @@ describe('notifications endpoints', () => {
       expect(response.status).toBe(401);
       expect((await response.json()).code).toBe('TOKEN_INVALID');
     });
+
+    it('returns a clean 422 for a non-numeric limit, never a 500', async () => {
+      const { token } = await loginAsCustomer(db, 'bad-limit@agency.test');
+
+      const response = await listInboxRoute(request('/api/v1/notifications?limit=abc', token));
+
+      expect(response.status).toBe(422);
+      expect((await response.json()).code).toBe('VALIDATION_FAILED');
+    });
   });
 
   describe('POST /api/v1/notifications/{deliveryId}/read', () => {
