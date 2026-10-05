@@ -26,6 +26,12 @@ const DEFAULT_SETTINGS: Record<string, Prisma.InputJsonValue> = {
   'otp.max_attempts': 5,
   'otp.resend_cooldown_seconds': 60,
   'otp.max_resends_per_hour': 5,
+  // Task 12 (password reset): the brief gives no exact value for this one
+  // (unlike the four OTP settings above) -- 60 minutes is a reasonable,
+  // common default for a reset link's lifetime, chosen here and documented
+  // rather than silently hardcoded. See `password-reset.ts`'s
+  // `DEFAULT_PASSWORD_RESET_TTL_MINUTES`.
+  'password_reset.ttl_minutes': 60,
 };
 
 async function main() {

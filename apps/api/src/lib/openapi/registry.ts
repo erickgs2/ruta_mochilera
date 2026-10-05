@@ -6,12 +6,14 @@ import {
   changeStatusRequestSchema as changeStatusRequestSchemaImport,
   createStaffRequestSchema as createStaffRequestSchemaImport,
   createTripRequestSchema as createTripRequestSchemaImport,
+  forgotPasswordRequestSchema as forgotPasswordRequestSchemaImport,
   loginRequestSchema as loginRequestSchemaImport,
   permissionSchema as permissionSchemaImport,
   pricingPolicyRequestSchema as pricingPolicyRequestSchemaImport,
   problemSchema as problemSchemaImport,
   registerRequestSchema as registerRequestSchemaImport,
   resendCodeRequestSchema as resendCodeRequestSchemaImport,
+  resetPasswordRequestSchema as resetPasswordRequestSchemaImport,
   roleInputSchema as roleInputSchemaImport,
   roleSchema as roleSchemaImport,
   sessionResponseSchema as sessionResponseSchemaImport,
@@ -43,6 +45,8 @@ const loginRequestSchema = loginRequestSchemaImport.meta({ id: 'LoginRequest' })
 const registerRequestSchema = registerRequestSchemaImport.meta({ id: 'RegisterRequest' });
 const verifyEmailRequestSchema = verifyEmailRequestSchemaImport.meta({ id: 'VerifyEmailRequest' });
 const resendCodeRequestSchema = resendCodeRequestSchemaImport.meta({ id: 'ResendCodeRequest' });
+const forgotPasswordRequestSchema = forgotPasswordRequestSchemaImport.meta({ id: 'ForgotPasswordRequest' });
+const resetPasswordRequestSchema = resetPasswordRequestSchemaImport.meta({ id: 'ResetPasswordRequest' });
 const authenticatedUserSchema = authenticatedUserSchemaImport.meta({ id: 'AuthenticatedUser' });
 const sessionResponseSchema = sessionResponseSchemaImport.meta({ id: 'Session' });
 const permissionSchema = permissionSchemaImport.meta({ id: 'Permission' });
@@ -342,6 +346,34 @@ export function buildOpenApiDocument() {
       200: { description: 'A fresh code was sent, or nothing to resend to (same response either way)', ...json(z.null()) },
       422: problem('OTP_RESEND_TOO_SOON, or validation failed'),
       429: problem('Rate limited (the shared in-memory limiter, or otp.max_resends_per_hour)'),
+    },
+  });
+
+  registry.registerPath({
+    method: 'post',
+    path: '/api/v1/auth/forgot-password',
+    tags: ['auth'],
+    description:
+      'Always responds 200 with a null body and comparable timing, whether or not the email has an ' +
+      "account -- see `requestPasswordReset`'s doc comment in @rm/domain-identity.",
+    request: { body: requestBody(forgotPasswordRequestSchema) },
+    responses: {
+      200: { description: 'Reset email sent, or nothing to send to (same response either way)', ...json(z.null()) },
+      422: problem('Validation failed'),
+      429: problem('Rate limited'),
+    },
+  });
+
+  registry.registerPath({
+    method: 'post',
+    path: '/api/v1/auth/reset-password',
+    tags: ['auth'],
+    description: 'Revokes every live session for the account on success. Not rate-limited: the token is a 256-bit random value from a one-time link, not a guessable secret.',
+    request: { body: requestBody(resetPasswordRequestSchema) },
+    responses: {
+      200: { description: 'Password changed and every session revoked', ...json(z.null()) },
+      401: problem('Unknown, expired or already-used token (TOKEN_INVALID)'),
+      422: problem('Validation failed'),
     },
   });
 

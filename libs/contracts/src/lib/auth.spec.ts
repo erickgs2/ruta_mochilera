@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
   authenticatedUserSchema,
+  forgotPasswordRequestSchema,
   loginRequestSchema,
   registerRequestSchema,
   resendCodeRequestSchema,
+  resetPasswordRequestSchema,
   sessionResponseSchema,
   verifyEmailRequestSchema,
 } from './auth';
@@ -124,8 +126,19 @@ describe('verifyEmailRequestSchema', () => {
   });
 });
 
-describe('resendCodeRequestSchema', () => {
-  it('accepts a bare email', () => {
+describe('resendCodeRequestSchema / forgotPasswordRequestSchema', () => {
+  it('each accept a bare email', () => {
     expect(resendCodeRequestSchema.safeParse({ email: 'a@example.com' }).success).toBe(true);
+    expect(forgotPasswordRequestSchema.safeParse({ email: 'a@example.com' }).success).toBe(true);
+  });
+});
+
+describe('resetPasswordRequestSchema', () => {
+  it('accepts a token and a new password', () => {
+    expect(resetPasswordRequestSchema.safeParse({ token: 'abc', newPassword: 'Correct-Horse-1' }).success).toBe(true);
+  });
+
+  it('rejects a short new password', () => {
+    expect(resetPasswordRequestSchema.safeParse({ token: 'abc', newPassword: 'short' }).success).toBe(false);
   });
 });

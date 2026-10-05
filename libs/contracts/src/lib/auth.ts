@@ -64,6 +64,17 @@ export const resendCodeRequestSchema = z.object({
   email: z.string().email(),
 });
 
+export const forgotPasswordRequestSchema = z.object({
+  email: z.string().email(),
+});
+
+export const resetPasswordRequestSchema = z.object({
+  token: z.string().min(1),
+  newPassword: z.string().min(10).max(128),
+});
+
 export type RegisterRequest = z.infer<typeof registerRequestSchema>;
 export type VerifyEmailRequest = z.infer<typeof verifyEmailRequestSchema>;
 export type ResendCodeRequest = z.infer<typeof resendCodeRequestSchema>;
+export type ForgotPasswordRequest = z.infer<typeof forgotPasswordRequestSchema>;
+export type ResetPasswordRequest = z.infer<typeof resetPasswordRequestSchema>;
