@@ -17,6 +17,11 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 // Stripe's own default tolerance for a webhook signature's `t=` timestamp,
 // used by every official Stripe SDK to reject a replayed request.
 const SIGNATURE_TOLERANCE_SECONDS = 300;
+// Stripe requires at least one whole day for `expires_after_days`; the
+// upper bound is this adapter's own assumption about Stripe's documented
+// maximum, unverified against a live account -- see the library README.
+const MIN_OXXO_EXPIRES_AFTER_DAYS = 1;
+const MAX_OXXO_EXPIRES_AFTER_DAYS = 31;
 
 /** Stripe's `payment_method_types` value for each method this port exposes. */
 function stripePaymentMethodType(method: PaymentIntentMethod): string {
@@ -37,18 +42,29 @@ function stripePaymentMethodType(method: PaymentIntentMethod): string {
 /**
  * Stripe's OXXO payment method option only accepts a whole number of days
  * from intent creation (`expires_after_days`), not an exact timestamp --
- * unlike this port's own `voucherExpiresAt`, which is a `Date`. This floors
- * the remaining time toward now rather than rounding or ceiling, the only
+ * unlike this port's own `voucherExpiresAt`, which is a `Date`. Floors the
+ * remaining time toward now rather than rounding or ceiling, the only
  * direction that cannot push the voucher's actual expiry past the
  * reservation's `holdExpiresAt`: a ceiling could ask Stripe to keep the
  * voucher alive for up to a day after the hold releases the seat, exactly
- * the gap business rule 5.3 exists to close. Clamped to ``[1, 31]``: Stripe
- * requires at least one day, and this adapter assumes (unverified) that the
- * documented upper bound is 31.
+ * the gap business rule 5.3 exists to close.
+ *
+ * **Returns `undefined` when the floor would be less than one whole day.**
+ * There is no way to ask Stripe for "less than a day": clamping a
+ * sub-24-hour window up to the required minimum of 1 would recreate the
+ * exact bug this function exists to prevent (Critical finding, Task 9
+ * review round 1) by telling Stripe to keep the voucher alive for up to a
+ * full day after a hold shorter than that has already released the seat.
+ * `hold_ttl_hours` is configured per trip and can be well under 24 (the
+ * business-rules docs use a six-hour hold as a worked example), so this is
+ * reachable, not hypothetical. The caller (`createIntent`) refuses the
+ * request instead of silently widening the window. Clamped at the top to
+ * `MAX_OXXO_EXPIRES_AFTER_DAYS`.
  */
-export function oxxoExpiresAfterDays(voucherExpiresAt: Date, now: Date = new Date()): number {
+export function oxxoExpiresAfterDays(voucherExpiresAt: Date, now: Date = new Date()): number | undefined {
   const daysRemaining = Math.floor((voucherExpiresAt.getTime() - now.getTime()) / DAY_MS);
-  return Math.min(31, Math.max(1, daysRemaining));
+  if (daysRemaining < MIN_OXXO_EXPIRES_AFTER_DAYS) return undefined;
+  return Math.min(MAX_OXXO_EXPIRES_AFTER_DAYS, daysRemaining);
 }
 
 interface StripeOxxoDisplayDetails {
@@ -127,6 +143,23 @@ export class StripePaymentProvider implements PaymentProvider {
       return fail('VALIDATION_FAILED', { field: 'voucherExpiresAt' });
     }
 
+    // Computed -- and, when it cannot be satisfied honestly, refused --
+    // before any network call: Stripe's OXXO parameter only accepts a
+    // whole number of days, and a window under 24 hours has no value that
+    // is both whole and no later than requested (see `oxxoExpiresAfterDays`
+    // for why clamping it up to 1 day would be the exact bug this guards
+    // against). This is the caller's request shape being unsatisfiable,
+    // not an upstream failure, so it is VALIDATION_FAILED (422) rather than
+    // PAYMENT_PROVIDER_ERROR (502) -- same split as every other input
+    // check in this method.
+    let oxxoExpiresInDays: number | undefined;
+    if (request.method === 'OXXO' && request.voucherExpiresAt) {
+      oxxoExpiresInDays = oxxoExpiresAfterDays(request.voucherExpiresAt);
+      if (oxxoExpiresInDays === undefined) {
+        return fail('VALIDATION_FAILED', { field: 'voucherExpiresAt', reason: 'window_too_short_for_oxxo' });
+      }
+    }
+
     // `amountCents` is the only amount this call ever sends -- the backend
     // computed it from the reservation's own balance before this port was
     // ever reached (see the doc comment on `PaymentIntentRequest`), so there
@@ -138,11 +171,8 @@ export class StripePaymentProvider implements PaymentProvider {
     body.set('metadata[reservationId]', request.reservationId);
     body.set('payment_method_types[]', stripePaymentMethodType(request.method));
 
-    if (request.method === 'OXXO' && request.voucherExpiresAt) {
-      body.set(
-        'payment_method_options[oxxo][expires_after_days]',
-        String(oxxoExpiresAfterDays(request.voucherExpiresAt))
-      );
+    if (oxxoExpiresInDays !== undefined) {
+      body.set('payment_method_options[oxxo][expires_after_days]', String(oxxoExpiresInDays));
     }
     if (request.method === 'SPEI') {
       body.set('payment_method_options[customer_balance][funding_type]', 'bank_transfer');

@@ -36,7 +36,16 @@ export interface PaymentIntentResult {
   clientSecret: string;
   /** Present only for an OXXO intent. */
   voucherUrl?: string;
-  /** Present only for an OXXO intent; echoes the request's own `voucherExpiresAt`. */
+  /**
+   * Present only for an OXXO intent. **Never later than the request's own
+   * `voucherExpiresAt`** -- an implementation may return an earlier moment
+   * (Stripe's own OXXO parameter has only day granularity, so its real
+   * voucher commonly expires earlier than requested; see
+   * `StripePaymentProvider`'s `oxxoExpiresAfterDays`), but must never
+   * return a later one, or a payment could be confirmed for a seat the
+   * hold already released (business rule 5.3). Not guaranteed to equal the
+   * request -- see `runPaymentContract`.
+   */
   voucherExpiresAt?: Date;
 }
 

@@ -24,7 +24,16 @@ of Stripe's documented API shape, never exercised against a live account:
   voucher can only expire at or before the reservation's `holdExpiresAt`,
   never after -- the direction business rule 5.3 requires -- and then reads
   back whatever Stripe's response actually computed rather than echoing the
-  request value.
+  request value. **When the remaining window floors to less than one whole
+  day, `createIntent` refuses the request (`VALIDATION_FAILED`) instead of
+  clamping it up to Stripe's one-day minimum** -- clamping up would ask
+  Stripe to keep the voucher alive for up to a full day after a short hold
+  (`hold_ttl_hours` can be well under 24) has already released the seat,
+  which is the exact bug a Task 9 review round found in the first version
+  of this function. `oxxoExpiresAfterDays` is a pure function needing no
+  Stripe account, and it is unit-tested directly in
+  `stripe-payment-provider.spec.ts`, across the day-boundary cases --
+  unlike the rest of this class, which remains typechecked only.
 - **Idempotent cancel.** Stripe itself returns an error when `cancelIntent`
   is called a second time against an already-`canceled` intent, unlike this
   port's contract, which requires a second cancel to be a no-op. The adapter

@@ -52,10 +52,14 @@ export function runPaymentContract(name: string, factory: () => Promise<PaymentP
       }
     });
 
-    it('creates an OXXO intent carrying the requested voucher expiry', async () => {
+    it('creates an OXXO intent whose voucher expiry is never later than requested', async () => {
       const provider = await factory();
       // Stands in for the reservation's own `holdExpiresAt` (business rule
-      // 5.3): the voucher must never outlive the hold it is paying for.
+      // 5.3): the voucher must never outlive the hold it is paying for. A
+      // generous 72-hour window on purpose -- this test is about the
+      // invariant every implementation must hold, not about the
+      // day-granularity edge case `StripePaymentProvider` alone has to
+      // refuse (see its own `oxxoExpiresAfterDays` and its spec file).
       const voucherExpiresAt = new Date(Date.now() + 72 * 60 * 60 * 1000);
 
       const result = await provider.createIntent({
@@ -69,7 +73,16 @@ export function runPaymentContract(name: string, factory: () => Promise<PaymentP
       expect(result.ok).toBe(true);
       if (result.ok) {
         expect(result.value.voucherUrl).toBeTruthy();
-        expect(result.value.voucherExpiresAt).toEqual(voucherExpiresAt);
+        // Deliberately not an exact-echo assertion: `PaymentIntentResult`'s
+        // own doc comment only promises "never later than requested", not
+        // equality. `FakePaymentProvider` happens to echo exactly;
+        // `StripePaymentProvider` legitimately returns an earlier moment
+        // (Stripe's own parameter has day granularity). An exact-equality
+        // assertion here would fail the day this contract is ever pointed
+        // at the real adapter, for no actual defect -- see Task 9 review
+        // round 1.
+        expect(result.value.voucherExpiresAt).toBeDefined();
+        expect(result.value.voucherExpiresAt?.getTime()).toBeLessThanOrEqual(voucherExpiresAt.getTime());
       }
     });
 
