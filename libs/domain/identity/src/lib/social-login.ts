@@ -36,10 +36,14 @@ export interface VerifiedIdentity {
 
 /**
  * Checks signature, issuer, audience and expiry (`clientId` is always
- * checked as the required `aud`) and returns the two claims `loginWithProvider`
- * needs. A token failing any of those checks -- including, critically, one
- * correctly signed but minted for a *different* application's client id --
- * is `TOKEN_INVALID`, never a thrown exception.
+ * checked as the required `aud`), and that the provider itself marks the
+ * email verified -- `loginWithProvider`'s whole justification for skipping
+ * the six-digit OTP flow is "the provider already verified this email", so
+ * that claim is checked, never assumed. Returns the two claims
+ * `loginWithProvider` needs. A token failing the signature/issuer/audience/
+ * expiry checks is `TOKEN_INVALID`; one that verifies but carries
+ * `email_verified: false` is `EMAIL_NOT_VERIFIED` instead -- never a thrown
+ * exception either way.
  */
 export type IdTokenVerifier = (idToken: string, clientId: string) => Promise<Result<VerifiedIdentity>>;
 
@@ -75,6 +79,14 @@ export function createJwksVerifier(issuer: string | string[], getKey: JWTVerifyG
       });
       if (typeof payload.sub !== 'string' || typeof payload['email'] !== 'string') {
         return fail('TOKEN_INVALID');
+      }
+      // Apple sends this claim as the string "true"/"false", not a JSON
+      // boolean, despite the OIDC spec defining it as one -- a documented
+      // quirk of Apple's id tokens. Both forms are checked so this does not
+      // silently accept an Apple token with an unverified email.
+      const emailVerifiedClaim = payload['email_verified'];
+      if (emailVerifiedClaim !== true && emailVerifiedClaim !== 'true') {
+        return fail('EMAIL_NOT_VERIFIED');
       }
       return ok({ providerUserId: payload.sub, email: payload['email'] });
     } catch {

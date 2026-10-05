@@ -402,7 +402,7 @@ export interface paths {
                         "application/problem+json": components["schemas"]["Problem"];
                     };
                 };
-                /** @description Account disabled */
+                /** @description ACCOUNT_DISABLED, or EMAIL_NOT_VERIFIED if the provider itself marks the email unverified */
                 403: {
                     headers: {
                         [name: string]: unknown;
@@ -478,7 +478,7 @@ export interface paths {
                         "application/problem+json": components["schemas"]["Problem"];
                     };
                 };
-                /** @description Account disabled */
+                /** @description ACCOUNT_DISABLED, or EMAIL_NOT_VERIFIED if the provider itself marks the email unverified */
                 403: {
                     headers: {
                         [name: string]: unknown;

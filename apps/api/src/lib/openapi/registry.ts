@@ -391,7 +391,7 @@ export function buildOpenApiDocument() {
     responses: {
       200: { description: 'Session issued', ...json(sessionResponseSchema) },
       401: problem('TOKEN_INVALID -- the id token failed signature, issuer, audience or expiry verification'),
-      403: problem('Account disabled'),
+      403: problem('ACCOUNT_DISABLED, or EMAIL_NOT_VERIFIED if the provider itself marks the email unverified'),
       422: problem('Validation failed'),
       503: problem('PROVIDER_DISABLED -- Google sign-in is not configured'),
     },
@@ -409,7 +409,7 @@ export function buildOpenApiDocument() {
     responses: {
       200: { description: 'Session issued', ...json(sessionResponseSchema) },
       401: problem('TOKEN_INVALID -- the id token failed signature, issuer, audience or expiry verification'),
-      403: problem('Account disabled'),
+      403: problem('ACCOUNT_DISABLED, or EMAIL_NOT_VERIFIED if the provider itself marks the email unverified'),
       422: problem('Validation failed'),
       503: problem('PROVIDER_DISABLED -- Apple sign-in is not configured'),
     },

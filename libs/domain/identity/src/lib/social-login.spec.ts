@@ -43,9 +43,10 @@ async function signIdToken(options: {
   key?: CryptoKey;
   issuedSecondsAgo?: number;
   expiresInSeconds?: number;
+  emailVerified?: boolean | 'true' | 'false'; // Apple sends this claim as the string 'true'/'false', not a boolean.
 }): Promise<string> {
   const now = Math.floor(Date.now() / 1000) - (options.issuedSecondsAgo ?? 0);
-  return new SignJWT({ email: options.email, email_verified: true })
+  return new SignJWT({ email: options.email, email_verified: options.emailVerified ?? true })
     .setProtectedHeader({ alg: 'RS256', kid: 'test-key' })
     .setSubject(options.sub)
     .setIssuer(options.issuer ?? GOOGLE_ISSUER)
@@ -191,6 +192,35 @@ describe('loginWithProvider', () => {
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(result.error.code).toBe('TOKEN_INVALID');
+  });
+
+  it('rejects a token whose email_verified claim is false: "already verified by the provider" must actually be checked, not assumed', async () => {
+    const idToken = await signIdToken({ sub: 'google-sub-8', email: 'unverified@example.com', emailVerified: false });
+
+    const result = await loginWithProvider(db, config, { provider: 'GOOGLE', idToken }, verifiers);
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.code).toBe('EMAIL_NOT_VERIFIED');
+    await expect(db.user.findFirst({ where: { email: 'unverified@example.com' } })).resolves.toBeNull();
+  });
+
+  it('rejects email_verified: "false" (Apple\'s string form of the claim) the same as the boolean', async () => {
+    const idToken = await signIdToken({ sub: 'apple-sub-1', email: 'apple-unverified@example.com', issuer: APPLE_ISSUER, audience: OUR_APPLE_CLIENT_ID, emailVerified: 'false' });
+
+    const result = await loginWithProvider(db, config, { provider: 'APPLE', idToken }, verifiers);
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.code).toBe('EMAIL_NOT_VERIFIED');
+  });
+
+  it("accepts Apple's string form 'true' for email_verified", async () => {
+    const idToken = await signIdToken({ sub: 'apple-sub-2', email: 'apple-verified@example.com', issuer: APPLE_ISSUER, audience: OUR_APPLE_CLIENT_ID, emailVerified: 'true' });
+
+    const result = await loginWithProvider(db, config, { provider: 'APPLE', idToken }, verifiers);
+
+    expect(result.ok).toBe(true);
   });
 
   it('returns PROVIDER_DISABLED without ever invoking the verifier when the client id is empty', async () => {
