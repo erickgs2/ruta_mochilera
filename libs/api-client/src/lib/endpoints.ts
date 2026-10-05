@@ -30,6 +30,15 @@ type Ok<P extends keyof paths, M extends keyof paths[P]> = paths[P][M] extends {
 export class AuthApi {
   private readonly api = inject(ApiClient);
 
+  /**
+   * Always responds the same way whether or not `body.email` is already
+   * registered -- see `registerCustomer`'s doc comment in `@rm/domain-identity`.
+   * Responds with a `null` body on success; there is nothing to return.
+   */
+  register(body: Body<'/api/v1/auth/register', 'post'>): Observable<Ok<'/api/v1/auth/register', 'post'>> {
+    return this.api.post('/api/v1/auth/register', body);
+  }
+
   login(body: Body<'/api/v1/auth/login', 'post'>): Observable<Ok<'/api/v1/auth/login', 'post'>> {
     return this.api.post('/api/v1/auth/login', body);
   }

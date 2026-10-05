@@ -1,0 +1,27 @@
+<div class="home-page">
+  @if (user()) {
+    <h1>{{ 'home.welcome' | translate: { fullName: user()!.fullName } }}</h1>
+    <p class="home-email">{{ user()!.email }}</p>
+
+    <p
+      class="home-status"
+      [class.home-status--ok]="meStatus() === 'ok'"
+      [class.home-status--error]="meStatus() === 'error'"
+      data-testid="me-status"
+    >
+      @switch (meStatus()) {
+        @case ('checking') {
+          Checking session with the API…
+        }
+        @case ('ok') {
+          {{ 'home.sessionSurvived' | translate }}
+        }
+        @case ('error') {
+          Session check failed -- see the console.
+        }
+      }
+    </p>
+
+    <button type="button" (click)="signOut()">{{ 'auth.signOut' | translate }}</button>
+  }
+</div>

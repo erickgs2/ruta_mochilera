@@ -16,6 +16,22 @@ describe('endpoints', () => {
 
   afterEach(() => httpMock.verify());
 
+  it('AuthApi.register posts the registration payload as JSON', () => {
+    const body = {
+      email: 'new.customer@example.com',
+      password: 'a-long-enough-password',
+      fullName: 'Ana Customer',
+      phone: '+52 55 1234 5678',
+      birthDate: '1990-01-01',
+      acceptTerms: true as const,
+    };
+    TestBed.inject(AuthApi).register(body).subscribe();
+    const req = httpMock.expectOne('https://api.test/api/v1/auth/register');
+    expect(req.request.method).toBe('POST');
+    expect(req.request.body).toEqual(body);
+    req.flush(null);
+  });
+
   it('AuthApi.me calls GET /api/v1/me', () => {
     TestBed.inject(AuthApi).me().subscribe();
     httpMock.expectOne('https://api.test/api/v1/me').flush({});

@@ -15,9 +15,22 @@
   "auth": {
     "email": "Correo",
     "password": "Contraseña",
+    "fullName": "Nombre completo",
+    "phone": "Teléfono",
+    "birthDate": "Fecha de nacimiento",
+    "acceptTerms": "Acepto los términos y condiciones",
     "signIn": "Iniciar sesión",
     "signOut": "Cerrar sesión",
-    "signingIn": "Iniciando sesión…"
+    "signingIn": "Iniciando sesión…",
+    "register": "Crear cuenta",
+    "registering": "Creando cuenta…",
+    "registerSuccess": "Cuenta creada. Ya puedes iniciar sesión.",
+    "needAccount": "¿No tienes cuenta? Regístrate",
+    "haveAccount": "¿Ya tienes cuenta? Inicia sesión"
+  },
+  "home": {
+    "welcome": "Hola, {{fullName}}",
+    "sessionSurvived": "La sesión sigue activa después de recargar la página."
   },
   "nav": {
     "trips": "Viajes",

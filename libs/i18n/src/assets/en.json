@@ -15,9 +15,22 @@
   "auth": {
     "email": "Email",
     "password": "Password",
+    "fullName": "Full name",
+    "phone": "Phone",
+    "birthDate": "Date of birth",
+    "acceptTerms": "I accept the terms and conditions",
     "signIn": "Sign in",
     "signOut": "Sign out",
-    "signingIn": "Signing in…"
+    "signingIn": "Signing in…",
+    "register": "Create account",
+    "registering": "Creating account…",
+    "registerSuccess": "Account created. You can now sign in.",
+    "needAccount": "Don't have an account? Register",
+    "haveAccount": "Already have an account? Sign in"
+  },
+  "home": {
+    "welcome": "Hello, {{fullName}}",
+    "sessionSurvived": "The session is still active after reloading the page."
   },
   "nav": {
     "trips": "Trips",

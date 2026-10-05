@@ -1,0 +1,29 @@
+<div class="auth-page">
+  <div class="auth-card">
+    <h1>Ruta Mochilera</h1>
+
+    <form [formGroup]="form" (ngSubmit)="submit()">
+      <label>
+        {{ 'auth.email' | translate }}
+        <input type="email" formControlName="email" autocomplete="email" />
+      </label>
+
+      <label>
+        {{ 'auth.password' | translate }}
+        <input type="password" formControlName="password" autocomplete="current-password" />
+      </label>
+
+      @if (error()) {
+        <p class="auth-error">{{ error() | rmErrorCode }}</p>
+      }
+
+      <button type="submit" [disabled]="form.invalid || loading()">
+        {{ loading() ? ('auth.signingIn' | translate) : ('auth.signIn' | translate) }}
+      </button>
+    </form>
+
+    <p class="auth-switch">
+      <a routerLink="/register">{{ 'auth.needAccount' | translate }}</a>
+    </p>
+  </div>
+</div>
