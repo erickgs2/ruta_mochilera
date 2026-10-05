@@ -278,6 +278,61 @@ existe para que el llamador pueda razonar sobre un `Result` en vez de atrapar
 una excepción, y el llamador tiene que **deshacer**, no seguir escribiendo.
 `handleStripeEvent` hace exactamente eso.
 
+## Crear un Payment Intent (Tarea 14, §9 de la spec): el monto nunca lo decide el cliente
+
+`createPaymentIntentForReservation(db, provider, input)`
+(`libs/domain/payments/src/lib/payment-intent-service.ts`) es el punto de
+entrada de todo el flujo de pago: lo que `POST
+/reservations/{reservationId}/payment-intents` expone al cliente.
+
+`input` no lleva un monto. Lleva un `intent`: `'FULL'` (saldar todo el
+`balance_cents`) o `'DEPOSIT'` (lo que falta del anticipo mínimo,
+`minimum_deposit_cents − paid_cents`, nunca negativo y nunca por encima del
+propio saldo). El monto a cobrar se calcula aquí, a partir de la reserva, y
+no hay ningún campo en `CreatePaymentIntentInput` por el que un monto puesto
+por el cliente pudiera viajar. Es la regla que esta función existe para
+imponer: el cliente decide **hacia qué** paga, nunca **cuánto**.
+
+### Pertenencia, no permiso
+
+Una reserva ajena y una reserva que no existe responden el mismo
+`RESERVATION_NOT_OWNED` (404, nunca 403 — ver `problem.ts`), la misma razón
+que ya usa `getReservationForCustomer` en `@rm/domain-reservations`: un 403
+confirmaría que el id es real. `@rm/domain-payments` es una hoja y no puede
+llamar a esa función directamente, así que la misma comprobación se repite
+aquí contra la fila `Reservation` que esta función ya lee de todos modos. Un
+actor `STAFF` queda bloqueado por la misma comprobación sin ninguna rama
+aparte: el id de un usuario de personal nunca coincide con el `customer_id`
+de una reserva.
+
+Una reserva `CANCELLED` o `EXPIRED` responde `INVALID_STATUS_TRANSITION`: no
+hay nada que empezar a cobrar sobre una reserva que ya terminó.
+
+### La ficha de OXXO nunca sobrevive al apartado
+
+`voucherExpiresAt` enviado al proveedor es siempre el propio `hold_expires_at`
+de la reserva — nunca una fecha inventada aquí. Cuando queda menos de un día,
+`StripePaymentProvider` se niega a crear el intento en vez de redondear la
+ventana hacia arriba (ver `oxxoExpiresAfterDays` en `@rm/payments-stripe` y
+"Cancelar el Payment Intent al expirar el apartado" más abajo): esa negativa
+llega aquí como un `Result` normal — nunca una excepción — y sale de esta
+función como el mismo `VALIDATION_FAILED` que cualquier otra validación de
+entrada, sin ninguna rama especial para atraparla. Una reserva `ACTIVE` (que
+ya no tiene `hold_expires_at`) golpea la misma negativa por el mismo motivo:
+no hay `voucherExpiresAt` que enviar, y `createIntent` lo exige para OXXO.
+
+### La fila `PENDING` nace en el mismo paso que el intento
+
+Si el proveedor acepta, esta función llama a `recordPayment` dentro de su
+propia transacción para escribir la fila `Payment` en `PENDING` con el
+`provider_intent_id`, el método, el monto ya calculado y (para OXXO) la URL y
+expiración de la ficha — los dos campos que `recordPayment` aprendió a
+aceptar en esta misma tarea (ver `RecordPaymentInput.providerVoucherUrl` /
+`voucherExpiresAt`). Esta fila es la que `confirmPaymentWithin` espera
+encontrar cuando llegue el webhook; `ConfirmPaymentInput.recordIfMissing`
+sigue existiendo como red de seguridad para cuando este paso no llegó a
+escribirla, no como el camino normal.
+
 ## Cancelar el Payment Intent al expirar el apartado (Tarea 9, cierra el hueco de la Tarea 8)
 
 Spec §5.3. Cuando `expireHolds` (`apps/worker/src/jobs/expire-holds.ts`)
@@ -402,6 +457,7 @@ Ningún código es nuevo: los cinco existen en el catálogo desde la Fase 1.
 |---|---|
 | `libs/domain/payments/src/lib/instalment.ts` | La aritmética de la mensualidad sugerida, sin base de datos |
 | `libs/domain/payments/src/lib/payment-service.ts` | Saldo, registro, confirmación, listado y la mensualidad de una reserva |
+| `libs/domain/payments/src/lib/payment-intent-service.ts` | Crear el Payment Intent (Tarea 14): el monto nunca viaja desde el cliente |
 | `libs/db/prisma/migrations/20261004011500_payment_provider_intent_unique/` | El índice único que ancla la idempotencia |
 | `apps/worker/src/jobs/reconcile-paid-cents.ts` | El job nocturno de conciliación (Tarea 8) |
 

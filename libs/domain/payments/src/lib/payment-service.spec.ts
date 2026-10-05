@@ -293,6 +293,48 @@ describe('payment service', () => {
       expect(await succeededTotal(db, reservation.id)).toBe(0);
     });
 
+    it('persists the OXXO voucher url and expiry when the caller supplies them', async () => {
+      const reservation = await seedReservation(db, { totalPriceCents: 500_000 });
+      const voucherExpiresAt = new Date(Date.now() + 48 * HOUR_MS);
+
+      const recorded = await db.$transaction((tx) =>
+        recordPayment(tx, {
+          reservationId: reservation.id,
+          amountCents: 150_000,
+          method: 'OXXO',
+          status: 'PENDING',
+          provider: 'STRIPE',
+          providerIntentId: 'pi_voucher_1',
+          providerVoucherUrl: 'https://fake-oxxo.test/vouchers/pi_voucher_1',
+          voucherExpiresAt,
+        })
+      );
+
+      expect(recorded.ok).toBe(true);
+      if (!recorded.ok) return;
+      expect(recorded.value.providerVoucherUrl).toBe('https://fake-oxxo.test/vouchers/pi_voucher_1');
+      expect(recorded.value.voucherExpiresAt).toEqual(voucherExpiresAt);
+    });
+
+    it('leaves the voucher fields null when the caller omits them, as every pre-Task-14 caller does', async () => {
+      const reservation = await seedReservation(db, { totalPriceCents: 500_000 });
+
+      const recorded = await db.$transaction((tx) =>
+        recordPayment(tx, {
+          reservationId: reservation.id,
+          amountCents: 150_000,
+          method: 'CARD',
+          status: 'SUCCEEDED',
+          provider: 'STRIPE',
+        })
+      );
+
+      expect(recorded.ok).toBe(true);
+      if (!recorded.ok) return;
+      expect(recorded.value.providerVoucherUrl).toBeNull();
+      expect(recorded.value.voucherExpiresAt).toBeNull();
+    });
+
     it('rejects an amount above the outstanding balance', async () => {
       const reservation = await seedReservation(db, {
         totalPriceCents: 500_000,

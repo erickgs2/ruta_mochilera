@@ -27,6 +27,16 @@ export interface RecordPaymentInput {
    * appearing in March.
    */
   paidAt?: Date;
+  /**
+   * OXXO only, both added for Task 14's `createPaymentIntentForReservation`:
+   * the first caller that creates a `PENDING` row at the same moment it
+   * asks the provider for a voucher, rather than only ever moving a row
+   * `confirmPaymentWithin`'s `recordIfMissing` branch has to invent after
+   * the fact. Every other caller omits them and the columns stay null, same
+   * as before this field existed.
+   */
+  providerVoucherUrl?: string;
+  voucherExpiresAt?: Date;
 }
 
 export interface ConfirmPaymentInput {
@@ -251,6 +261,8 @@ export async function recordPayment(
         // Money already in hand always carries the moment it arrived; anything
         // else has not been paid yet and must not pretend otherwise.
         paidAt: input.paidAt ?? (input.status === 'SUCCEEDED' ? new Date() : null),
+        providerVoucherUrl: input.providerVoucherUrl ?? null,
+        voucherExpiresAt: input.voucherExpiresAt ?? null,
       },
     });
   } catch (error) {
