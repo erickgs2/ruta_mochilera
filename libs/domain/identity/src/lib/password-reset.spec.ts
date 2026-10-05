@@ -9,6 +9,9 @@ import { requestPasswordReset, resetPassword } from './password-reset';
 
 const db = withTestDb();
 
+/** Deliberately not the production domain, so a hardcoded link cannot pass. */
+const APP_BASE_URL = 'https://staging.example.test';
+
 /**
  * A send latency chosen to be loud: the timing test's own tolerance below
  * is 50ms, so an accidentally-`await`ed send would blow past it by roughly
@@ -103,8 +106,8 @@ describe('requestPasswordReset / resetPassword', () => {
   describe('requestPasswordReset', () => {
     it('returns the identical ok(null) response whether or not the account exists', async () => {
       await seedCustomer();
-      const existing = await requestPasswordReset(db, 'traveler@example.com', email, '10.1.0.1');
-      const missing = await requestPasswordReset(db, 'nobody@example.com', email, '10.1.0.2');
+      const existing = await requestPasswordReset(db, 'traveler@example.com', email, APP_BASE_URL, '10.1.0.1');
+      const missing = await requestPasswordReset(db, 'nobody@example.com', email, APP_BASE_URL, '10.1.0.2');
 
       expect(existing).toEqual({ ok: true, value: null });
       expect(missing).toEqual({ ok: true, value: null });
@@ -114,11 +117,11 @@ describe('requestPasswordReset / resetPassword', () => {
       await seedCustomer();
 
       const startExisting = performance.now();
-      await requestPasswordReset(db, 'traveler@example.com', email, '10.1.1.1');
+      await requestPasswordReset(db, 'traveler@example.com', email, APP_BASE_URL, '10.1.1.1');
       const existingMs = performance.now() - startExisting;
 
       const startMissing = performance.now();
-      await requestPasswordReset(db, 'nobody@example.com', email, '10.1.1.2');
+      await requestPasswordReset(db, 'nobody@example.com', email, APP_BASE_URL, '10.1.1.2');
       const missingMs = performance.now() - startMissing;
 
       // Generous bound: the only architectural difference between the two
@@ -131,9 +134,21 @@ describe('requestPasswordReset / resetPassword', () => {
       expect(Math.abs(existingMs - missingMs)).toBeLessThan(50);
     });
 
+    it('links to the reset screen under the configured APP_BASE_URL, not a hardcoded domain', async () => {
+      await seedCustomer();
+      await requestPasswordReset(db, 'traveler@example.com', email, `${APP_BASE_URL}/`, '10.1.7.1');
+      await waitForSentEmails(email, 1);
+
+      const token = extractToken(email.sent[0]!);
+      const link = `${APP_BASE_URL}/reset-password?token=${token}`;
+      expect(email.sent[0]!.text).toContain(link);
+      expect(email.sent[0]!.html).toContain(link);
+      expect(email.sent[0]!.text).not.toContain('rutamochilera.app');
+    });
+
     it('stores only a hash of the token, never the plaintext, and the row is single-use', async () => {
       const user = await seedCustomer();
-      await requestPasswordReset(db, 'traveler@example.com', email, '10.1.2.1');
+      await requestPasswordReset(db, 'traveler@example.com', email, APP_BASE_URL, '10.1.2.1');
       await waitForSentEmails(email, 1);
       const token = extractToken(email.sent[0]!);
 
@@ -151,7 +166,7 @@ describe('requestPasswordReset / resetPassword', () => {
     it('expires according to SystemSetting password_reset.ttl_minutes, not a hardcoded constant', async () => {
       await db.systemSetting.create({ data: { key: 'password_reset.ttl_minutes', value: 5 } });
       const user = await seedCustomer();
-      await requestPasswordReset(db, 'traveler@example.com', email, '10.1.3.1');
+      await requestPasswordReset(db, 'traveler@example.com', email, APP_BASE_URL, '10.1.3.1');
       await waitForSentEmails(email, 1);
       const token = extractToken(email.sent[0]!);
 
@@ -168,9 +183,9 @@ describe('requestPasswordReset / resetPassword', () => {
     it('is rate-limited by email+ip', async () => {
       await seedCustomer();
       for (let i = 0; i < 5; i += 1) {
-        await requestPasswordReset(db, 'traveler@example.com', email, '10.1.4.1');
+        await requestPasswordReset(db, 'traveler@example.com', email, APP_BASE_URL, '10.1.4.1');
       }
-      const sixth = await requestPasswordReset(db, 'traveler@example.com', email, '10.1.4.1');
+      const sixth = await requestPasswordReset(db, 'traveler@example.com', email, APP_BASE_URL, '10.1.4.1');
       expect(sixth.ok).toBe(false);
       if (!sixth.ok) expect(sixth.error.code).toBe('RATE_LIMITED');
     });
@@ -182,7 +197,7 @@ describe('requestPasswordReset / resetPassword', () => {
       await seedSessionFor(user.id, 'session-a');
       await seedSessionFor(user.id, 'session-b');
 
-      await requestPasswordReset(db, 'traveler@example.com', email, '10.1.5.1');
+      await requestPasswordReset(db, 'traveler@example.com', email, APP_BASE_URL, '10.1.5.1');
       await waitForSentEmails(email, 1);
       const token = extractToken(email.sent[0]!);
 
@@ -195,7 +210,7 @@ describe('requestPasswordReset / resetPassword', () => {
 
     it('actually changes the password: the old password no longer verifies, the new one does', async () => {
       const user = await seedCustomer();
-      await requestPasswordReset(db, 'traveler@example.com', email, '10.1.6.1');
+      await requestPasswordReset(db, 'traveler@example.com', email, APP_BASE_URL, '10.1.6.1');
       await waitForSentEmails(email, 1);
       const token = extractToken(email.sent[0]!);
 

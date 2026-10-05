@@ -1,5 +1,6 @@
 import { forgotPasswordRequestSchema, type ForgotPasswordRequest } from '@rm/contracts';
 import { requestPasswordReset } from '@rm/domain-identity';
+import { config } from '../../../../../lib/config';
 import { db } from '../../../../../lib/db';
 import { email } from '../../../../../lib/email';
 import { clientIp } from '../../../../../lib/http/client-ip';
@@ -14,5 +15,6 @@ import { route } from '../../../../../lib/http/route';
 export const POST = route<ForgotPasswordRequest, null>({
   auth: 'public',
   body: forgotPasswordRequestSchema,
-  handler: async ({ body, request }) => requestPasswordReset(db(), body.email, email(), clientIp(request)),
+  handler: async ({ body, request }) =>
+    requestPasswordReset(db(), body.email, email(), config().appBaseUrl, clientIp(request)),
 });
