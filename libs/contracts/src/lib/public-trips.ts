@@ -39,6 +39,7 @@ export const publicTripSummarySchema = z.object({
 });
 
 export const publicTripDetailSchema = z.object({
+  id: z.string().uuid(),
   slug: z.string(),
   departureDate: z.iso.datetime(),
   returnDate: z.iso.datetime(),

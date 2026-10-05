@@ -22,6 +22,7 @@ import {
   publicTripSummarySchema as publicTripSummarySchemaImport,
   registerRequestSchema as registerRequestSchemaImport,
   requestCancellationRequestSchema as requestCancellationRequestSchemaImport,
+  reservationDetailSchema as reservationDetailSchemaImport,
   reservationSchema as reservationSchemaImport,
   reservationSummarySchema as reservationSummarySchemaImport,
   resendCodeRequestSchema as resendCodeRequestSchemaImport,
@@ -41,6 +42,7 @@ import type { InboxItemDto, InboxPageDto } from '@rm/domain-notifications';
 import type { CreatedPaymentIntentDto, PaymentDto } from '@rm/domain-payments';
 import type { ReservationDto, ReservationSummaryDto } from '@rm/domain-reservations';
 import type { PublicTripDetailDto, PublicTripSummaryDto, TripDto, TripImageDto, TripSummaryDto } from '@rm/domain-trips';
+import type { ReservationDetail } from '../http/reservation-response';
 
 /**
  * `@rm/contracts` schemas are tagged with `.meta({ id })` here, rather than
@@ -82,6 +84,7 @@ const requestCancellationRequestSchema = requestCancellationRequestSchemaImport.
   id: 'RequestCancellationRequest',
 });
 const reservationSchema = reservationSchemaImport.meta({ id: 'Reservation' });
+const reservationDetailSchema = reservationDetailSchemaImport.meta({ id: 'ReservationDetail' });
 const reservationSummarySchema = reservationSummarySchemaImport.meta({ id: 'ReservationSummary' });
 const createPaymentIntentRequestSchema = createPaymentIntentRequestSchemaImport.meta({
   id: 'CreatePaymentIntentRequest',
@@ -296,6 +299,9 @@ type _tripCostingSchemaMatchesDto = Expect<Equals<z.infer<typeof tripCostingSche
  * the two drifting apart.
  */
 type _reservationSchemaMatchesDto = Expect<Equals<z.infer<typeof reservationSchema>, DateToString<ReservationDto>>>;
+type _reservationDetailSchemaMatchesDto = Expect<
+  Equals<z.infer<typeof reservationDetailSchema>, DateToString<ReservationDetail>>
+>;
 type _reservationSummarySchemaMatchesDto = Expect<
   Equals<z.infer<typeof reservationSummarySchema>, DateToString<ReservationSummaryDto>>
 >;
@@ -332,6 +338,7 @@ export type _OpenApiDtoAssertions = [
   _budgetItemSchemaMatchesDto,
   _tripCostingSchemaMatchesDto,
   _reservationSchemaMatchesDto,
+  _reservationDetailSchemaMatchesDto,
   _reservationSummarySchemaMatchesDto,
   _paymentSchemaMatchesDto,
   _createdPaymentIntentSchemaMatchesDto,
@@ -905,7 +912,10 @@ export function buildOpenApiDocument() {
       'CustomerProfile, which no staff user has.',
     request: { body: requestBody(createReservationRequestSchema) },
     responses: {
-      201: { description: 'Reservation created in HELD', ...json(reservationSchema) },
+      201: {
+        description: 'Reservation created in HELD, with the suggested monthly payment',
+        ...json(reservationDetailSchema),
+      },
       401: problem('Missing or invalid access token'),
       403: problem('EMAIL_NOT_VERIFIED'),
       404: problem('Trip not found (includes a STAFF actor, who owns no CustomerProfile)'),
@@ -924,7 +934,7 @@ export function buildOpenApiDocument() {
       'one that belongs to someone else answer the identical RESERVATION_NOT_OWNED (404, never 403).',
     request: { params: uuidParam('reservationId') },
     responses: {
-      200: { description: 'Reservation detail', ...json(reservationSchema) },
+      200: { description: 'Reservation detail, with the suggested monthly payment', ...json(reservationDetailSchema) },
       401: problem('Missing or invalid access token'),
       404: problem('RESERVATION_NOT_OWNED -- no such reservation, or it is not the caller\'s'),
     },

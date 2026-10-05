@@ -93,6 +93,8 @@ describe('public trip catalogue', () => {
       expect(summary).not.toHaveProperty('preSoldSeats');
       expect(summary).not.toHaveProperty('createdById');
       expect(summary).not.toHaveProperty('createdBy');
+      // The id is the detail's alone (POST /reservations needs it); the list stays slug-keyed.
+      expect(summary).not.toHaveProperty('id');
     });
 
     it('reports available seats net of an active reservation', async () => {
@@ -143,6 +145,14 @@ describe('public trip catalogue', () => {
       expect(result.value.images[0]?.storageKey).toBe('trips/x/cover.jpg');
       const spanish = result.value.translations.find((t) => t.locale === 'es');
       expect(spanish?.itinerary).toBe('i');
+    });
+
+    it("carries the trip's id on the detail, for POST /reservations", async () => {
+      const trip = await seedTrip(db, { slug: 'oaxaca-con-id' });
+
+      const result = await getPublishedTripBySlug(db, 'oaxaca-con-id');
+
+      expect(result.ok && result.value.id).toBe(trip.id);
     });
 
     it('never exposes internal costing or authorship fields on the detail either', async () => {

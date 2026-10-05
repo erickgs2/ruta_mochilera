@@ -2147,13 +2147,13 @@ export interface paths {
                 };
             };
             responses: {
-                /** @description Reservation created in HELD */
+                /** @description Reservation created in HELD, with the suggested monthly payment */
                 201: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["Reservation"];
+                        "application/json": components["schemas"]["ReservationDetail"];
                     };
                 };
                 /** @description Missing or invalid access token */
@@ -2228,13 +2228,13 @@ export interface paths {
             };
             requestBody?: never;
             responses: {
-                /** @description Reservation detail */
+                /** @description Reservation detail, with the suggested monthly payment */
                 200: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["Reservation"];
+                        "application/json": components["schemas"]["ReservationDetail"];
                     };
                 };
                 /** @description Missing or invalid access token */
@@ -2630,6 +2630,7 @@ export interface components {
                 locale: "es" | "en";
                 fullName: string;
                 permissions: string[];
+                emailVerified: boolean;
             };
             tokens: {
                 accessToken: string;
@@ -2695,6 +2696,7 @@ export interface components {
             locale: "es" | "en";
             fullName: string;
             permissions: string[];
+            emailVerified: boolean;
         };
         Permission: {
             key: string;
@@ -2936,6 +2938,8 @@ export interface components {
             }[];
         };
         PublicTripDetail: {
+            /** Format: uuid */
+            id: string;
             slug: string;
             /** Format: date-time */
             departureDate: string;
@@ -2980,6 +2984,35 @@ export interface components {
             /** Format: date-time */
             createdAt: string;
         };
+        ReservationDetail: {
+            /** Format: uuid */
+            id: string;
+            code: string;
+            /** Format: uuid */
+            tripId: string;
+            /** Format: uuid */
+            customerId: string;
+            /** @enum {string} */
+            status: "HELD" | "ACTIVE" | "CANCELLED" | "EXPIRED";
+            /** Format: date-time */
+            holdExpiresAt: string | null;
+            totalPriceCents: number;
+            minimumDepositCents: number;
+            paidCents: number;
+            creditCents: number;
+            balanceCents: number;
+            /** Format: date-time */
+            paymentDeadline: string;
+            /** Format: date-time */
+            cancellationRequestedAt: string | null;
+            /** Format: date-time */
+            createdAt: string;
+            suggestedMonthlyCents: number;
+        };
+        CreateReservationRequest: {
+            /** Format: uuid */
+            tripId: string;
+        };
         Reservation: {
             /** Format: uuid */
             id: string;
@@ -3003,10 +3036,6 @@ export interface components {
             cancellationRequestedAt: string | null;
             /** Format: date-time */
             createdAt: string;
-        };
-        CreateReservationRequest: {
-            /** Format: uuid */
-            tripId: string;
         };
         RequestCancellationRequest: {
             reason?: string;

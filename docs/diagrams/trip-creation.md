@@ -96,5 +96,5 @@ flowchart TD
     B --> D["TripDto / TripSummaryDto<br/>incluye budgetTotalCents, marginMode,<br/>marginValue, preSoldSeats, createdById"]
     C --> E{"¿status = PUBLISHED?"}
     E -- No --> F[NOT_FOUND]
-    E -- Sí --> G["PublicTripDetailDto / PublicTripSummaryDto<br/>fotos, itinerario, precio, fechas,<br/>cupo disponible — nada de costeo ni autoría"]
+    E -- Sí --> G["PublicTripDetailDto / PublicTripSummaryDto<br/>fotos, itinerario, precio, fechas,<br/>cupo disponible — nada de costeo ni autoría<br/>(sólo el detalle lleva el id del viaje)"]
 ```

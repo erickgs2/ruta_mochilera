@@ -150,6 +150,31 @@ describe('auth endpoints', () => {
     expect((await response.json()).email).toBe('admin@agency.test');
   });
 
+  it('reports whether the caller has verified their email, on login and on /me', async () => {
+    await db.user.create({
+      data: {
+        email: 'unverified@example.test',
+        type: 'CUSTOMER',
+        passwordHash: await hashPassword('Correct-Horse-1'),
+        emailVerifiedAt: null,
+        customerProfile: {
+          create: { fullName: 'Ana', phone: '5512345678', birthDate: new Date('1990-01-01'), origin: 'SELF_SIGNUP' },
+        },
+      },
+    });
+    await seedAdmin();
+
+    const unverified = await (await post(loginRoute, { email: 'unverified@example.test', password: 'Correct-Horse-1' })).json();
+    const verified = await (await post(loginRoute, { email: 'admin@agency.test', password: 'Correct-Horse-1' })).json();
+    expect(unverified.user.emailVerified).toBe(false);
+    expect(verified.user.emailVerified).toBe(true);
+
+    const me = await meRoute(
+      new Request('http://localhost/api/v1/me', { headers: { authorization: `Bearer ${unverified.tokens.accessToken}` } })
+    );
+    expect((await me.json()).emailVerified).toBe(false);
+  });
+
   it('rejects /refresh with no cookie at all', async () => {
     const response = await postWithCookie(refreshRoute, null);
     expect(response.status).toBe(401);

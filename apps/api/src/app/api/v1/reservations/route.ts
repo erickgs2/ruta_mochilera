@@ -1,6 +1,7 @@
 import { createReservationRequestSchema, type CreateReservationRequest } from '@rm/contracts';
 import { createReservation, listReservationsForCustomer } from '@rm/domain-reservations';
 import { db } from '../../../../lib/db';
+import { withSuggestedMonthly } from '../../../../lib/http/reservation-response';
 import { route } from '../../../../lib/http/route';
 
 /**
@@ -22,9 +23,13 @@ export const GET = route({
  * requires the caller's id to own a `CustomerProfile`, which no staff user
  * has (`NOT_FOUND`) -- this is the same ownership-shaped reasoning as the
  * rest of this resource, not a permission gate.
+ *
+ * Answers with `suggestedMonthlyCents` too: the reserve screen shows the
+ * amounts of the hold it just created -- see `withSuggestedMonthly`.
  */
 export const POST = route<CreateReservationRequest, unknown>({
   body: createReservationRequestSchema,
   successStatus: 201,
-  handler: async ({ actor, body }) => createReservation(db(), { tripId: body.tripId, customerId: actor.userId }),
+  handler: async ({ actor, body }) =>
+    withSuggestedMonthly(db(), await createReservation(db(), { tripId: body.tripId, customerId: actor.userId })),
 });

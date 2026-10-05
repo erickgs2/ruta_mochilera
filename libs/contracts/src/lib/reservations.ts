@@ -35,6 +35,16 @@ export const reservationSchema = z.object({
   createdAt: z.iso.datetime(),
 });
 
+/**
+ * What `POST /reservations` and `GET /reservations/{id}` answer: the full
+ * reservation plus the suggested monthly payment, recomputed on every read
+ * and never stored (see `docs/business-rules/payments.md`, "Mensualidad
+ * sugerida"). The cancellation-request response keeps the plain shape.
+ */
+export const reservationDetailSchema = reservationSchema.extend({
+  suggestedMonthlyCents: z.number().int(),
+});
+
 /** The list row: drops the detail-only fields `ReservationDto` carries (see `@rm/domain-reservations`). */
 export const reservationSummarySchema = z.object({
   id: uuidSchema,
@@ -52,4 +62,5 @@ export const reservationSummarySchema = z.object({
 export type CreateReservationRequest = z.infer<typeof createReservationRequestSchema>;
 export type RequestCancellationRequest = z.infer<typeof requestCancellationRequestSchema>;
 export type ReservationContract = z.infer<typeof reservationSchema>;
+export type ReservationDetailContract = z.infer<typeof reservationDetailSchema>;
 export type ReservationSummaryContract = z.infer<typeof reservationSummarySchema>;

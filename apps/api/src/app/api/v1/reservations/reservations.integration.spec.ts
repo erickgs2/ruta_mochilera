@@ -1,6 +1,7 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { closeTestDb, prepareTestDb, resetDatabase, withTestDb } from '@rm/db/testing';
 import { closeTestQueue, resetTestQueue, withTestQueue } from '@rm/jobs/testing';
+import { suggestedMonthlyForReservation } from '@rm/domain-payments';
 import { FakePaymentProvider, StripePaymentProvider } from '@rm/payments-stripe';
 import { loginAs, loginAsCustomer, seedPermissionCatalog } from '../../../../test-support/auth-fixtures';
 import { setPaymentProvider } from '../../../../lib/payment-provider';
@@ -97,6 +98,33 @@ describe('reservation endpoints', () => {
       expect(body.tripId).toBe(trip.id);
     });
 
+    it('answers with the amounts the reserve screen shows: total, minimum deposit and the suggested monthly payment', async () => {
+      const trip = await seedPublishedTrip({ pricePerSeatCents: 500_000, minimumDepositCents: 100_000 });
+      const { token } = await loginAsCustomer(db, 'ana-amounts@agency.test');
+
+      const body = await (await createReservationFor(token, trip.id)).json();
+
+      expect(body.totalPriceCents).toBe(500_000);
+      expect(body.minimumDepositCents).toBe(100_000);
+      // The value the payments domain computes, exposed as is -- never a
+      // second implementation of the rule at the HTTP layer.
+      const expected = await suggestedMonthlyForReservation(db, body.id);
+      expect(expected.ok).toBe(true);
+      expect(body.suggestedMonthlyCents).toBe(expected.ok ? expected.value : NaN);
+      expect(body.suggestedMonthlyCents).toBeGreaterThan(0);
+      expect(body.suggestedMonthlyCents).toBeLessThanOrEqual(body.balanceCents);
+    });
+
+    it('carries no suggested monthly payment on a refused creation', async () => {
+      const trip = await seedPublishedTrip();
+      const { token } = await loginAsCustomer(db, 'unverified-amounts@agency.test', { emailVerified: false });
+
+      const body = await (await createReservationFor(token, trip.id)).json();
+
+      expect(body.code).toBe('EMAIL_NOT_VERIFIED');
+      expect(body).not.toHaveProperty('suggestedMonthlyCents');
+    });
+
     it('returns EMAIL_NOT_VERIFIED when the customer has not verified their email', async () => {
       const trip = await seedPublishedTrip();
       const { token } = await loginAsCustomer(db, 'unverified@agency.test', { emailVerified: false });
@@ -156,6 +184,24 @@ describe('reservation endpoints', () => {
   });
 
   describe('GET /api/v1/reservations/{reservationId}', () => {
+    it("returns the owner's reservation with total, minimum deposit and the suggested monthly payment", async () => {
+      const trip = await seedPublishedTrip({ pricePerSeatCents: 500_000, minimumDepositCents: 100_000 });
+      const owner = await loginAsCustomer(db, 'owner-detail@agency.test');
+      const created = await (await createReservationFor(owner.token, trip.id)).json();
+
+      const response = await getReservationRoute(
+        request(`/api/v1/reservations/${created.id}`, owner.token),
+        withId(created.id)
+      );
+
+      expect(response.status).toBe(200);
+      const body = await response.json();
+      expect(body.totalPriceCents).toBe(500_000);
+      expect(body.minimumDepositCents).toBe(100_000);
+      const expected = await suggestedMonthlyForReservation(db, created.id);
+      expect(body.suggestedMonthlyCents).toBe(expected.ok ? expected.value : NaN);
+    });
+
     it("returns 404 for another customer's reservation", async () => {
       const trip = await seedPublishedTrip();
       const owner = await loginAsCustomer(db, 'owner-get@agency.test');

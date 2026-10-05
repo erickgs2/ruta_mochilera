@@ -25,6 +25,8 @@ export interface AuthenticatedUser {
   locale: 'es' | 'en';
   fullName: string;
   permissions: string[];
+  /** Whether `email_verified_at` is set. The client app shows "verify your email" instead of the reserve button when it is not. */
+  emailVerified: boolean;
 }
 
 /** Shared by every flow that ends in `issueSession`: a password login, a token refresh, and (Task 13) a social login. */
@@ -109,6 +111,7 @@ export async function describeUser(db: Db, userId: string): Promise<Authenticate
     locale: user.locale,
     fullName: user.staffProfile?.fullName ?? user.customerProfile?.fullName ?? '',
     permissions: user.type === 'STAFF' ? await loadActorPermissions(db, user.id) : [],
+    emailVerified: user.emailVerifiedAt !== null,
   };
 }
 

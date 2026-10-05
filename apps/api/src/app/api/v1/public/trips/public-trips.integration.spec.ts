@@ -103,6 +103,7 @@ describe('public trip catalogue endpoints', () => {
       expect(trip).not.toHaveProperty('priceMode');
       expect(trip).not.toHaveProperty('isBackfilled');
       expect(trip).not.toHaveProperty('status');
+      expect(trip).not.toHaveProperty('id');
     });
   });
 
@@ -126,6 +127,14 @@ describe('public trip catalogue endpoints', () => {
       expect((body.images as Record<string, unknown>[])[0]?.storageKey).toBe('trips/x/cover.jpg');
       const translations = body.translations as { locale: string; itinerary: string }[];
       expect(translations.find((t) => t.locale === 'es')?.itinerary).toBe('ruta completa');
+    });
+
+    it("carries the trip's id, which POST /reservations needs -- a UUID, not an internal business field", async () => {
+      const trip = await seedTrip();
+
+      const response = await getPublicTripRoute(request(`/api/v1/public/trips/${trip.slug}`), withSlug(trip.slug));
+
+      expect(((await response.json()) as Record<string, unknown>).id).toBe(trip.id);
     });
 
     it('does not expose budget, margin, pre-sold seats or who created the trip', async () => {

@@ -248,6 +248,12 @@ y el resto de las traducciones, precio por asiento, fechas de salida y
 regreso, y cupo disponible (la misma `availableSeats` de
 `@rm/domain-reservations` que usa el panel de administración).
 
+**Sólo el detalle lleva el `id` del viaje (Tarea 17).** `POST /reservations`
+recibe un `tripId`, y la pantalla de reserva de la app parte del detalle, así
+que `PublicTripDetailDto` expone el UUID del viaje. Un UUID no dice nada del
+costeo ni de la autoría. El resumen del listado no lo lleva: sigue indexado
+por `slug`, y una prueba afirma que el `id` no aparece ahí.
+
 **Un viaje que no está `PUBLISHED` responde 404, nunca un detalle vacío.**
 `getPublishedTripBySlug` devuelve el mismo `NOT_FOUND` tanto para un slug que
 no existe como para uno que existe pero está en `DRAFT`, `IN_PROGRESS`,

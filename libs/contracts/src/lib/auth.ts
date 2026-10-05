@@ -14,6 +14,7 @@ export const authenticatedUserSchema = z.object({
   locale: localeSchema,
   fullName: z.string(),
   permissions: z.array(z.string()),
+  emailVerified: z.boolean(),
 });
 
 /**

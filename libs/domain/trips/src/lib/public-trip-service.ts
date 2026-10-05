@@ -45,6 +45,12 @@ export interface PublicTripSummaryDto {
 }
 
 export interface PublicTripDetailDto {
+  /**
+   * The detail's alone -- the summary stays slug-keyed. `POST /reservations`
+   * takes a trip id, and the reserve screen starts from this detail. A UUID
+   * says nothing about costing or authorship.
+   */
+  id: string;
   slug: string;
   departureDate: Date;
   returnDate: Date;
@@ -132,6 +138,7 @@ export async function getPublishedTripBySlug(db: Db, slug: string): Promise<Resu
   const committed = await countCommittedSeats(db, trip.id);
 
   return ok({
+    id: trip.id,
     slug: trip.slug,
     departureDate: trip.departureDate,
     returnDate: trip.returnDate,
