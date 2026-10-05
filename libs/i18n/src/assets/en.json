@@ -30,7 +30,9 @@
   },
   "home": {
     "welcome": "Hello, {{fullName}}",
-    "sessionSurvived": "The session is still active after reloading the page."
+    "checking": "Checking the session with the API…",
+    "sessionSurvived": "The session is still active after reloading the page.",
+    "checkFailed": "Could not check the session. See the console."
   },
   "nav": {
     "trips": "Trips",

@@ -11,13 +11,13 @@
     >
       @switch (meStatus()) {
         @case ('checking') {
-          Checking session with the API…
+          {{ 'home.checking' | translate }}
         }
         @case ('ok') {
           {{ 'home.sessionSurvived' | translate }}
         }
         @case ('error') {
-          Session check failed -- see the console.
+          {{ 'home.checkFailed' | translate }}
         }
       }
     </p>

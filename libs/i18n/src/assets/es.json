@@ -30,7 +30,9 @@
   },
   "home": {
     "welcome": "Hola, {{fullName}}",
-    "sessionSurvived": "La sesión sigue activa después de recargar la página."
+    "checking": "Comprobando la sesión con la API…",
+    "sessionSurvived": "La sesión sigue activa después de recargar la página.",
+    "checkFailed": "No se pudo comprobar la sesión. Revisa la consola."
   },
   "nav": {
     "trips": "Viajes",
