@@ -109,7 +109,7 @@ export const defaultProviderVerifiers: ProviderVerifiers = {
  *
  * Three cases, in order:
  *
- * 1. **Provider switched off.** `config.google/appleOauthClientId` is empty
+ * 1. **Provider switched off.** `config.googleOauthClientId`/`appleOauthClientId` is empty
  *    or absent (the shipped `.env.example` default, pending real Google/Apple
  *    developer accounts) -- `PROVIDER_DISABLED`, and the verifier is never
  *    invoked: there is no client id to check an audience against anyway.
