@@ -39,6 +39,17 @@ const schema = z
     // never have. Interpreted explicitly below -- only the literal "true"
     // turns it on; absent or malformed stays off.
     EMAIL_VERBOSE_LOGGING: z.string().optional(),
+    // Comma-separated exact origins allowed to call this API cross-origin
+    // with credentials (CORS). Never a wildcard: `Access-Control-Allow-
+    // Credentials: true` combined with `Access-Control-Allow-Origin: *` is
+    // rejected by browsers anyway, and defeats the point of an allowlist.
+    // Same-origin traffic (the admin panel and the web client behind
+    // Nginx, exactly as Phase 1 shipped) never triggers CORS at all and
+    // needs no entry here -- this is purely for the packaged Capacitor app,
+    // whose WebView origin (`capacitor://localhost` on iOS,
+    // `https://localhost` on Android by default) is a different origin
+    // than the API's. See `apps/api/src/lib/http/cors.ts`.
+    CORS_ALLOWED_ORIGINS: z.string().optional(),
   })
   .superRefine((value, ctx) => {
     if (value.STORAGE_DRIVER === 'local' && !value.STORAGE_LOCAL_ROOT) {
@@ -103,6 +114,13 @@ export interface AppEnv {
    * port, and this flag controls whether those land in the log.
    */
   emailVerboseLogging: boolean;
+  /**
+   * Exact origins allowed to call this API cross-origin with credentials.
+   * Empty when `CORS_ALLOWED_ORIGINS` is absent or blank -- same-origin
+   * traffic needs no CORS headers at all, so an empty allowlist is a valid,
+   * safe default, not a misconfiguration. See `apps/api/src/lib/http/cors.ts`.
+   */
+  corsAllowedOrigins: string[];
 }
 
 export function loadEnv(source: Record<string, string | undefined>): AppEnv {
@@ -136,5 +154,15 @@ export function loadEnv(source: Record<string, string | undefined>): AppEnv {
     googleOauthClientId: value.GOOGLE_OAUTH_CLIENT_ID,
     appleOauthClientId: value.APPLE_OAUTH_CLIENT_ID,
     emailVerboseLogging: value.EMAIL_VERBOSE_LOGGING === 'true',
+    corsAllowedOrigins: parseCorsAllowedOrigins(value.CORS_ALLOWED_ORIGINS),
   };
+}
+
+/** Splits on commas, trims whitespace, and drops empty entries (a trailing comma, a blank value, or an absent variable all become `[]`). */
+function parseCorsAllowedOrigins(raw: string | undefined): string[] {
+  if (!raw) return [];
+  return raw
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter((origin) => origin.length > 0);
 }

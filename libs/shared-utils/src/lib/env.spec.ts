@@ -113,4 +113,24 @@ describe('loadEnv', () => {
     expect(env.googleOauthClientId).toBe('google-client-id');
     expect(env.appleOauthClientId).toBe('apple-client-id');
   });
+
+  it('defaults corsAllowedOrigins to an empty array when CORS_ALLOWED_ORIGINS is absent', () => {
+    const env = loadEnv(valid);
+    expect(env.corsAllowedOrigins).toEqual([]);
+  });
+
+  it('splits CORS_ALLOWED_ORIGINS on commas and trims whitespace', () => {
+    const env = loadEnv({ ...valid, CORS_ALLOWED_ORIGINS: 'capacitor://localhost, https://localhost ,http://localhost:3001' });
+    expect(env.corsAllowedOrigins).toEqual(['capacitor://localhost', 'https://localhost', 'http://localhost:3001']);
+  });
+
+  it('drops empty entries from CORS_ALLOWED_ORIGINS (trailing comma, blank value)', () => {
+    const env = loadEnv({ ...valid, CORS_ALLOWED_ORIGINS: 'capacitor://localhost,,  ,' });
+    expect(env.corsAllowedOrigins).toEqual(['capacitor://localhost']);
+  });
+
+  it('treats an explicitly empty CORS_ALLOWED_ORIGINS the same as absent', () => {
+    const env = loadEnv({ ...valid, CORS_ALLOWED_ORIGINS: '' });
+    expect(env.corsAllowedOrigins).toEqual([]);
+  });
 });

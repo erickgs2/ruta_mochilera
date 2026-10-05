@@ -367,6 +367,11 @@ export function buildOpenApiDocument() {
     method: 'post',
     path: '/api/v1/auth/login',
     tags: ['auth'],
+    description:
+      'The refresh token rides an httpOnly, Secure, SameSite=Strict Set-Cookie, never the JSON body -- ' +
+      'unless the caller sends X-Client-Platform: native (the packaged Capacitor app; see Task 15b), ' +
+      'in which case no cookie is set and tokens.refreshToken is populated instead, for that one caller ' +
+      'to persist in native secure storage (Keychain/Keystore).',
     request: { body: requestBody(loginRequestSchema) },
     responses: {
       200: { description: 'Session issued', ...json(sessionResponseSchema) },
@@ -488,7 +493,12 @@ export function buildOpenApiDocument() {
     path: '/api/v1/auth/refresh',
     tags: ['auth'],
     description:
-      'No request body: the refresh token is read from the httpOnly rm_refresh_token cookie set by /auth/login, never from JSON. The response sets a fresh cookie via Set-Cookie.',
+      'No request body: the refresh token is read from the httpOnly rm_refresh_token cookie set by ' +
+      '/auth/login when present. A caller with no such cookie (the packaged Capacitor app -- see Task ' +
+      '15b) sends the token via the X-Refresh-Token header instead, and must also repeat ' +
+      'X-Client-Platform: native to receive the rotated refresh token back in tokens.refreshToken ' +
+      'rather than a new Set-Cookie. A refresh authenticated by the cookie always answers with a new ' +
+      'cookie and never puts the token in the body, whatever X-Client-Platform says.',
     responses: {
       200: { description: 'Session rotated', ...json(sessionResponseSchema) },
       401: problem('Missing, unknown, expired or replayed refresh token'),
@@ -501,7 +511,10 @@ export function buildOpenApiDocument() {
     path: '/api/v1/auth/logout',
     tags: ['auth'],
     description:
-      'No request body: the refresh token is read from the rm_refresh_token cookie. Always succeeds (idempotent) and always clears the cookie via Set-Cookie, even when there was no live session.',
+      'No request body: the refresh token is read from the rm_refresh_token cookie, or from the ' +
+      'X-Refresh-Token header for a caller with no such cookie (the packaged Capacitor app -- see Task ' +
+      '15b). Always succeeds (idempotent) and always clears the cookie via Set-Cookie, even when there ' +
+      'was no live session or the caller never had one to begin with.',
     responses: {
       204: { description: 'Session revoked' },
     },

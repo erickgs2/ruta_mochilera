@@ -24,6 +24,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** @description The refresh token rides an httpOnly, Secure, SameSite=Strict Set-Cookie, never the JSON body -- unless the caller sends X-Client-Platform: native (the packaged Capacitor app; see Task 15b), in which case no cookie is set and tokens.refreshToken is populated instead, for that one caller to persist in native secure storage (Keychain/Keystore). */
         post: {
             parameters: {
                 query?: never;
@@ -522,7 +523,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** @description No request body: the refresh token is read from the httpOnly rm_refresh_token cookie set by /auth/login, never from JSON. The response sets a fresh cookie via Set-Cookie. */
+        /** @description No request body: the refresh token is read from the httpOnly rm_refresh_token cookie set by /auth/login when present. A caller with no such cookie (the packaged Capacitor app -- see Task 15b) sends the token via the X-Refresh-Token header instead, and must also repeat X-Client-Platform: native to receive the rotated refresh token back in tokens.refreshToken rather than a new Set-Cookie. A refresh authenticated by the cookie always answers with a new cookie and never puts the token in the body, whatever X-Client-Platform says. */
         post: {
             parameters: {
                 query?: never;
@@ -576,7 +577,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** @description No request body: the refresh token is read from the rm_refresh_token cookie. Always succeeds (idempotent) and always clears the cookie via Set-Cookie, even when there was no live session. */
+        /** @description No request body: the refresh token is read from the rm_refresh_token cookie, or from the X-Refresh-Token header for a caller with no such cookie (the packaged Capacitor app -- see Task 15b). Always succeeds (idempotent) and always clears the cookie via Set-Cookie, even when there was no live session or the caller never had one to begin with. */
         post: {
             parameters: {
                 query?: never;
@@ -2633,6 +2634,7 @@ export interface components {
             tokens: {
                 accessToken: string;
                 expiresInSeconds: number;
+                refreshToken?: string;
             };
         };
         Problem: {

@@ -17,17 +17,33 @@ export const authenticatedUserSchema = z.object({
 });
 
 /**
- * The refresh token is deliberately absent here: it never appears in a JSON
- * response body. `/auth/login` and `/auth/refresh` deliver it only as an
- * httpOnly, Secure, SameSite=Strict cookie (see
- * `apps/api/src/lib/http/refresh-cookie.ts` and the spec's security section,
- * §10) -- a token a script on the page can read is a token XSS can steal.
+ * `refreshToken` is absent from this response for a web caller -- the only
+ * client this API served until Task 15b. `/auth/login` and `/auth/refresh`
+ * deliver the token to the browser only as an httpOnly, Secure,
+ * SameSite=Strict cookie (see `apps/api/src/lib/http/refresh-cookie.ts` and
+ * the spec's security section, §10) -- a token a script on the page can
+ * read is a token XSS can steal, and that invariant is unchanged and
+ * enforced at the route level (`sessionResponse`'s `'web'` branch never
+ * sets this field; see `auth.integration.spec.ts`).
+ *
+ * It is `optional()`, not absent from the type entirely, because Task 15
+ * found that same httpOnly cookie does not survive inside a packaged
+ * Capacitor app (cross-origin, `SameSite=Strict` blocks it) --
+ * `.superpowers/sdd/2026-10-03-fase-2a-reservas-y-pagos/task-15-report.md`.
+ * The chosen fix reverts the native client to Phase 1's original model:
+ * secure OS storage (Keychain/Keystore) instead of a cookie, which means the
+ * native app's own JS must receive the raw token once, from this very
+ * response, in order to hand it to that storage. The server only takes this
+ * branch when the caller marks itself `X-Client-Platform: native`
+ * (`clientPlatform` in `refresh-cookie.ts`) -- nothing a browser does can
+ * produce that marker, so this optional field never appears for one.
  */
 export const sessionResponseSchema = z.object({
   user: authenticatedUserSchema,
   tokens: z.object({
     accessToken: z.string(),
     expiresInSeconds: z.number().int().positive(),
+    refreshToken: z.string().optional(),
   }),
 });
 

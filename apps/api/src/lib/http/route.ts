@@ -1,7 +1,9 @@
 import { requireAnyPermission, requirePermission, type Actor, type PermissionKey } from '@rm/domain-rbac';
 import { fail, ok, type Result } from '@rm/shared-utils';
 import type { ZodType } from 'zod';
+import { config } from '../config';
 import { getActor } from './actor';
+import { applyCorsHeaders } from './cors';
 import { problemResponse } from './problem';
 
 /**
@@ -101,7 +103,7 @@ type NextRouteArgs = { params: Promise<Record<string, string>> };
  * legitimate and must pass). Matched on the media type alone, case
  * insensitively, ignoring everything after the first `;`.
  */
-function hasJsonContentType(request: Request): boolean {
+export function hasJsonContentType(request: Request): boolean {
   const contentType = request.headers.get('content-type');
   if (!contentType) return false;
   const mediaType = contentType.split(';', 1)[0]?.trim().toLowerCase();
@@ -195,43 +197,63 @@ export function route<TBody = undefined, TResult = unknown>(
   options: RouteOptions<TBody, TResult>
 ) {
   return async (request: Request, context?: NextRouteArgs): Promise<Response> => {
-    try {
-      const params = context ? await context.params : {};
+    const response = await handle(options, request, context);
+    // The single exit point: every response this wrapper ever returns --
+    // success, a domain failure, an auth/permission rejection, or the 500
+    // catch-all below -- passes through here before it leaves the process.
+    // `applyCorsHeaders` is a no-op unless `Origin` matches
+    // `corsAllowedOrigins`, so the same-origin admin/web path (no `Origin`
+    // header, or one Nginx never sends cross-site) is untouched; see
+    // `apps/api/src/lib/http/cors.ts`. Centralising it here, instead of in
+    // every route.ts, is also what guarantees a cross-origin caller can read
+    // an *error* response (a failed login, an expired token) and not just a
+    // 200 -- a fetch whose response headers don't carry CORS is opaque to
+    // the page's own JS regardless of status code.
+    return applyCorsHeaders(response, request, config().corsAllowedOrigins);
+  };
+}
 
-      if (options.auth === 'public') {
-        const body = await parseBody(options.body, request);
-        if (!body.ok) return problemResponse(body.error);
-        const result = await options.handler({ actor: null, body: body.value, params, request });
-        return options.respond ? options.respond(result, request) : toResponse(result, options.successStatus);
-      }
+async function handle<TBody, TResult>(
+  options: RouteOptions<TBody, TResult>,
+  request: Request,
+  context?: NextRouteArgs
+): Promise<Response> {
+  try {
+    const params = context ? await context.params : {};
 
-      // Authenticate first: a null actor is always 401, whether or not this
-      // route additionally requires a permission.
-      const actor = await getActor(request);
-      if (!actor) return problemResponse({ code: 'TOKEN_INVALID' });
-
-      if (options.permission) {
-        const allowed = requirePermission(actor, options.permission);
-        if (!allowed.ok) return problemResponse(allowed.error);
-      }
-      if (options.anyPermission) {
-        const allowed = requireAnyPermission(actor, options.anyPermission);
-        if (!allowed.ok) return problemResponse(allowed.error);
-      }
-
+    if (options.auth === 'public') {
       const body = await parseBody(options.body, request);
       if (!body.ok) return problemResponse(body.error);
-      const result = await options.handler({ actor, body: body.value, params, request });
+      const result = await options.handler({ actor: null, body: body.value, params, request });
       return options.respond ? options.respond(result, request) : toResponse(result, options.successStatus);
-    } catch (error) {
-      // Never let an unexpected exception escape as a bare stack trace to the
-      // client. Logged server-side for diagnosis; the response carries only a
-      // stable code, same as every other problem+json body.
-      console.error('Unhandled route error', error);
-      return new Response(
-        JSON.stringify({ type: 'about:blank', title: 'INTERNAL_ERROR', status: 500, code: 'INTERNAL_ERROR' }),
-        { status: 500, headers: { 'content-type': 'application/problem+json' } }
-      );
     }
-  };
+
+    // Authenticate first: a null actor is always 401, whether or not this
+    // route additionally requires a permission.
+    const actor = await getActor(request);
+    if (!actor) return problemResponse({ code: 'TOKEN_INVALID' });
+
+    if (options.permission) {
+      const allowed = requirePermission(actor, options.permission);
+      if (!allowed.ok) return problemResponse(allowed.error);
+    }
+    if (options.anyPermission) {
+      const allowed = requireAnyPermission(actor, options.anyPermission);
+      if (!allowed.ok) return problemResponse(allowed.error);
+    }
+
+    const body = await parseBody(options.body, request);
+    if (!body.ok) return problemResponse(body.error);
+    const result = await options.handler({ actor, body: body.value, params, request });
+    return options.respond ? options.respond(result, request) : toResponse(result, options.successStatus);
+  } catch (error) {
+    // Never let an unexpected exception escape as a bare stack trace to the
+    // client. Logged server-side for diagnosis; the response carries only a
+    // stable code, same as every other problem+json body.
+    console.error('Unhandled route error', error);
+    return new Response(
+      JSON.stringify({ type: 'about:blank', title: 'INTERNAL_ERROR', status: 500, code: 'INTERNAL_ERROR' }),
+      { status: 500, headers: { 'content-type': 'application/problem+json' } }
+    );
+  }
 }

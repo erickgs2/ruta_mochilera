@@ -3,6 +3,25 @@ import { TestBed } from '@angular/core/testing';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { API_BASE_URL } from '@rm/api-client';
 import { AuthService } from './auth.service';
+import { REFRESH_TOKEN_STORE, type RefreshTokenStore } from './refresh-token-store';
+
+/** Records every call this test cares about, instead of asserting on a real secure-storage plugin. */
+class RecordingRefreshTokenStore implements RefreshTokenStore {
+  persisted: Array<{ refreshToken?: string }> = [];
+  cleared = 0;
+
+  requestHeaders(): Record<string, string> {
+    return {};
+  }
+
+  async persist(tokens: { refreshToken?: string }): Promise<void> {
+    this.persisted.push(tokens);
+  }
+
+  async clear(): Promise<void> {
+    this.cleared += 1;
+  }
+}
 
 // The refresh token never appears here: it travels only as the httpOnly
 // cookie the real API sets (see `apps/api/src/lib/http/refresh-cookie.ts`).
@@ -89,5 +108,59 @@ describe('AuthService', () => {
     expect(service.isAuthenticated()).toBe(false);
     expect(service.accessToken()).toBeNull();
     expect(localStorage.getItem('rm.session')).toBeNull();
+  });
+});
+
+// Task 15b: a platform-aware RefreshTokenStore, injected once at composition.
+// AuthService must call it uniformly (no platform branching of its own) --
+// these specs prove that by swapping in a fake and watching it get called,
+// rather than asserting on the default no-op (already covered above: every
+// test there never provides REFRESH_TOKEN_STORE at all, and still passes,
+// which is exactly the "web behaviour is unchanged by default" guarantee).
+describe('AuthService with an injected RefreshTokenStore', () => {
+  let service: AuthService;
+  let http: HttpTestingController;
+  let store: RecordingRefreshTokenStore;
+
+  beforeEach(() => {
+    localStorage.clear();
+    store = new RecordingRefreshTokenStore();
+    TestBed.configureTestingModule({
+      imports: [HttpClientTestingModule],
+      providers: [{ provide: API_BASE_URL, useValue: '' }, { provide: REFRESH_TOKEN_STORE, useValue: store }],
+    });
+    service = TestBed.inject(AuthService);
+    http = TestBed.inject(HttpTestingController);
+  });
+
+  it('hands the login response tokens to the store', async () => {
+    const promise = service.login('a@b.test', 'secret');
+    http.expectOne('/api/v1/auth/login').flush({
+      user: { id: 'u1', email: 'a@b.test', type: 'STAFF', locale: 'es', fullName: 'Ana', permissions: [] },
+      tokens: { accessToken: 'access-1', refreshToken: 'refresh-1', expiresInSeconds: 900 },
+    });
+    await promise;
+
+    expect(store.persisted).toEqual([{ accessToken: 'access-1', refreshToken: 'refresh-1', expiresInSeconds: 900 }]);
+  });
+
+  it('clears the store on logout, alongside the local session', async () => {
+    const login = service.login('a@b.test', 'secret');
+    http.expectOne('/api/v1/auth/login').flush({
+      user: { id: 'u1', email: 'a@b.test', type: 'STAFF', locale: 'es', fullName: 'Ana', permissions: [] },
+      tokens: { accessToken: 'access-1', expiresInSeconds: 900 },
+    });
+    await login;
+
+    const logout = service.logout();
+    http.expectOne('/api/v1/auth/logout').flush(null);
+    await logout;
+
+    expect(store.cleared).toBe(1);
+  });
+
+  it('clears the store when clear() is called directly (the interceptor\'s failed-refresh path)', () => {
+    service.clear();
+    expect(store.cleared).toBe(1);
   });
 });

@@ -204,4 +204,113 @@ describe('auth endpoints', () => {
     expect(response.status).toBe(204);
     expect(response.headers.get('set-cookie')).toContain('Max-Age=0');
   });
+
+  // Task 15b: the packaged Capacitor app's httpOnly cookie never survives
+  // (SameSite=Strict, cross-origin WebView -- see task-15-report.md), so it
+  // identifies itself with `X-Client-Platform: native` and gets the refresh
+  // token delivered in-band instead. Every test above this point sends no
+  // such header and must keep behaving exactly as it always has -- that is
+  // the actual, enforced version of "a web caller never gets the refresh
+  // token in the body", now proven at the route level rather than only in
+  // the contract's own unit test.
+  describe('the native transport (X-Client-Platform: native, X-Refresh-Token)', () => {
+    function postNative(handler: typeof loginRoute, body: unknown) {
+      return handler(
+        new Request('http://localhost/api/v1/auth', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', 'x-client-platform': 'native' },
+          body: JSON.stringify(body),
+        })
+      );
+    }
+
+    function postNativeWithToken(handler: typeof refreshRoute, refreshToken: string | null) {
+      return handler(
+        new Request('http://localhost/api/v1/auth', {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            'x-client-platform': 'native',
+            ...(refreshToken ? { 'x-refresh-token': refreshToken } : {}),
+          },
+        })
+      );
+    }
+
+    it('login delivers the refresh token in the JSON body and sets no cookie', async () => {
+      await seedAdmin();
+      const response = await postNative(loginRoute, { email: 'admin@agency.test', password: 'Correct-Horse-1' });
+
+      expect(response.status).toBe(200);
+      const body = await response.json();
+      expect(body.tokens.accessToken).toBeTruthy();
+      expect(typeof body.tokens.refreshToken).toBe('string');
+      expect(body.tokens.refreshToken.length).toBeGreaterThan(0);
+      expect(response.headers.get('set-cookie')).toBeNull();
+    });
+
+    it('a plain web login (no header) never carries a refresh token in the body, even though the schema now allows the field', async () => {
+      await seedAdmin();
+      const response = await post(loginRoute, { email: 'admin@agency.test', password: 'Correct-Horse-1' });
+      const body = await response.json();
+      expect(body.tokens).not.toHaveProperty('refreshToken');
+    });
+
+    it('refreshes using the token from the body -- no cookie at all, exactly the native caller\'s real situation', async () => {
+      await seedAdmin();
+      const login = await postNative(loginRoute, { email: 'admin@agency.test', password: 'Correct-Horse-1' });
+      const { refreshToken } = (await login.json()).tokens;
+
+      const refreshed = await postNativeWithToken(refreshRoute, refreshToken);
+
+      expect(refreshed.status).toBe(200);
+      const refreshedBody = await refreshed.json();
+      expect(refreshedBody.tokens.accessToken).toBeTruthy();
+      expect(typeof refreshedBody.tokens.refreshToken).toBe('string');
+      expect(refreshed.headers.get('set-cookie')).toBeNull();
+    });
+
+    // The header is a client's *claim*, and a same-origin script can make it
+    // too: an XSS payload on the admin panel could POST /auth/refresh with
+    // `X-Client-Platform: native` and the browser would still attach the
+    // httpOnly cookie. If the claim alone decided the transport, the rotated
+    // refresh token would land in a JSON body that script can read --
+    // exactly what the httpOnly cookie exists to prevent. A refresh that was
+    // authenticated BY the cookie therefore always answers on the cookie
+    // transport, whatever the header says.
+    it('a cookie-authenticated refresh never moves the token into the body, even when the caller claims to be native', async () => {
+      await seedAdmin();
+      const login = await post(loginRoute, { email: 'admin@agency.test', password: 'Correct-Horse-1' });
+      const cookie = cookiePairFrom(login);
+
+      const refreshed = await refreshRoute(
+        new Request('http://localhost/api/v1/auth', {
+          method: 'POST',
+          headers: { cookie, 'x-client-platform': 'native' },
+        })
+      );
+
+      expect(refreshed.status).toBe(200);
+      expect((await refreshed.json()).tokens).not.toHaveProperty('refreshToken');
+      expect(cookiePairFrom(refreshed)).not.toBe(cookie);
+    });
+
+    it('rejects a refresh with no cookie and no body token', async () => {
+      const response = await postNativeWithToken(refreshRoute, null);
+      expect(response.status).toBe(401);
+      expect((await response.json()).code).toBe('TOKEN_INVALID');
+    });
+
+    it('logs out using the token from the body and revokes the session', async () => {
+      await seedAdmin();
+      const login = await postNative(loginRoute, { email: 'admin@agency.test', password: 'Correct-Horse-1' });
+      const { refreshToken } = (await login.json()).tokens;
+
+      const logout = await postNativeWithToken(logoutRoute, refreshToken);
+      expect(logout.status).toBe(204);
+
+      const afterLogout = await postNativeWithToken(refreshRoute, refreshToken);
+      expect(afterLogout.status).toBe(401);
+    });
+  });
 });

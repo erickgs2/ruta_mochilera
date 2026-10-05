@@ -14,6 +14,7 @@ const baseEnv: AppEnv = {
   storageDriver: 'local',
   storageLocalRoot: './storage',
   emailVerboseLogging: false,
+  corsAllowedOrigins: [],
 };
 
 describe('createPaymentProvider', () => {

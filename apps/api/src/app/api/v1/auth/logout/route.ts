@@ -2,14 +2,17 @@ import { logout } from '@rm/domain-identity';
 import { ok } from '@rm/shared-utils';
 import { db } from '../../../../../lib/db';
 import { route } from '../../../../../lib/http/route';
-import { clearRefreshCookieHeader, readRefreshCookie } from '../../../../../lib/http/refresh-cookie';
+import { clearRefreshCookieHeader, readRefreshToken } from '../../../../../lib/http/refresh-cookie';
 
 /**
- * No request body: the refresh token to revoke is read from the cookie, same
- * as `/auth/refresh`. Closing an already-closed session (no cookie, or a
- * cookie the server no longer recognises) is still a success -- `logout()`
- * itself never fails -- and the cookie is always cleared in the response so
- * the browser stops sending a token the server has revoked.
+ * The token to revoke is read from the cookie for a web caller, same as
+ * `/auth/refresh` -- or from the `X-Refresh-Token` header for a native
+ * caller, since its cookie never survived in the first place (see
+ * `readRefreshToken`). Closing an already-closed session (neither present,
+ * or a token the server no longer recognises) is still a success --
+ * `logout()` itself never fails -- and the cookie is always cleared in the
+ * response so a web browser stops sending a token the server has revoked;
+ * clearing a cookie the native caller never had is a harmless no-op for it.
  */
 export const POST = route<undefined, null>({
   auth: 'public',
@@ -20,7 +23,7 @@ export const POST = route<undefined, null>({
     return response;
   },
   handler: async ({ request }) => {
-    const refreshToken = readRefreshCookie(request);
+    const refreshToken = readRefreshToken(request);
     return refreshToken ? logout(db(), { refreshToken }) : ok(null);
   },
 });

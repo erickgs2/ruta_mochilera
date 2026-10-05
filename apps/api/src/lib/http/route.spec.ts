@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import { ok } from '@rm/shared-utils';
 import type { Actor, PermissionKey } from '@rm/domain-rbac';
@@ -11,6 +11,7 @@ import type { Actor, PermissionKey } from '@rm/domain-rbac';
 vi.mock('./actor', () => ({ getActor: vi.fn() }));
 
 import { getActor } from './actor';
+import { config, setConfig } from '../config';
 import { route } from './route';
 
 const mockedGetActor = vi.mocked(getActor);
@@ -312,6 +313,59 @@ describe('route', () => {
       expect(response.status).toBe(401);
       expect((await response.json()).code).toBe('TOKEN_INVALID');
       expect(handler).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('CORS', () => {
+    afterEach(() => setConfig(undefined));
+
+    it('adds no CORS headers at all when the request carries no Origin -- the same-origin admin/web path must not change', async () => {
+      setConfig({ ...config(), corsAllowedOrigins: ['capacitor://localhost'] });
+      const handler = vi.fn(async () => ok('fine'));
+      const endpoint = route({ auth: 'public', handler });
+
+      const response = await endpoint(new Request('http://localhost/x'));
+
+      expect(response.headers.get('access-control-allow-origin')).toBeNull();
+    });
+
+    it('adds the CORS headers to a successful response from an allowed origin', async () => {
+      setConfig({ ...config(), corsAllowedOrigins: ['capacitor://localhost'] });
+      const handler = vi.fn(async () => ok('fine'));
+      const endpoint = route({ auth: 'public', handler });
+
+      const response = await endpoint(
+        new Request('http://localhost/x', { headers: { origin: 'capacitor://localhost' } })
+      );
+
+      expect(response.headers.get('access-control-allow-origin')).toBe('capacitor://localhost');
+      expect(response.headers.get('access-control-allow-credentials')).toBe('true');
+    });
+
+    it('adds the CORS headers to a failure response too, so a cross-origin caller can read a 401/403/500 body', async () => {
+      setConfig({ ...config(), corsAllowedOrigins: ['capacitor://localhost'] });
+      mockedGetActor.mockResolvedValue(null);
+      const handler = vi.fn(async () => ok('unreachable'));
+      const endpoint = route({ handler });
+
+      const response = await endpoint(
+        new Request('http://localhost/x', { headers: { origin: 'capacitor://localhost' } })
+      );
+
+      expect(response.status).toBe(401);
+      expect(response.headers.get('access-control-allow-origin')).toBe('capacitor://localhost');
+    });
+
+    it('adds no CORS headers when the Origin does not match the allowlist', async () => {
+      setConfig({ ...config(), corsAllowedOrigins: ['capacitor://localhost'] });
+      const handler = vi.fn(async () => ok('fine'));
+      const endpoint = route({ auth: 'public', handler });
+
+      const response = await endpoint(
+        new Request('http://localhost/x', { headers: { origin: 'https://evil.example' } })
+      );
+
+      expect(response.headers.get('access-control-allow-origin')).toBeNull();
     });
   });
 });

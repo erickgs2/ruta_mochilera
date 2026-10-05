@@ -67,12 +67,18 @@ describe('sessionResponseSchema', () => {
     expect(parsed.success).toBe(true);
   });
 
-  it('rejects a payload that still carries a refresh token in the body', () => {
-    // The refresh token must never appear in a JSON response -- it belongs
-    // only in the httpOnly cookie `/auth/login` sets. `.strict()` is not used
-    // on `tokens` (an extra field would simply be stripped, not rejected) so
-    // this test documents the shape rather than enforcing rejection; see
-    // `sessionResponseSchema`'s own doc comment for the reasoning.
+  it('accepts a payload that carries a refresh token -- the native transport (Task 15b)', () => {
+    // Unlike before Task 15b, `refreshToken` is now a real, typed, optional
+    // field: the packaged Capacitor app's httpOnly cookie does not survive
+    // cross-origin (Task 15), so its session model reverts to receiving the
+    // raw token once and storing it itself (Keychain/Keystore). The server
+    // only ever populates this field for a caller that marks itself
+    // `X-Client-Platform: native` -- see `sessionResponseSchema`'s doc
+    // comment and `apps/api/src/lib/http/refresh-cookie.ts`'s `clientPlatform`.
+    // *That* gate -- a plain browser never gets this field in practice -- is
+    // enforced at the route level, not by this schema; see
+    // `auth.integration.spec.ts` for the test that actually proves a default
+    // (web) request never receives it.
     const parsed = sessionResponseSchema.safeParse({
       user: {
         id: '550e8400-e29b-41d4-a716-446655440000',
@@ -83,6 +89,21 @@ describe('sessionResponseSchema', () => {
         permissions: [],
       },
       tokens: { accessToken: 'token', refreshToken: 'refresh', expiresInSeconds: 900 },
+    });
+    expect(parsed.success && parsed.data.tokens.refreshToken).toBe('refresh');
+  });
+
+  it('accepts a payload without a refresh token -- the web default', () => {
+    const parsed = sessionResponseSchema.safeParse({
+      user: {
+        id: '550e8400-e29b-41d4-a716-446655440000',
+        email: 'admin@agency.test',
+        type: 'STAFF',
+        locale: 'es',
+        fullName: 'Admin',
+        permissions: [],
+      },
+      tokens: { accessToken: 'token', expiresInSeconds: 900 },
     });
     expect(parsed.success && parsed.data.tokens).not.toHaveProperty('refreshToken');
   });
