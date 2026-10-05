@@ -7,10 +7,11 @@ import {
   type AbstractControl,
   type ValidationErrors,
 } from '@angular/forms';
-import { ActivatedRoute, RouterLink } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
 import { TranslatePipe } from '@ngx-translate/core';
 import { AuthApi } from '@rm/api-client';
+import { AuthService } from '@rm/auth-web';
 import { ErrorCodePipe } from '../../shared/error-code.pipe';
 
 /** Group-level check: the confirmation field is client-only, the API never sees it. */
@@ -28,7 +29,13 @@ function passwordsMatch(group: AbstractControl): ValidationErrors | null {
  * `ErrorCodePipe`: the global translation of that code talks about an
  * expired session, which is wrong here. Every other code goes through the
  * pipe. On success the server has revoked every session of the account, so
- * the screen only offers the way back to sign in.
+ * this device's session is cleared locally too -- its access token would
+ * otherwise keep working until it expires -- and the screen only offers the
+ * way back to sign in. `clear()`, not `logout()`: logout would send a
+ * refresh token the server has just revoked.
+ *
+ * The token is read once and then removed from the address bar with
+ * `replaceUrl`, so it is neither left on screen nor kept in the history.
  */
 @Component({
   selector: 'rm-reset-password',
@@ -38,9 +45,12 @@ function passwordsMatch(group: AbstractControl): ValidationErrors | null {
 })
 export class ResetPasswordComponent {
   private readonly api = inject(AuthApi);
+  private readonly auth = inject(AuthService);
   private readonly formBuilder = inject(FormBuilder);
+  private readonly route = inject(ActivatedRoute);
+  private readonly router = inject(Router);
 
-  readonly token = inject(ActivatedRoute).snapshot.queryParamMap.get('token') ?? '';
+  readonly token = this.route.snapshot.queryParamMap.get('token') ?? '';
   readonly loading = signal(false);
   readonly done = signal(false);
   readonly linkInvalid = signal(this.token === '');
@@ -53,6 +63,17 @@ export class ResetPasswordComponent {
     },
     { validators: passwordsMatch }
   );
+
+  constructor() {
+    if (this.route.snapshot.queryParamMap.has('token')) {
+      void this.router.navigate([], {
+        relativeTo: this.route,
+        queryParams: { token: null },
+        queryParamsHandling: 'merge',
+        replaceUrl: true,
+      });
+    }
+  }
 
   showPasswordError(): boolean {
     const control = this.form.controls.newPassword;
@@ -75,6 +96,7 @@ export class ResetPasswordComponent {
 
     try {
       await firstValueFrom(this.api.resetPassword({ token: this.token, newPassword: this.form.getRawValue().newPassword }));
+      this.auth.clear();
       this.done.set(true);
     } catch (error) {
       if (error instanceof HttpErrorResponse && error.error?.code === 'TOKEN_INVALID') this.linkInvalid.set(true);

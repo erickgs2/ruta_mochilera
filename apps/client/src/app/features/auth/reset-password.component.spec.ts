@@ -1,14 +1,24 @@
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
-import { provideRouter } from '@angular/router';
+import { provideRouter, Router } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
 import { provideTranslateService, TranslateService } from '@ngx-translate/core';
 import { API_BASE_URL } from '@rm/api-client';
+import { AuthService, type SessionUser } from '@rm/auth-web';
 import { keyedTranslations, shown } from '../../testing/keyed-translations';
 import { ResetPasswordComponent } from './reset-password.component';
 
 const NEW_PASSWORD = 'a-brand-new-password';
+
+const SIGNED_IN_USER: SessionUser = {
+  id: 'u1',
+  email: 'traveler@example.com',
+  type: 'CUSTOMER',
+  locale: 'es',
+  fullName: 'Traveler',
+  permissions: [],
+};
 
 async function open(url: string) {
   TestBed.configureTestingModule({
@@ -112,6 +122,44 @@ describe('ResetPasswordComponent', () => {
     expect(text(harness)).toContain(shown('auth.reset.success'));
     expect(harness.routeNativeElement!.querySelector('a[href="/login"]')).not.toBeNull();
     expect(harness.routeNativeElement!.querySelector('form')).toBeNull();
+  });
+
+  it('removes the token from the address bar without a history entry, and still sends it', async () => {
+    const navigate = jest.spyOn(Router.prototype, 'navigate');
+    const { harness, component, http } = await open('/reset-password?token=tok-123');
+    await harness.fixture.whenStable();
+
+    expect(TestBed.inject(Router).url).toBe('/reset-password');
+    expect(navigate).toHaveBeenCalledWith([], expect.objectContaining({ queryParams: { token: null }, replaceUrl: true }));
+
+    const request = await submit(harness, component, http, null);
+    expect(request.request.body).toEqual({ token: 'tok-123', newPassword: NEW_PASSWORD });
+    navigate.mockRestore();
+  });
+
+  it('signs this device out locally after a successful reset, since the server revoked every session', async () => {
+    localStorage.clear();
+    const { harness, component, http } = await open('/reset-password?token=tok-123');
+    const auth = TestBed.inject(AuthService);
+    auth.setSessionForTesting('still-valid-access-token', SIGNED_IN_USER);
+
+    await submit(harness, component, http, null);
+
+    // No logout call: the refresh token it would send is already revoked.
+    // `verify()` in afterEach proves no other request went out.
+    expect(auth.isAuthenticated()).toBe(false);
+    expect(auth.accessToken()).toBeNull();
+  });
+
+  it('keeps the local session when the reset fails, since nothing was revoked', async () => {
+    localStorage.clear();
+    const { harness, component, http } = await open('/reset-password?token=used-token');
+    const auth = TestBed.inject(AuthService);
+    auth.setSessionForTesting('still-valid-access-token', SIGNED_IN_USER);
+
+    await submit(harness, component, http, { code: 'TOKEN_INVALID', title: 'Unauthorized' }, 401);
+
+    expect(auth.isAuthenticated()).toBe(true);
   });
 
   it('shows the invalid-link message for TOKEN_INVALID, not the session-expired one', async () => {
