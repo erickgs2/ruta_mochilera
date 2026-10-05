@@ -218,3 +218,45 @@ Ciudad de México. Implementado en `isPastDate` (`@rm/shared-utils/calendar.ts`)
 La lectura de `SystemSetting['organization.timezone']` en sí vive en
 `organizationTimeZone` (`@rm/domain-settings`) — antes copiada aquí, en
 `reservations` y en `payments`; sin cambio de regla.
+
+## El catálogo público (Tarea 14): dos DTOs aparte, no un `select` sobre los existentes
+
+`GET /api/v1/public/trips` y `GET /api/v1/public/trips/{slug}`
+(`listPublishedTrips` / `getPublishedTripBySlug`,
+`libs/domain/trips/src/lib/public-trip-service.ts`) son las dos únicas rutas
+de toda la Fase 2A sin autenticación que leen de la base de datos. Cualquiera
+en Internet puede llamarlas.
+
+Por eso no reutilizan `TripDto`/`TripSummaryDto` con un `select` recortado en
+la capa HTTP: ese recorte viviría en un solo sitio frágil, un `select` de más
+en un commit futuro bastaría para filtrar el costeo de la agencia al público,
+y nada lo haría fallar. En su lugar hay dos tipos propios,
+`PublicTripSummaryDto` y `PublicTripDetailDto`, que **no tienen** los campos
+que no deben salir — no están vacíos, no existen como propiedad en el tipo:
+
+- `budgetTotalCents`, `marginMode`, `marginValue` (el costeo completo, ver
+  `docs/business-rules/costing.md`).
+- `preSoldSeats` (cuánto de la venta es, en realidad, inventario ya
+  colocado fuera del sistema).
+- `createdById` / `createdBy` (quién, dentro de la agencia, dio de alta el
+  viaje).
+
+Lo que sí exponen: fotos (`images[]`, con la misma forma que
+`TripImageDto` salvo `tripId` — `url` se calcula igual en la frontera HTTP,
+ver `withImageUrls` en `apps/api/src/lib/http/trip-response.ts`), itinerario
+y el resto de las traducciones, precio por asiento, fechas de salida y
+regreso, y cupo disponible (la misma `availableSeats` de
+`@rm/domain-reservations` que usa el panel de administración).
+
+**Un viaje que no está `PUBLISHED` responde 404, nunca un detalle vacío.**
+`getPublishedTripBySlug` devuelve el mismo `NOT_FOUND` tanto para un slug que
+no existe como para uno que existe pero está en `DRAFT`, `IN_PROGRESS`,
+`COMPLETED` o `CANCELLED` — un visitante que encuentre (o adivine) el slug de
+un borrador no puede distinguirlo de una errata, el mismo razonamiento que
+`RESERVATION_NOT_OWNED` usa en `@rm/domain-reservations` para una reserva que
+no es del cliente que pregunta.
+
+`libs/domain/trips` ya depende de `@rm/domain-reservations` (ver "Cupo
+disponible" arriba); este archivo reutiliza esa misma dependencia para
+`availableSeats`/`countCommittedSeats`/`countCommittedSeatsForTrips` en vez
+de reinventar el cálculo.

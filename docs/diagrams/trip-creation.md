@@ -82,3 +82,19 @@ flowchart TD
     H -- No --> J[(COMMIT)]
     I --> J
 ```
+
+## Catálogo público: dos DTOs distintos, no el mismo `TripDto` recortado
+
+Ver `docs/business-rules/trips.md`, sección "El catálogo público", para la
+regla completa. El diagrama es sólo la bifurcación: la misma tabla `trips`,
+dos lecturas con formas de salida que nunca convergen.
+
+```mermaid
+flowchart TD
+    A[(tabla trips)] --> B["getTrip / listTrips<br/>(panel, autenticado)"]
+    A --> C["getPublishedTripBySlug / listPublishedTrips<br/>(público, sin autenticación)"]
+    B --> D["TripDto / TripSummaryDto<br/>incluye budgetTotalCents, marginMode,<br/>marginValue, preSoldSeats, createdById"]
+    C --> E{"¿status = PUBLISHED?"}
+    E -- No --> F[NOT_FOUND]
+    E -- Sí --> G["PublicTripDetailDto / PublicTripSummaryDto<br/>fotos, itinerario, precio, fechas,<br/>cupo disponible — nada de costeo ni autoría"]
+```
