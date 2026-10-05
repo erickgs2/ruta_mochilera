@@ -1,0 +1,114 @@
+import { Component, computed, DestroyRef, inject, signal } from '@angular/core';
+import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+import { ActivatedRoute, RouterLink } from '@angular/router';
+import { firstValueFrom } from 'rxjs';
+import { TranslatePipe } from '@ngx-translate/core';
+import { AuthApi } from '@rm/api-client';
+import { ErrorCodePipe } from '../../shared/error-code.pipe';
+import { emailAddress } from './auth-validators';
+
+/**
+ * Matches the backend's default `otp.resend_cooldown_seconds`. The API stays
+ * the authority: if an administrator raises that setting, a resend inside
+ * the longer window comes back as `OTP_RESEND_TOO_SOON` and is shown
+ * translated -- this countdown is only a courtesy that saves most of those
+ * round trips.
+ */
+export const RESEND_COOLDOWN_SECONDS = 60;
+
+/**
+ * `/verify-email?email=…`, where `/register` sends the visitor. Takes the
+ * six-digit code from the email and lets the visitor ask for another one
+ * once the cooldown has passed. The cooldown starts as soon as the screen
+ * opens, because the registration that led here has just sent a code.
+ */
+@Component({
+  selector: 'rm-verify-email',
+  imports: [ReactiveFormsModule, RouterLink, TranslatePipe, ErrorCodePipe],
+  templateUrl: './verify-email.component.html',
+  styleUrl: './auth.scss',
+})
+export class VerifyEmailComponent {
+  private readonly api = inject(AuthApi);
+  private readonly formBuilder = inject(FormBuilder);
+
+  readonly loading = signal(false);
+  readonly verified = signal(false);
+  readonly resending = signal(false);
+  readonly resent = signal(false);
+  readonly error = signal<unknown>(null);
+  readonly cooldownLeft = signal(0);
+  readonly canResend = computed(() => this.cooldownLeft() === 0 && !this.resending());
+
+  readonly form = this.formBuilder.nonNullable.group({
+    email: [inject(ActivatedRoute).snapshot.queryParamMap.get('email') ?? '', [Validators.required, emailAddress]],
+    code: ['', [Validators.required, Validators.pattern(/^\d{6}$/)]],
+  });
+
+  private timer: ReturnType<typeof setInterval> | null = null;
+
+  constructor() {
+    inject(DestroyRef).onDestroy(() => this.stopTimer());
+    this.startCooldown();
+  }
+
+  async submit(): Promise<void> {
+    if (this.loading()) return;
+    if (this.form.invalid) {
+      this.form.markAllAsTouched();
+      return;
+    }
+
+    this.loading.set(true);
+    this.error.set(null);
+    this.resent.set(false);
+    const { email, code } = this.form.getRawValue();
+
+    try {
+      await firstValueFrom(this.api.verifyEmail({ email, code }));
+      this.verified.set(true);
+      this.stopTimer();
+    } catch (error) {
+      this.error.set(error);
+    } finally {
+      this.loading.set(false);
+    }
+  }
+
+  async resend(): Promise<void> {
+    const email = this.form.controls.email;
+    if (!this.canResend()) return;
+    if (email.invalid) {
+      email.markAsTouched();
+      return;
+    }
+
+    this.resending.set(true);
+    this.error.set(null);
+    this.resent.set(false);
+
+    try {
+      await firstValueFrom(this.api.resendCode({ email: email.value }));
+      this.resent.set(true);
+      this.startCooldown();
+    } catch (error) {
+      this.error.set(error);
+    } finally {
+      this.resending.set(false);
+    }
+  }
+
+  private startCooldown(): void {
+    this.stopTimer();
+    this.cooldownLeft.set(RESEND_COOLDOWN_SECONDS);
+    this.timer = setInterval(() => {
+      this.cooldownLeft.update((seconds) => seconds - 1);
+      if (this.cooldownLeft() <= 0) this.stopTimer();
+    }, 1000);
+  }
+
+  private stopTimer(): void {
+    if (this.timer !== null) clearInterval(this.timer);
+    this.timer = null;
+  }
+}

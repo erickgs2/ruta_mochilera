@@ -24,15 +24,56 @@
     "signingIn": "Iniciando sesión…",
     "register": "Crear cuenta",
     "registering": "Creando cuenta…",
-    "registerSuccess": "Cuenta creada. Ya puedes iniciar sesión.",
     "needAccount": "¿No tienes cuenta? Regístrate",
-    "haveAccount": "¿Ya tienes cuenta? Inicia sesión"
+    "haveAccount": "¿Ya tienes cuenta? Inicia sesión",
+    "forgotPassword": "¿Olvidaste tu contraseña?",
+    "backToSignIn": "Volver a iniciar sesión",
+    "validation": {
+      "email": "Escribe un correo válido, por ejemplo nombre@dominio.com.",
+      "birthDate": "Escribe una fecha de nacimiento válida que no sea futura.",
+      "password": "La contraseña debe tener entre 10 y 128 caracteres.",
+      "fullName": "Escribe tu nombre completo (al menos 3 caracteres).",
+      "phone": "Escribe un teléfono válido (al menos 7 caracteres).",
+      "acceptTerms": "Debes aceptar los términos y condiciones.",
+      "code": "El código tiene 6 dígitos."
+    },
+    "verify": {
+      "title": "Verifica tu correo",
+      "intro": "Te enviamos un código de 6 dígitos. Escríbelo aquí para activar tu cuenta.",
+      "code": "Código de verificación",
+      "submit": "Verificar",
+      "submitting": "Verificando…",
+      "success": "Correo verificado. Ya puedes iniciar sesión.",
+      "resend": "Reenviar código",
+      "resendIn": "Reenviar código en {{seconds}} s",
+      "resent": "Te enviamos un código nuevo."
+    },
+    "forgot": {
+      "title": "Recupera tu contraseña",
+      "intro": "Escribe tu correo y te enviaremos un enlace para crear una contraseña nueva.",
+      "submit": "Enviar enlace",
+      "submitting": "Enviando…",
+      "sent": "Si el correo tiene una cuenta, te enviamos un enlace para restablecer tu contraseña. Revisa tu bandeja."
+    }
   },
   "home": {
     "welcome": "Hola, {{fullName}}",
     "checking": "Comprobando la sesión con la API…",
     "sessionSurvived": "La sesión sigue activa después de recargar la página.",
     "checkFailed": "No se pudo comprobar la sesión. Revisa la consola."
+  },
+  "catalogue": {
+    "title": "Viajes",
+    "myAccount": "Mi cuenta",
+    "empty": "Por ahora no hay viajes publicados. Vuelve pronto.",
+    "seatsLeft": "Quedan {{count}} lugares",
+    "soldOut": "Agotado",
+    "reserve": "Reservar",
+    "notFound": "No encontramos ese viaje. Puede que ya no esté disponible.",
+    "backToCatalogue": "Ver todos los viajes",
+    "itinerary": "Itinerario",
+    "includes": "Incluye",
+    "excludes": "No incluye"
   },
   "nav": {
     "trips": "Viajes",
@@ -217,7 +258,7 @@
     "EMAIL_ALREADY_REGISTERED": "Ese correo ya está registrado.",
     "ACCOUNT_DISABLED": "Esta cuenta está deshabilitada.",
     "RATE_LIMITED": "Demasiados intentos. Espera un momento e inténtalo de nuevo.",
-  "PROVIDER_DISABLED": "Este método de inicio de sesión no está disponible por el momento. Intenta con otro.",
+    "PROVIDER_DISABLED": "Este método de inicio de sesión no está disponible por el momento. Intenta con otro.",
     "OTP_EXPIRED": "Ese código ya venció. Solicita uno nuevo.",
     "OTP_INVALID": "El código no es correcto.",
     "OTP_MAX_ATTEMPTS": "Superaste el número de intentos permitidos. Solicita un nuevo código.",

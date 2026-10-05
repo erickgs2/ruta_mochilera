@@ -24,15 +24,56 @@
     "signingIn": "Signing in…",
     "register": "Create account",
     "registering": "Creating account…",
-    "registerSuccess": "Account created. You can now sign in.",
     "needAccount": "Don't have an account? Register",
-    "haveAccount": "Already have an account? Sign in"
+    "haveAccount": "Already have an account? Sign in",
+    "forgotPassword": "Forgot your password?",
+    "backToSignIn": "Back to sign in",
+    "validation": {
+      "email": "Enter a valid email, for example name@domain.com.",
+      "birthDate": "Enter a valid birth date that is not in the future.",
+      "password": "The password must be 10 to 128 characters long.",
+      "fullName": "Enter your full name (at least 3 characters).",
+      "phone": "Enter a valid phone number (at least 7 characters).",
+      "acceptTerms": "You must accept the terms and conditions.",
+      "code": "The code has 6 digits."
+    },
+    "verify": {
+      "title": "Verify your email",
+      "intro": "We sent you a 6-digit code. Enter it here to activate your account.",
+      "code": "Verification code",
+      "submit": "Verify",
+      "submitting": "Verifying…",
+      "success": "Email verified. You can now sign in.",
+      "resend": "Resend code",
+      "resendIn": "Resend code in {{seconds}} s",
+      "resent": "We sent you a new code."
+    },
+    "forgot": {
+      "title": "Reset your password",
+      "intro": "Enter your email and we will send you a link to create a new password.",
+      "submit": "Send link",
+      "submitting": "Sending…",
+      "sent": "If that email has an account, we sent it a link to reset your password. Check your inbox."
+    }
   },
   "home": {
     "welcome": "Hello, {{fullName}}",
     "checking": "Checking the session with the API…",
     "sessionSurvived": "The session is still active after reloading the page.",
     "checkFailed": "Could not check the session. See the console."
+  },
+  "catalogue": {
+    "title": "Trips",
+    "myAccount": "My account",
+    "empty": "There are no published trips right now. Check back soon.",
+    "seatsLeft": "{{count}} seats left",
+    "soldOut": "Sold out",
+    "reserve": "Reserve",
+    "notFound": "We couldn't find that trip. It may no longer be available.",
+    "backToCatalogue": "See all trips",
+    "itinerary": "Itinerary",
+    "includes": "Includes",
+    "excludes": "Not included"
   },
   "nav": {
     "trips": "Trips",
@@ -217,7 +258,7 @@
     "EMAIL_ALREADY_REGISTERED": "That email is already registered.",
     "ACCOUNT_DISABLED": "This account is disabled.",
     "RATE_LIMITED": "Too many attempts. Please wait a moment and try again.",
-  "PROVIDER_DISABLED": "This sign-in method is not available right now. Please try another one.",
+    "PROVIDER_DISABLED": "This sign-in method is not available right now. Please try another one.",
     "OTP_EXPIRED": "That code has expired. Request a new one.",
     "OTP_INVALID": "That code is not correct.",
     "OTP_MAX_ATTEMPTS": "You've exceeded the allowed number of attempts. Request a new code.",

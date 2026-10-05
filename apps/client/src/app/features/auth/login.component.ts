@@ -15,7 +15,7 @@ import { ErrorCodePipe } from '../../shared/error-code.pipe';
   selector: 'rm-login',
   imports: [ReactiveFormsModule, RouterLink, TranslatePipe, ErrorCodePipe],
   templateUrl: './login.component.html',
-  styleUrl: './login.component.scss',
+  styleUrl: './auth.scss',
 })
 export class LoginComponent {
   private readonly auth = inject(AuthService);

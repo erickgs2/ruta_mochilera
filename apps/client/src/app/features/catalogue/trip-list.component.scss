@@ -1,0 +1,48 @@
+.trip-grid {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+}
+
+.trip-card {
+  border: 1px solid #ddd;
+  border-radius: 12px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+
+  img {
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    object-fit: cover;
+  }
+
+  h2 {
+    font-size: 1.125rem;
+    margin: 0 0 0.5rem;
+
+    a {
+      color: inherit;
+      text-decoration: none;
+    }
+  }
+}
+
+.trip-card-body {
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+
+  p {
+    margin: 0;
+  }
+
+  .trip-reserve {
+    margin-top: 0.75rem;
+    align-self: flex-start;
+  }
+}

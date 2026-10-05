@@ -2,42 +2,60 @@
   <div class="auth-card">
     <h1>{{ 'auth.register' | translate }}</h1>
 
-    <form [formGroup]="form" (ngSubmit)="submit()">
+    <form [formGroup]="form" (ngSubmit)="submit()" novalidate>
       <label>
         {{ 'auth.fullName' | translate }}
         <input type="text" formControlName="fullName" autocomplete="name" />
+        @if (showError('fullName')) {
+          <span class="field-error">{{ 'auth.validation.fullName' | translate }}</span>
+        }
       </label>
 
       <label>
         {{ 'auth.email' | translate }}
         <input type="email" formControlName="email" autocomplete="email" />
+        @if (showError('email')) {
+          <span class="field-error">{{ 'auth.validation.email' | translate }}</span>
+        }
       </label>
 
       <label>
         {{ 'auth.phone' | translate }}
         <input type="tel" formControlName="phone" autocomplete="tel" />
+        @if (showError('phone')) {
+          <span class="field-error">{{ 'auth.validation.phone' | translate }}</span>
+        }
       </label>
 
       <label>
         {{ 'auth.birthDate' | translate }}
-        <input type="date" formControlName="birthDate" />
+        <input type="date" formControlName="birthDate" autocomplete="bday" />
+        @if (showError('birthDate')) {
+          <span class="field-error">{{ 'auth.validation.birthDate' | translate }}</span>
+        }
       </label>
 
       <label>
         {{ 'auth.password' | translate }}
         <input type="password" formControlName="password" autocomplete="new-password" />
+        @if (showError('password')) {
+          <span class="field-error">{{ 'auth.validation.password' | translate }}</span>
+        }
       </label>
 
       <label class="auth-checkbox">
         <input type="checkbox" formControlName="acceptTerms" />
         {{ 'auth.acceptTerms' | translate }}
       </label>
+      @if (showError('acceptTerms')) {
+        <span class="field-error">{{ 'auth.validation.acceptTerms' | translate }}</span>
+      }
 
       @if (error()) {
         <p class="auth-error">{{ error() | rmErrorCode }}</p>
       }
 
-      <button type="submit" [disabled]="form.invalid || loading()">
+      <button type="submit" [disabled]="loading()">
         {{ loading() ? ('auth.registering' | translate) : ('auth.register' | translate) }}
       </button>
     </form>

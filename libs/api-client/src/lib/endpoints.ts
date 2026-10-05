@@ -39,6 +39,26 @@ export class AuthApi {
     return this.api.post('/api/v1/auth/register', body);
   }
 
+  /** Same `null`-body contract as `register()`. Fails with `OTP_INVALID`, `OTP_EXPIRED` or `OTP_MAX_ATTEMPTS`. */
+  verifyEmail(body: Body<'/api/v1/auth/verify-email', 'post'>): Observable<Ok<'/api/v1/auth/verify-email', 'post'>> {
+    return this.api.post('/api/v1/auth/verify-email', body);
+  }
+
+  /**
+   * Answers the same way whether or not `body.email` has an account or is
+   * already verified. Fails with `OTP_RESEND_TOO_SOON` inside the cooldown.
+   */
+  resendCode(body: Body<'/api/v1/auth/resend-code', 'post'>): Observable<Ok<'/api/v1/auth/resend-code', 'post'>> {
+    return this.api.post('/api/v1/auth/resend-code', body);
+  }
+
+  /** Answers the same way whether or not `body.email` has an account -- see `requestPasswordReset`. */
+  forgotPassword(
+    body: Body<'/api/v1/auth/forgot-password', 'post'>
+  ): Observable<Ok<'/api/v1/auth/forgot-password', 'post'>> {
+    return this.api.post('/api/v1/auth/forgot-password', body);
+  }
+
   login(body: Body<'/api/v1/auth/login', 'post'>): Observable<Ok<'/api/v1/auth/login', 'post'>> {
     return this.api.post('/api/v1/auth/login', body);
   }
@@ -110,6 +130,25 @@ export class StaffApi {
     body: Body<'/api/v1/staff/{userId}', 'put'>
   ): Observable<Ok<'/api/v1/staff/{userId}', 'put'>> {
     return this.api.put(`/api/v1/staff/${userId}`, body);
+  }
+}
+
+/**
+ * The public trip catalogue: no authentication, PUBLISHED trips only, and
+ * none of the internal fields (budget, margin, pre-sold seats) `TripsApi`
+ * exposes to staff.
+ */
+@Injectable({ providedIn: 'root' })
+export class PublicCatalogueApi {
+  private readonly api = inject(ApiClient);
+
+  list(): Observable<Ok<'/api/v1/public/trips', 'get'>> {
+    return this.api.get('/api/v1/public/trips');
+  }
+
+  /** Answers 404 `NOT_FOUND` both for an unknown slug and for a trip that is not PUBLISHED. */
+  get(slug: string): Observable<Ok<'/api/v1/public/trips/{slug}', 'get'>> {
+    return this.api.get(`/api/v1/public/trips/${encodeURIComponent(slug)}`);
   }
 }
 

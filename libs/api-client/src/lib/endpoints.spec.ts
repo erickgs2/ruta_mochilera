@@ -2,7 +2,7 @@ import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
 import { API_BASE_URL } from './api-client';
-import { AuthApi, CostingApi, RbacApi, StaffApi, TripsApi } from './endpoints';
+import { AuthApi, CostingApi, PublicCatalogueApi, RbacApi, StaffApi, TripsApi } from './endpoints';
 
 describe('endpoints', () => {
   let httpMock: HttpTestingController;
@@ -30,6 +30,44 @@ describe('endpoints', () => {
     expect(req.request.method).toBe('POST');
     expect(req.request.body).toEqual(body);
     req.flush(null);
+  });
+
+  it('AuthApi.verifyEmail posts the email and the six-digit code', () => {
+    TestBed.inject(AuthApi).verifyEmail({ email: 'ana@example.com', code: '123456' }).subscribe();
+    const req = httpMock.expectOne('https://api.test/api/v1/auth/verify-email');
+    expect(req.request.method).toBe('POST');
+    expect(req.request.body).toEqual({ email: 'ana@example.com', code: '123456' });
+    req.flush(null);
+  });
+
+  it('AuthApi.resendCode posts the email to resend-code', () => {
+    TestBed.inject(AuthApi).resendCode({ email: 'ana@example.com' }).subscribe();
+    const req = httpMock.expectOne('https://api.test/api/v1/auth/resend-code');
+    expect(req.request.method).toBe('POST');
+    expect(req.request.body).toEqual({ email: 'ana@example.com' });
+    req.flush(null);
+  });
+
+  it('AuthApi.forgotPassword posts the email to forgot-password', () => {
+    TestBed.inject(AuthApi).forgotPassword({ email: 'ana@example.com' }).subscribe();
+    const req = httpMock.expectOne('https://api.test/api/v1/auth/forgot-password');
+    expect(req.request.method).toBe('POST');
+    expect(req.request.body).toEqual({ email: 'ana@example.com' });
+    req.flush(null);
+  });
+
+  it('PublicCatalogueApi.list calls GET /api/v1/public/trips', () => {
+    TestBed.inject(PublicCatalogueApi).list().subscribe();
+    const req = httpMock.expectOne('https://api.test/api/v1/public/trips');
+    expect(req.request.method).toBe('GET');
+    req.flush([]);
+  });
+
+  it('PublicCatalogueApi.get calls GET /api/v1/public/trips/{slug}, URL-encoding the slug', () => {
+    TestBed.inject(PublicCatalogueApi).get('oaxaca mágica').subscribe();
+    const req = httpMock.expectOne('https://api.test/api/v1/public/trips/oaxaca%20m%C3%A1gica');
+    expect(req.request.method).toBe('GET');
+    req.flush({});
   });
 
   it('AuthApi.me calls GET /api/v1/me', () => {

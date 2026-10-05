@@ -1,0 +1,46 @@
+<div class="catalogue-page">
+  <header class="catalogue-header">
+    <h1>{{ 'catalogue.title' | translate }}</h1>
+    @if (isAuthenticated()) {
+      <a routerLink="/account">{{ 'catalogue.myAccount' | translate }}</a>
+    } @else {
+      <a routerLink="/login">{{ 'auth.signIn' | translate }}</a>
+    }
+  </header>
+
+  @switch (status()) {
+    @case ('loading') {
+      <p class="catalogue-status">{{ 'common.loading' | translate }}</p>
+    }
+    @case ('error') {
+      <p class="catalogue-error">{{ error() | rmErrorCode }}</p>
+    }
+    @case ('ready') {
+      @if (trips().length === 0) {
+        <p class="catalogue-status">{{ 'catalogue.empty' | translate }}</p>
+      }
+      <ul class="trip-grid">
+        @for (trip of trips(); track trip.slug) {
+          <li class="trip-card">
+            @if (coverImage(trip.images); as cover) {
+              <img [src]="cover.url" [alt]="cover.altText ?? trip.name" loading="lazy" />
+            }
+            <div class="trip-card-body">
+              <h2>
+                <a [routerLink]="['/trips', trip.slug]">{{ trip.name }}</a>
+              </h2>
+              <p class="trip-dates">{{ trip.departureDate | date: 'mediumDate' }} – {{ trip.returnDate | date: 'mediumDate' }}</p>
+              <p class="trip-price">{{ trip.pricePerSeatCents | rmMoney }}</p>
+              @if (trip.availableSeats > 0) {
+                <p class="trip-seats">{{ 'catalogue.seatsLeft' | translate: { count: trip.availableSeats } }}</p>
+                <a class="trip-reserve" [routerLink]="['/trips', trip.slug]">{{ 'catalogue.reserve' | translate }}</a>
+              } @else {
+                <p class="trip-sold-out">{{ 'catalogue.soldOut' | translate }}</p>
+              }
+            </div>
+          </li>
+        }
+      </ul>
+    }
+  }
+</div>
