@@ -34,6 +34,12 @@ export const appRoutes: Routes = [
       import('./features/auth/forgot-password.component').then((m) => m.ForgotPasswordComponent),
   },
   {
+    // The path the password reset email links to: `${CLIENT_APP_URL}/reset-password?token=…`
+    // (see `requestPasswordReset` in `@rm/domain-identity`).
+    path: 'reset-password',
+    loadComponent: () => import('./features/auth/reset-password.component').then((m) => m.ResetPasswordComponent),
+  },
+  {
     path: 'account',
     canActivate: [authGuard],
     loadComponent: () => import('./features/home/home.component').then((m) => m.HomeComponent),

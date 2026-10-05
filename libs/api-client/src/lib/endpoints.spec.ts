@@ -56,6 +56,14 @@ describe('endpoints', () => {
     req.flush(null);
   });
 
+  it('AuthApi.resetPassword posts the token and the new password', () => {
+    TestBed.inject(AuthApi).resetPassword({ token: 'tok', newPassword: 'a-long-enough-password' }).subscribe();
+    const req = httpMock.expectOne('https://api.test/api/v1/auth/reset-password');
+    expect(req.request.method).toBe('POST');
+    expect(req.request.body).toEqual({ token: 'tok', newPassword: 'a-long-enough-password' });
+    req.flush(null);
+  });
+
   it('PublicCatalogueApi.list calls GET /api/v1/public/trips', () => {
     TestBed.inject(PublicCatalogueApi).list().subscribe();
     const req = httpMock.expectOne('https://api.test/api/v1/public/trips');

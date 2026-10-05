@@ -35,7 +35,8 @@
       "fullName": "Enter your full name (at least 3 characters).",
       "phone": "Enter a valid phone number (at least 7 characters).",
       "acceptTerms": "You must accept the terms and conditions.",
-      "code": "The code has 6 digits."
+      "code": "The code has 6 digits.",
+      "passwordMismatch": "The passwords do not match."
     },
     "verify": {
       "title": "Verify your email",
@@ -54,6 +55,16 @@
       "submit": "Send link",
       "submitting": "Sending…",
       "sent": "If that email has an account, we sent it a link to reset your password. Check your inbox."
+    },
+    "reset": {
+      "title": "Create a new password",
+      "newPassword": "New password",
+      "confirmPassword": "Confirm password",
+      "submit": "Save password",
+      "submitting": "Saving…",
+      "success": "Done: your password has changed. For your security we signed you out everywhere; sign in with the new password.",
+      "linkInvalid": "This link no longer works: it may have expired or already been used.",
+      "requestNewLink": "Request a new link"
     }
   },
   "home": {

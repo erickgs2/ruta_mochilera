@@ -11,6 +11,7 @@ const baseEnv: AppEnv = {
   accessTokenTtlSeconds: 900,
   refreshTokenTtlDays: 30,
   appBaseUrl: 'http://localhost:3000',
+  clientAppUrl: 'http://localhost:4201',
   storageDriver: 'local',
   storageLocalRoot: './storage',
   emailVerboseLogging: false,

@@ -35,7 +35,8 @@
       "fullName": "Escribe tu nombre completo (al menos 3 caracteres).",
       "phone": "Escribe un teléfono válido (al menos 7 caracteres).",
       "acceptTerms": "Debes aceptar los términos y condiciones.",
-      "code": "El código tiene 6 dígitos."
+      "code": "El código tiene 6 dígitos.",
+      "passwordMismatch": "Las contraseñas no coinciden."
     },
     "verify": {
       "title": "Verifica tu correo",
@@ -54,6 +55,16 @@
       "submit": "Enviar enlace",
       "submitting": "Enviando…",
       "sent": "Si el correo tiene una cuenta, te enviamos un enlace para restablecer tu contraseña. Revisa tu bandeja."
+    },
+    "reset": {
+      "title": "Crea una contraseña nueva",
+      "newPassword": "Contraseña nueva",
+      "confirmPassword": "Confirma la contraseña",
+      "submit": "Guardar contraseña",
+      "submitting": "Guardando…",
+      "success": "Listo: tu contraseña cambió. Por seguridad cerramos todas tus sesiones; inicia sesión con la contraseña nueva.",
+      "linkInvalid": "Este enlace ya no funciona: puede que haya vencido o que ya se haya usado.",
+      "requestNewLink": "Solicitar un enlace nuevo"
     }
   },
   "home": {

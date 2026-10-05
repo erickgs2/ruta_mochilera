@@ -6,6 +6,7 @@ const valid = {
   DATABASE_URL: 'postgresql://rm:rm@localhost:5432/rm_dev',
   JWT_SECRET: 'x'.repeat(32),
   APP_BASE_URL: 'http://localhost:3000',
+  CLIENT_APP_URL: 'http://localhost:4201',
   STORAGE_DRIVER: 'local',
   STORAGE_LOCAL_ROOT: './storage',
 };
@@ -27,6 +28,15 @@ describe('loadEnv', () => {
     expect(() =>
       loadEnv({ ...valid, STORAGE_DRIVER: 's3', STORAGE_LOCAL_ROOT: undefined })
     ).toThrow(/STORAGE_S3_BUCKET/);
+  });
+
+  it('requires CLIENT_APP_URL', () => {
+    expect(() => loadEnv({ ...valid, CLIENT_APP_URL: undefined })).toThrow(/CLIENT_APP_URL/);
+  });
+
+  it('keeps the path prefix of CLIENT_APP_URL', () => {
+    const env = loadEnv({ ...valid, CLIENT_APP_URL: 'https://example.test/app' });
+    expect(env.clientAppUrl).toBe('https://example.test/app');
   });
 
   it('names the offending variable when a stock Zod message is used', () => {

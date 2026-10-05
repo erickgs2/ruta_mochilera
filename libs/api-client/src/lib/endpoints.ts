@@ -59,6 +59,16 @@ export class AuthApi {
     return this.api.post('/api/v1/auth/forgot-password', body);
   }
 
+  /**
+   * Fails with `TOKEN_INVALID` (401) for an unknown, expired or already-used
+   * token. On success the server revokes every live session of the account.
+   */
+  resetPassword(
+    body: Body<'/api/v1/auth/reset-password', 'post'>
+  ): Observable<Ok<'/api/v1/auth/reset-password', 'post'>> {
+    return this.api.post('/api/v1/auth/reset-password', body);
+  }
+
   login(body: Body<'/api/v1/auth/login', 'post'>): Observable<Ok<'/api/v1/auth/login', 'post'>> {
     return this.api.post('/api/v1/auth/login', body);
   }

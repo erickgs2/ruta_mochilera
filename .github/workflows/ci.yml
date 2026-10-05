@@ -28,6 +28,7 @@ jobs:
       DATABASE_URL: postgresql://rm:rm@localhost:5433/rm_test
       JWT_SECRET: ci-secret-that-is-long-enough-32
       APP_BASE_URL: http://localhost:3000
+      CLIENT_APP_URL: http://localhost:4201
       STORAGE_DRIVER: local
       STORAGE_LOCAL_ROOT: ./storage
     steps:

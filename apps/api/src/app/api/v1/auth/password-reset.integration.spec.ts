@@ -1,8 +1,9 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { closeTestDb, prepareTestDb, resetDatabase, withTestDb } from '@rm/db/testing';
 import { hashPassword, resetRateLimiterForTesting } from '@rm/domain-identity';
 import { ok, type Result } from '@rm/shared-utils';
 import type { EmailMessage, EmailProvider } from '@rm/email';
+import { config, setConfig } from '../../../../lib/config';
 import { setEmail } from '../../../../lib/email';
 import { POST as loginRoute } from './login/route';
 import { POST as forgotPasswordRoute } from './forgot-password/route';
@@ -92,6 +93,22 @@ describe('password reset endpoints', () => {
       expect(await existing.json()).toBeNull();
       expect(missing.status).toBe(200);
       expect(await missing.json()).toBeNull();
+    });
+
+    it("links to the client app's reset screen under CLIENT_APP_URL, path prefix included, not the API origin", async () => {
+      await seedCustomer();
+      setConfig({ ...config(), appBaseUrl: 'https://api.example.test', clientAppUrl: 'https://www.example.test/app' });
+      try {
+        const response = await post(forgotPasswordRoute, { email: 'traveler@example.com' }, '203.0.113.73');
+        expect(response.status).toBe(200);
+        await vi.waitFor(() => expect(fakeEmail.sent).toHaveLength(1));
+
+        const token = extractToken(fakeEmail.sent[0]!);
+        expect(fakeEmail.sent[0]!.text).toContain(`https://www.example.test/app/reset-password?token=${token}`);
+        expect(fakeEmail.sent[0]!.text).not.toContain('api.example.test');
+      } finally {
+        setConfig(undefined);
+      }
     });
 
     it('returns 422 on a malformed email', async () => {

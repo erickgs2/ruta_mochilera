@@ -8,7 +8,7 @@ function route(path: string) {
 }
 
 describe('appRoutes', () => {
-  it.each(['', 'trips/:slug', 'login', 'register', 'verify-email', 'forgot-password'])(
+  it.each(['', 'trips/:slug', 'login', 'register', 'verify-email', 'forgot-password', 'reset-password'])(
     'leaves "%s" public -- no session guard',
     (path) => {
       expect(route(path).canActivate ?? []).toEqual([]);

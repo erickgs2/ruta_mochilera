@@ -24,12 +24,14 @@ async function loadPasswordResetTtlMinutes(db: Db): Promise<number> {
 }
 
 /**
- * `appBaseUrl` is the environment's public origin (`APP_BASE_URL`), injected
- * by the caller rather than hardcoded, so staging, a local run and
- * production each mail a link to their own client app.
+ * `clientAppUrl` is the client app's public base URL (`CLIENT_APP_URL`),
+ * path prefix included, injected by the caller rather than hardcoded, so
+ * staging, a local run and production each mail a link to their own client
+ * app. Not `APP_BASE_URL`: that is the API's origin, where `/reset-password`
+ * does not exist.
  */
-function buildResetEmail(token: string, appBaseUrl: string): { subject: string; html: string; text: string } {
-  const link = `${appBaseUrl.replace(/\/$/, '')}/reset-password?token=${token}`;
+function buildResetEmail(token: string, clientAppUrl: string): { subject: string; html: string; text: string } {
+  const link = `${clientAppUrl.replace(/\/$/, '')}/reset-password?token=${token}`;
   const text =
     `Para restablecer tu contraseña, usa este enlace: ${link} ` +
     'Si no lo solicitaste, ignora este correo; tu contraseña actual sigue funcionando.';
@@ -74,7 +76,7 @@ export async function requestPasswordReset(
   db: Db,
   rawEmail: string,
   emailProvider: EmailProvider,
-  appBaseUrl: string,
+  clientAppUrl: string,
   ip = 'unknown'
 ): Promise<Result<null>> {
   const email = rawEmail.trim().toLowerCase();
@@ -92,7 +94,7 @@ export async function requestPasswordReset(
     });
     // Fire-and-forget: see the doc comment above for why this call is
     // deliberately not awaited.
-    void emailProvider.send({ to: user.email, ...buildResetEmail(token, appBaseUrl) }).catch(() => {
+    void emailProvider.send({ to: user.email, ...buildResetEmail(token, clientAppUrl) }).catch(() => {
       // A provider failure here must never surface to the caller -- doing
       // so would itself be an enumeration signal (a visible delay or error
       // only on the branch that has a real recipient). The worst outcome is

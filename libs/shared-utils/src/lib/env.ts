@@ -8,6 +8,11 @@ const schema = z
     ACCESS_TOKEN_TTL_SECONDS: z.coerce.number().int().positive().default(900),
     REFRESH_TOKEN_TTL_DAYS: z.coerce.number().int().positive().default(30),
     APP_BASE_URL: z.url(),
+    // The client app's public base URL, path prefix included (production
+    // serves it under `/app`). Not APP_BASE_URL: that one is the API/files
+    // origin. Links mailed to customers -- e.g. the password reset link --
+    // must open the client app, so they are built from this.
+    CLIENT_APP_URL: z.url(),
     STORAGE_DRIVER: z.enum(['local', 's3']).default('local'),
     STORAGE_LOCAL_ROOT: z.string().optional(),
     STORAGE_S3_BUCKET: z.string().optional(),
@@ -89,6 +94,8 @@ export interface AppEnv {
   accessTokenTtlSeconds: number;
   refreshTokenTtlDays: number;
   appBaseUrl: string;
+  /** The client app's public base URL, path prefix included -- see the schema comment on `CLIENT_APP_URL`. */
+  clientAppUrl: string;
   storageDriver: 'local' | 's3';
   storageLocalRoot?: string;
   storageS3Bucket?: string;
@@ -142,6 +149,7 @@ export function loadEnv(source: Record<string, string | undefined>): AppEnv {
     accessTokenTtlSeconds: value.ACCESS_TOKEN_TTL_SECONDS,
     refreshTokenTtlDays: value.REFRESH_TOKEN_TTL_DAYS,
     appBaseUrl: value.APP_BASE_URL,
+    clientAppUrl: value.CLIENT_APP_URL,
     storageDriver: value.STORAGE_DRIVER,
     storageLocalRoot: value.STORAGE_LOCAL_ROOT,
     storageS3Bucket: value.STORAGE_S3_BUCKET,

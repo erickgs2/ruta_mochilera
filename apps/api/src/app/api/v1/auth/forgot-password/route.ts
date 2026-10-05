@@ -16,5 +16,5 @@ export const POST = route<ForgotPasswordRequest, null>({
   auth: 'public',
   body: forgotPasswordRequestSchema,
   handler: async ({ body, request }) =>
-    requestPasswordReset(db(), body.email, email(), config().appBaseUrl, clientIp(request)),
+    requestPasswordReset(db(), body.email, email(), config().clientAppUrl, clientIp(request)),
 });
