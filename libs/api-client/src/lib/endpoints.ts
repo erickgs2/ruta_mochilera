@@ -170,6 +170,11 @@ export class PublicCatalogueApi {
 export class ReservationsApi {
   private readonly api = inject(ApiClient);
 
+  /** The customer's own reservations, newest first, cancelled and expired ones included. */
+  list(): Observable<Ok<'/api/v1/reservations', 'get'>> {
+    return this.api.get('/api/v1/reservations');
+  }
+
   /** Creates a `HELD` reservation (the hold). The answer carries total, minimum deposit and `suggestedMonthlyCents`. */
   create(tripId: string): Observable<Ok<'/api/v1/reservations', 'post'>> {
     return this.api.post('/api/v1/reservations', { tripId });
@@ -189,6 +194,31 @@ export class ReservationsApi {
     body: Body<'/api/v1/reservations/{reservationId}/payment-intents', 'post'>
   ): Observable<Ok<'/api/v1/reservations/{reservationId}/payment-intents', 'post'>> {
     return this.api.post(`/api/v1/reservations/${reservationId}/payment-intents`, body);
+  }
+}
+
+/** The authenticated customer's own payments, across all their reservations, newest first. */
+@Injectable({ providedIn: 'root' })
+export class PaymentsApi {
+  private readonly api = inject(ApiClient);
+
+  list(): Observable<Ok<'/api/v1/payments', 'get'>> {
+    return this.api.get('/api/v1/payments');
+  }
+}
+
+/** The authenticated customer's own in-app inbox. */
+@Injectable({ providedIn: 'root' })
+export class NotificationsApi {
+  private readonly api = inject(ApiClient);
+
+  /** Newest first; pass the previous page's `nextCursor` to continue. */
+  list(cursor?: string): Observable<Ok<'/api/v1/notifications', 'get'>> {
+    return this.api.get('/api/v1/notifications', { cursor });
+  }
+
+  markRead(deliveryId: string): Observable<Ok<'/api/v1/notifications/{deliveryId}/read', 'post'>> {
+    return this.api.post(`/api/v1/notifications/${deliveryId}/read`, {});
   }
 }
 

@@ -49,6 +49,8 @@ export interface InboxItemDto {
 export interface InboxPageDto {
   items: InboxItemDto[];
   nextCursor: string | null;
+  /** The customer's unread INBOX deliveries in total (`read_at` null), independent of the page. */
+  unreadCount: number;
 }
 
 export interface ListInboxOptions {
@@ -313,9 +315,16 @@ export async function listInbox(
   const page = hasMore ? rows.slice(0, limit) : rows;
   const lastRow = page[page.length - 1];
 
+  // Over every page, not this one: the app's unread badge must not depend on
+  // how far the customer has scrolled.
+  const unreadCount = await db.notificationDelivery.count({
+    where: { userId: customerId, channel: 'INBOX', readAt: null },
+  });
+
   return ok({
     items: page.map(toInboxItemDto),
     nextCursor: hasMore && lastRow ? encodeCursor(lastRow) : null,
+    unreadCount,
   });
 }
 

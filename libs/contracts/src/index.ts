@@ -3,6 +3,7 @@ export * from './lib/common';
 export * from './lib/costing';
 export * from './lib/notifications';
 export * from './lib/payments';
+export * from './lib/profile';
 export * from './lib/public-trips';
 export * from './lib/rbac';
 export * from './lib/reservations';

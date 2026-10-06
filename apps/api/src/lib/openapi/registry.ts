@@ -2,6 +2,8 @@ import { OpenAPIRegistry, OpenApiGeneratorV31 } from '@asteasolutions/zod-to-ope
 import { z } from 'zod';
 import {
   authenticatedUserSchema as authenticatedUserSchemaImport,
+  customerProfileSchema as customerProfileSchemaImport,
+  updateCustomerProfileRequestSchema,
   budgetItemRequestSchema as budgetItemRequestSchemaImport,
   changeStatusRequestSchema as changeStatusRequestSchemaImport,
   createPaymentIntentRequestSchema as createPaymentIntentRequestSchemaImport,
@@ -42,6 +44,7 @@ import type { InboxItemDto, InboxPageDto } from '@rm/domain-notifications';
 import type { CreatedPaymentIntentDto, PaymentDto } from '@rm/domain-payments';
 import type { ReservationDto, ReservationSummaryDto } from '@rm/domain-reservations';
 import type { PublicTripDetailDto, PublicTripSummaryDto, TripDto, TripImageDto, TripSummaryDto } from '@rm/domain-trips';
+import type { CustomerProfileDto } from '@rm/domain-identity';
 import type { ReservationDetail } from '../http/reservation-response';
 
 /**
@@ -67,6 +70,7 @@ const forgotPasswordRequestSchema = forgotPasswordRequestSchemaImport.meta({ id:
 const resetPasswordRequestSchema = resetPasswordRequestSchemaImport.meta({ id: 'ResetPasswordRequest' });
 const socialLoginRequestSchema = socialLoginRequestSchemaImport.meta({ id: 'SocialLoginRequest' });
 const authenticatedUserSchema = authenticatedUserSchemaImport.meta({ id: 'AuthenticatedUser' });
+const customerProfileSchema = customerProfileSchemaImport.meta({ id: 'CustomerProfile' });
 const sessionResponseSchema = sessionResponseSchemaImport.meta({ id: 'Session' });
 const permissionSchema = permissionSchemaImport.meta({ id: 'Permission' });
 const roleInputSchema = roleInputSchemaImport.meta({ id: 'RoleInput' });
@@ -213,6 +217,10 @@ const tripCostingSchema = z
   })
   .meta({ id: 'TripCosting' });
 
+const uploadProfilePhotoSchema = z.object({
+  file: z.string().meta({ type: 'string', format: 'binary', description: 'Image bytes (jpeg, png or webp; max 8MB).' }),
+});
+
 const uploadTripImageSchema = z.object({
   file: z.string().meta({ type: 'string', format: 'binary', description: 'Image bytes (jpeg, png or webp; max 8MB).' }),
   altText: z.string().max(240).optional(),
@@ -320,6 +328,7 @@ type _inboxPageSchemaMatchesDto = Expect<Equals<z.infer<typeof inboxPageSchema>,
 type _publicTripSummarySchemaMatchesDto = Expect<
   Equals<z.infer<typeof publicTripSummarySchema>, WithImageUrls<DateToString<PublicTripSummaryDto>>>
 >;
+type _customerProfileSchemaMatchesDto = Expect<Equals<z.infer<typeof customerProfileSchema>, CustomerProfileDto>>;
 type _publicTripDetailSchemaMatchesDto = Expect<
   Equals<z.infer<typeof publicTripDetailSchema>, WithImageUrls<DateToString<PublicTripDetailDto>>>
 >;
@@ -346,6 +355,7 @@ export type _OpenApiDtoAssertions = [
   _inboxPageSchemaMatchesDto,
   _publicTripSummarySchemaMatchesDto,
   _publicTripDetailSchemaMatchesDto,
+  _customerProfileSchemaMatchesDto,
 ];
 
 /**
@@ -535,6 +545,57 @@ export function buildOpenApiDocument() {
     responses: {
       200: { description: 'The authenticated caller', ...json(authenticatedUserSchema) },
       401: problem('Missing or invalid access token'),
+    },
+  });
+
+  registry.registerPath({
+    method: 'get',
+    path: '/api/v1/me/profile',
+    tags: ['profile'],
+    security: [{ bearerAuth: [] }],
+    description:
+      "The authenticated customer's own profile. No id in the path: it always acts on the caller. " +
+      'The email is read-only in this phase.',
+    responses: {
+      200: { description: 'Name, phone, email and photo URL', ...json(customerProfileSchema) },
+      401: problem('Missing or invalid access token'),
+      404: problem('NOT_FOUND -- the caller has no customer profile (a staff user)'),
+    },
+  });
+
+  registry.registerPath({
+    method: 'patch',
+    path: '/api/v1/me/profile',
+    tags: ['profile'],
+    security: [{ bearerAuth: [] }],
+    description:
+      'Changes the name and/or the phone, with the same limits as registration. The body is strict: ' +
+      'an email (or any other field) is refused with 422 VALIDATION_FAILED, never silently ignored.',
+    request: { body: requestBody(updateCustomerProfileRequestSchema) },
+    responses: {
+      200: { description: 'The updated profile', ...json(customerProfileSchema) },
+      401: problem('Missing or invalid access token'),
+      404: problem('NOT_FOUND -- the caller has no customer profile (a staff user)'),
+      422: problem('Validation failed, including any field other than fullName and phone'),
+    },
+  });
+
+  registry.registerPath({
+    method: 'post',
+    path: '/api/v1/me/profile/photo',
+    tags: ['profile'],
+    security: [{ bearerAuth: [] }],
+    description:
+      "Replaces the caller's profile photo. Same validation as the trip gallery: the type is sniffed " +
+      'from the bytes (jpeg, png or webp) and the size limit is 8MB.',
+    request: {
+      body: { content: { 'multipart/form-data': { schema: uploadProfilePhotoSchema } }, required: true },
+    },
+    responses: {
+      200: { description: 'The profile with its new photo URL', ...json(customerProfileSchema) },
+      401: problem('Missing or invalid access token'),
+      404: problem('NOT_FOUND -- the caller has no customer profile (a staff user)'),
+      422: problem('Missing file, oversized file, or a file that is not a jpeg/png/webp image'),
     },
   });
 

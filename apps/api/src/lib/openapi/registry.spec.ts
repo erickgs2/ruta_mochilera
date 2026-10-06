@@ -19,6 +19,8 @@ const EVERY_ROUTE_FILE_PATH = [
   '/api/v1/auth/oauth/google',
   '/api/v1/auth/oauth/apple',
   '/api/v1/me',
+  '/api/v1/me/profile',
+  '/api/v1/me/profile/photo',
   '/api/v1/rbac/permissions',
   '/api/v1/rbac/roles',
   '/api/v1/rbac/roles/{roleId}',
@@ -82,6 +84,8 @@ const UNGATED_PATHS = [
  */
 const NO_PERMISSION_CHECK_PATHS = [
   '/api/v1/me',
+  '/api/v1/me/profile',
+  '/api/v1/me/profile/photo',
   '/api/v1/reservations',
   '/api/v1/reservations/{reservationId}',
   '/api/v1/reservations/{reservationId}/cancellation-requests',

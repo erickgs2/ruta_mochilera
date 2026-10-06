@@ -40,6 +40,7 @@ export const inboxItemSchema = z.object({
 export const inboxPageSchema = z.object({
   items: z.array(inboxItemSchema),
   nextCursor: z.string().nullable(),
+  unreadCount: z.number().int().nonnegative(),
 });
 
 export type InboxItemContract = z.infer<typeof inboxItemSchema>;

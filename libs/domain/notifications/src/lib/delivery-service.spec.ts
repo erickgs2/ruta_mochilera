@@ -429,6 +429,27 @@ describe('notification delivery service', () => {
       );
       expect(new Set(allIds).size).toBe(5);
     });
+
+    it("counts the customer's own unread INBOX deliveries across every page, not just the one returned", async () => {
+      const customerId = await seedCustomer(db);
+      const otherCustomerId = await seedCustomer(db);
+      const boss = await withTestQueue();
+      for (const owner of [customerId, customerId, customerId, otherCustomerId]) {
+        await db.$transaction((tx) =>
+          notifyCustomer(tx, boss, { customerId: owner, eventType: 'HOLD_EXPIRED', params: { tripName: 'Oaxaca' } })
+        );
+      }
+      const [first] = await db.notificationDelivery.findMany({ where: { userId: customerId, channel: 'INBOX' } });
+      await markRead(db, first.id, customerId);
+
+      const page = await listInbox(db, customerId, { limit: 1 });
+
+      expect(page.ok).toBe(true);
+      if (!page.ok) return;
+      expect(page.value.items).toHaveLength(1);
+      // 3 INBOX rows, 1 read; the EMAIL twins and the other customer's row never count.
+      expect(page.value.unreadCount).toBe(2);
+    });
   });
 
   describe('markRead', () => {

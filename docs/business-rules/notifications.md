@@ -176,6 +176,14 @@ basado solo en la marca de tiempo (se repite o se salta una fila entre
 páginas); el `id` como segundo criterio de orden deja cada página sin huecos
 ni duplicados.
 
+**Cada página trae `unreadCount` (Tarea 18):** el total de filas `INBOX` del
+cliente con `read_at` nulo, contado sobre todas sus entregas y no sobre la
+página devuelta. Es lo que muestra el contador de no leídas de la app; si se
+contara sólo la página, el número dependería de cuánto se ha desplazado el
+cliente y mentiría en cuanto hubiera más de una página. Las filas `EMAIL` y
+las de otros clientes nunca cuentan. `markRead` lo baja en uno en la
+siguiente lectura.
+
 ## `markRead` y `DELIVERY_NOT_OWNED`
 
 `markRead(db, deliveryId, customerId)` marca una entrega de bandeja propia

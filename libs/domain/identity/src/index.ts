@@ -6,3 +6,4 @@ export * from './lib/otp';
 export * from './lib/customer-registration';
 export * from './lib/password-reset';
 export * from './lib/social-login';
+export * from './lib/customer-profile';

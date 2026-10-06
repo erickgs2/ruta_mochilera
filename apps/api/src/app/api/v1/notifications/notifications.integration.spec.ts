@@ -51,10 +51,12 @@ describe('notifications endpoints', () => {
       const response = await listInboxRoute(request('/api/v1/notifications?limit=1', token));
 
       expect(response.status).toBe(200);
-      const body = (await response.json()) as { items: { id: string }[]; nextCursor: string | null };
+      const body = (await response.json()) as { items: { id: string }[]; nextCursor: string | null; unreadCount: number };
       expect(body.items).toHaveLength(1);
       expect(body.items[0]?.id).toBe(newest.id);
       expect(body.nextCursor).not.toBeNull();
+      // Both of the owner's deliveries, not only the one on this page; never the stranger's.
+      expect(body.unreadCount).toBe(2);
     });
 
     it('returns 401 for an unauthenticated caller', async () => {
