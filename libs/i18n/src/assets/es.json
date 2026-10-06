@@ -67,12 +67,6 @@
       "requestNewLink": "Solicitar un enlace nuevo"
     }
   },
-  "home": {
-    "welcome": "Hola, {{fullName}}",
-    "checking": "Comprobando la sesión con la API…",
-    "sessionSurvived": "La sesión sigue activa después de recargar la página.",
-    "checkFailed": "No se pudo comprobar la sesión. Revisa la consola."
-  },
   "catalogue": {
     "title": "Viajes",
     "myAccount": "Mi cuenta",
@@ -118,7 +112,8 @@
     "paymentDeadline": "Fecha límite de pago",
     "refresh": "Actualizar",
     "processing": "Estamos procesando tu pago. Esta pantalla se actualizará en cuanto se confirme.",
-    "processingSlow": "Tu pago sigue en proceso. Actualiza en unos minutos para ver si ya se acreditó."
+    "processingSlow": "Tu pago sigue en proceso. Actualiza en unos minutos para ver si ya se acreditó.",
+    "paymentHistory": "Ver historial de pagos"
   },
   "payments": {
     "whatToPay": "¿Qué quieres pagar?",
@@ -142,7 +137,45 @@
       "open": "Abrir la ficha",
       "balanceUnchanged": "Tu saldo sigue en",
       "notice": "El pago se acreditará cuando lo hagas en la tienda; hasta entonces tu saldo no cambia."
+    },
+    "method": {
+      "CARD": "Tarjeta",
+      "OXXO": "OXXO",
+      "SPEI": "Transferencia SPEI",
+      "CASH": "Efectivo",
+      "LEGACY": "Pago registrado"
+    },
+    "status": {
+      "PENDING": "Pendiente",
+      "SUCCEEDED": "Acreditado",
+      "FAILED": "Rechazado",
+      "EXPIRED": "Vencido",
+      "REFUNDED": "Reembolsado"
+    },
+    "history": {
+      "title": "Pagos de la reserva",
+      "backToReservation": "Volver a la reserva",
+      "empty": "Esta reserva todavía no tiene pagos."
     }
+  },
+  "inbox": {
+    "title": "Avisos",
+    "backToAccount": "Mi cuenta",
+    "unreadLabel": "Avisos sin leer",
+    "empty": "No tienes avisos.",
+    "loadMore": "Ver más"
+  },
+  "profile": {
+    "title": "Mi cuenta",
+    "myReservations": "Mis reservas",
+    "inbox": "Avisos",
+    "photoAlt": "Tu foto de perfil",
+    "changePhoto": "Cambiar foto",
+    "uploading": "Subiendo…",
+    "emailNotEditable": "El correo no se puede cambiar desde aquí.",
+    "save": "Guardar cambios",
+    "saving": "Guardando…",
+    "saved": "Tus datos se guardaron."
   },
   "nav": {
     "trips": "Viajes",

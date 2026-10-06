@@ -76,6 +76,15 @@ describe('ApiClient', () => {
     req.flush({});
   });
 
+  it('sends a JSON body on PATCH', () => {
+    client.patch('/api/v1/me/profile', { phone: '5512345678' }).subscribe();
+    const req = httpMock.expectOne('https://api.test/api/v1/me/profile');
+    expect(req.request.method).toBe('PATCH');
+    expect(req.request.body).toEqual({ phone: '5512345678' });
+    expect(req.request.withCredentials).toBe(true);
+    req.flush({});
+  });
+
   it('issues a DELETE with no body', () => {
     client.delete('/api/v1/rbac/roles/r1').subscribe();
     const req = httpMock.expectOne('https://api.test/api/v1/rbac/roles/r1');

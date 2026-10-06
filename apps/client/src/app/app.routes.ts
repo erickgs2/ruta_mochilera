@@ -54,7 +54,18 @@ export const appRoutes: Routes = [
   {
     path: 'account',
     canActivate: [authGuard],
-    loadComponent: () => import('./features/home/home.component').then((m) => m.HomeComponent),
+    loadComponent: () => import('./features/profile/profile.component').then((m) => m.ProfileComponent),
+  },
+  {
+    path: 'reservations/:id/payments',
+    canActivate: [authGuard],
+    loadComponent: () =>
+      import('./features/payments/payment-history.component').then((m) => m.PaymentHistoryComponent),
+  },
+  {
+    path: 'inbox',
+    canActivate: [authGuard],
+    loadComponent: () => import('./features/inbox/inbox.component').then((m) => m.InboxComponent),
   },
   { path: '**', redirectTo: '' },
 ];

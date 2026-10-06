@@ -197,6 +197,30 @@ export class ReservationsApi {
   }
 }
 
+/**
+ * The authenticated customer's own profile. No id anywhere: the API always
+ * acts on the caller. The email is read-only -- `update` cannot carry it.
+ */
+@Injectable({ providedIn: 'root' })
+export class ProfileApi {
+  private readonly api = inject(ApiClient);
+
+  get(): Observable<Ok<'/api/v1/me/profile', 'get'>> {
+    return this.api.get('/api/v1/me/profile');
+  }
+
+  update(body: Body<'/api/v1/me/profile', 'patch'>): Observable<Ok<'/api/v1/me/profile', 'patch'>> {
+    return this.api.patch('/api/v1/me/profile', body);
+  }
+
+  /** The `file` field name matches what `me/profile/photo/route.ts` reads. */
+  uploadPhoto(file: File): Observable<Ok<'/api/v1/me/profile/photo', 'post'>> {
+    const form = new FormData();
+    form.append('file', file);
+    return this.api.upload('/api/v1/me/profile/photo', form);
+  }
+}
+
 /** The authenticated customer's own payments, across all their reservations, newest first. */
 @Injectable({ providedIn: 'root' })
 export class PaymentsApi {

@@ -1,0 +1,65 @@
+<div class="profile-page">
+  <header class="profile-header">
+    <a routerLink="/">← {{ 'catalogue.backToCatalogue' | translate }}</a>
+    <h1>{{ 'profile.title' | translate }}</h1>
+  </header>
+
+  <nav class="profile-links">
+    <a routerLink="/reservations">{{ 'profile.myReservations' | translate }}</a>
+    <a routerLink="/inbox">{{ 'profile.inbox' | translate }}</a>
+  </nav>
+
+  @if (profile(); as profile) {
+    <section class="profile-photo-section">
+      @if (profile.photoUrl) {
+        <img class="profile-photo" [src]="profile.photoUrl" [alt]="'profile.photoAlt' | translate" />
+      } @else {
+        <div class="profile-photo profile-photo--empty" aria-hidden="true">{{ profile.fullName.charAt(0) }}</div>
+      }
+      <label class="profile-photo-pick">
+        {{ uploading() ? ('profile.uploading' | translate) : ('profile.changePhoto' | translate) }}
+        <input type="file" accept="image/jpeg,image/png,image/webp" [disabled]="uploading()" (change)="onPhotoSelected($event)" />
+      </label>
+    </section>
+
+    <p class="profile-email-row">
+      <span>{{ 'auth.email' | translate }}</span>
+      <span class="profile-email">{{ profile.email }}</span>
+    </p>
+    <p class="profile-hint">{{ 'profile.emailNotEditable' | translate }}</p>
+
+    <form [formGroup]="form" (ngSubmit)="save()" novalidate>
+      <label>
+        {{ 'auth.fullName' | translate }}
+        <input type="text" formControlName="fullName" autocomplete="name" />
+        @if (showError('fullName')) {
+          <span class="field-error">{{ 'auth.validation.fullName' | translate }}</span>
+        }
+      </label>
+      <label>
+        {{ 'auth.phone' | translate }}
+        <input type="tel" formControlName="phone" autocomplete="tel" />
+        @if (showError('phone')) {
+          <span class="field-error">{{ 'auth.validation.phone' | translate }}</span>
+        }
+      </label>
+
+      @if (saved()) {
+        <p class="profile-notice">{{ 'profile.saved' | translate }}</p>
+      }
+      @if (error()) {
+        <p class="field-error">{{ error() | rmErrorCode }}</p>
+      }
+
+      <button type="submit" [disabled]="saving()">
+        {{ saving() ? ('profile.saving' | translate) : ('profile.save' | translate) }}
+      </button>
+    </form>
+  } @else if (error()) {
+    <p class="field-error">{{ error() | rmErrorCode }}</p>
+  } @else {
+    <p class="profile-hint">{{ 'common.loading' | translate }}</p>
+  }
+
+  <button type="button" class="profile-sign-out" (click)="signOut()">{{ 'auth.signOut' | translate }}</button>
+</div>

@@ -50,6 +50,7 @@
     @if (error()) {
       <p class="reservation-error">{{ error() | rmErrorCode }}</p>
     }
+    <a [routerLink]="['/reservations', reservation.id, 'payments']">{{ 'reservation.paymentHistory' | translate }}</a>
     <button type="button" class="reservation-refresh" (click)="refresh()">{{ 'reservation.refresh' | translate }}</button>
   } @else {
     <p class="reservation-status">{{ 'common.loading' | translate }}</p>

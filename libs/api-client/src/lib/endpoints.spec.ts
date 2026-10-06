@@ -7,6 +7,7 @@ import {
   CostingApi,
   NotificationsApi,
   PaymentsApi,
+  ProfileApi,
   PublicCatalogueApi,
   RbacApi,
   ReservationsApi,
@@ -101,6 +102,28 @@ describe('endpoints', () => {
     const req = httpMock.expectOne('https://api.test/api/v1/reservations/res-1/payment-intents');
     expect(req.request.method).toBe('POST');
     expect(req.request.body).toEqual({ intent: 'DEPOSIT', method: 'OXXO' });
+    req.flush({});
+  });
+
+  it('ProfileApi.get calls GET /api/v1/me/profile', () => {
+    TestBed.inject(ProfileApi).get().subscribe();
+    httpMock.expectOne('https://api.test/api/v1/me/profile').flush({});
+  });
+
+  it('ProfileApi.update patches only name and phone', () => {
+    TestBed.inject(ProfileApi).update({ fullName: 'Ana', phone: '5512345678' }).subscribe();
+    const req = httpMock.expectOne('https://api.test/api/v1/me/profile');
+    expect(req.request.method).toBe('PATCH');
+    expect(req.request.body).toEqual({ fullName: 'Ana', phone: '5512345678' });
+    req.flush({});
+  });
+
+  it('ProfileApi.uploadPhoto sends multipart FormData with the "file" field', () => {
+    const file = new File(['bytes'], 'me.png', { type: 'image/png' });
+    TestBed.inject(ProfileApi).uploadPhoto(file).subscribe();
+    const req = httpMock.expectOne('https://api.test/api/v1/me/profile/photo');
+    expect(req.request.method).toBe('POST');
+    expect((req.request.body as FormData).get('file')).toBe(file);
     req.flush({});
   });
 

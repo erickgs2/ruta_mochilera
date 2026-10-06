@@ -67,12 +67,6 @@
       "requestNewLink": "Request a new link"
     }
   },
-  "home": {
-    "welcome": "Hello, {{fullName}}",
-    "checking": "Checking the session with the API…",
-    "sessionSurvived": "The session is still active after reloading the page.",
-    "checkFailed": "Could not check the session. See the console."
-  },
   "catalogue": {
     "title": "Trips",
     "myAccount": "My account",
@@ -118,7 +112,8 @@
     "paymentDeadline": "Payment deadline",
     "refresh": "Refresh",
     "processing": "We are processing your payment. This screen will update as soon as it is confirmed.",
-    "processingSlow": "Your payment is still being processed. Refresh in a few minutes to see whether it was credited."
+    "processingSlow": "Your payment is still being processed. Refresh in a few minutes to see whether it was credited.",
+    "paymentHistory": "See payment history"
   },
   "payments": {
     "whatToPay": "What do you want to pay?",
@@ -142,7 +137,45 @@
       "open": "Open the voucher",
       "balanceUnchanged": "Your balance is still",
       "notice": "The payment is credited once you pay at the store; until then your balance does not change."
+    },
+    "method": {
+      "CARD": "Card",
+      "OXXO": "OXXO",
+      "SPEI": "SPEI transfer",
+      "CASH": "Cash",
+      "LEGACY": "Recorded payment"
+    },
+    "status": {
+      "PENDING": "Pending",
+      "SUCCEEDED": "Credited",
+      "FAILED": "Declined",
+      "EXPIRED": "Expired",
+      "REFUNDED": "Refunded"
+    },
+    "history": {
+      "title": "Payments for reservation",
+      "backToReservation": "Back to the reservation",
+      "empty": "This reservation has no payments yet."
     }
+  },
+  "inbox": {
+    "title": "Notices",
+    "backToAccount": "My account",
+    "unreadLabel": "Unread notices",
+    "empty": "You have no notices.",
+    "loadMore": "Show more"
+  },
+  "profile": {
+    "title": "My account",
+    "myReservations": "My reservations",
+    "inbox": "Notices",
+    "photoAlt": "Your profile photo",
+    "changePhoto": "Change photo",
+    "uploading": "Uploading…",
+    "emailNotEditable": "The email cannot be changed here.",
+    "save": "Save changes",
+    "saving": "Saving…",
+    "saved": "Your details were saved."
   },
   "nav": {
     "trips": "Trips",

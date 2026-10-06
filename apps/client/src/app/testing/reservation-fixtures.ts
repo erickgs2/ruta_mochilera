@@ -56,3 +56,36 @@ export function customer(overrides: Partial<SessionUser> = {}): SessionUser {
     ...overrides,
   };
 }
+
+export type Payment = components['schemas']['Payment'];
+export type InboxItem = components['schemas']['InboxPage']['items'][number];
+
+export function payment(overrides: Partial<Payment> = {}): Payment {
+  return {
+    id: 'pay-1',
+    reservationId: 'res-1',
+    amountCents: 100_000,
+    method: 'CARD',
+    status: 'SUCCEEDED',
+    provider: 'STRIPE',
+    paidAt: '2026-10-01T15:00:00.000Z',
+    recordedAt: '2026-10-01T15:00:00.000Z',
+    providerVoucherUrl: null,
+    voucherExpiresAt: null,
+    ...overrides,
+  };
+}
+
+export function inboxItem(overrides: Partial<InboxItem> = {}): InboxItem {
+  return {
+    id: 'd-1',
+    eventType: 'HOLD_EXPIRING',
+    title: 'Tu apartado vence pronto',
+    body: 'Tu apartado de Oaxaca vence mañana.',
+    status: 'SENT',
+    sentAt: '2026-10-01T15:00:00.000Z',
+    readAt: null,
+    createdAt: '2026-10-01T15:00:00.000Z',
+    ...overrides,
+  };
+}
