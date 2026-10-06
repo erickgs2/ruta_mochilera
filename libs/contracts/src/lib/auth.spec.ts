@@ -43,6 +43,7 @@ describe('authenticatedUserSchema', () => {
       locale: 'es',
       fullName: 'Admin',
       permissions: ['trip.view'],
+      emailVerified: true,
     });
     expect(parsed.success).toBe(true);
   });
@@ -58,6 +59,7 @@ describe('sessionResponseSchema', () => {
         locale: 'es',
         fullName: 'Admin',
         permissions: [],
+        emailVerified: true,
       },
       tokens: {
         accessToken: 'token',
@@ -87,6 +89,7 @@ describe('sessionResponseSchema', () => {
         locale: 'es',
         fullName: 'Admin',
         permissions: [],
+        emailVerified: true,
       },
       tokens: { accessToken: 'token', refreshToken: 'refresh', expiresInSeconds: 900 },
     });
@@ -102,9 +105,13 @@ describe('sessionResponseSchema', () => {
         locale: 'es',
         fullName: 'Admin',
         permissions: [],
+        emailVerified: true,
       },
       tokens: { accessToken: 'token', expiresInSeconds: 900 },
     });
+    // Without this, a payload that fails to parse would pass vacuously:
+    // `false` has no `refreshToken` property either.
+    expect(parsed.success).toBe(true);
     expect(parsed.success && parsed.data.tokens).not.toHaveProperty('refreshToken');
   });
 });

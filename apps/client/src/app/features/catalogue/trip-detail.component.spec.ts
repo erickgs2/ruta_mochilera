@@ -12,6 +12,7 @@ type PublicTripDetail = components['schemas']['PublicTripDetail'];
 
 function detail(overrides: Partial<PublicTripDetail> = {}): PublicTripDetail {
   return {
+    id: '7f3e2b1a-4c5d-4e6f-8a9b-0c1d2e3f4a5b',
     slug: 'oaxaca-magica',
     departureDate: '2026-11-20T00:00:00.000Z',
     returnDate: '2026-11-24T00:00:00.000Z',
