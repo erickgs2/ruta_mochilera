@@ -27,12 +27,12 @@
 }
 
 .reservation-error {
-  color: #b00020;
+  color: var(--rm-danger);
 }
 
 .reservation-hint,
 .reservation-status {
-  color: #555;
+  color: var(--rm-ink-soft);
   font-size: 0.875rem;
 }
 
@@ -46,9 +46,9 @@ button.reservation-refresh {
   padding: 0.875rem;
   font-size: 1rem;
   border: none;
-  border-radius: 8px;
-  background: #1a73e8;
-  color: #fff;
+  border-radius: var(--rm-radius-control);
+  background: var(--rm-yellow);
+  color: var(--rm-ink);
 
   &:disabled {
     opacity: 0.6;
@@ -57,14 +57,14 @@ button.reservation-refresh {
 
 button.reservation-refresh {
   background: transparent;
-  color: #1a73e8;
-  border: 1px solid #1a73e8;
+  color: var(--rm-ink);
+  border: 2px solid var(--rm-ink);
 }
 
 .reserve-verify-invite {
   padding: 1rem;
-  border-radius: 8px;
-  background: #fff8e1;
+  border-radius: var(--rm-radius-control);
+  background: var(--rm-cream);
 }
 
 .reservation-list {
@@ -81,8 +81,8 @@ button.reservation-refresh {
   grid-template-columns: 1fr auto;
   gap: 0.25rem 1rem;
   padding: 0.75rem;
-  border: 1px solid #ddd;
-  border-radius: 8px;
+  border: 1px solid var(--rm-line);
+  border-radius: var(--rm-radius-control);
   color: inherit;
   text-decoration: none;
 }
@@ -94,5 +94,5 @@ button.reservation-refresh {
 .reservation-row-date,
 .reservation-row-status {
   font-size: 0.875rem;
-  color: #555;
+  color: var(--rm-ink-soft);
 }

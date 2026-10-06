@@ -1,13 +1,23 @@
-<div class="catalogue-page">
-  <header class="catalogue-header">
-    <h1>{{ 'catalogue.title' | translate }}</h1>
-    @if (isAuthenticated()) {
-      <a routerLink="/account">{{ 'catalogue.myAccount' | translate }}</a>
-    } @else {
-      <a routerLink="/login">{{ 'auth.signIn' | translate }}</a>
-    }
-  </header>
+<header class="brand-bar">
+  <a routerLink="/" class="brand-home" aria-label="La Ruta Mochilera">
+    <img src="brand/logo-on-light.png" alt="" width="40" height="40" />
+    <span>La Ruta <strong>Mochilera</strong></span>
+  </a>
+  @if (isAuthenticated()) {
+    <a routerLink="/account" class="brand-pill-link">{{ 'catalogue.myAccount' | translate }}</a>
+  } @else {
+    <a routerLink="/login" class="brand-pill-link">{{ 'auth.signIn' | translate }}</a>
+  }
+</header>
 
+<section class="catalogue-hero">
+  <div class="catalogue-hero-inner">
+    <h1>{{ 'catalogue.title' | translate }}</h1>
+    <p>{{ 'brand.tagline' | translate }}</p>
+  </div>
+</section>
+
+<div class="catalogue-page">
   @switch (status()) {
     @case ('loading') {
       <p class="catalogue-status">{{ 'common.loading' | translate }}</p>
@@ -29,7 +39,11 @@
               <h2>
                 <a [routerLink]="['/trips', trip.slug]">{{ trip.name }}</a>
               </h2>
-              <p class="trip-dates">{{ trip.departureDate | rmCalendarDate }} – {{ trip.returnDate | rmCalendarDate }}</p>
+              <p class="trip-dates">
+                {{ trip.departureDate | rmCalendarDate }}@if (trip.returnDate !== trip.departureDate) {
+                  – {{ trip.returnDate | rmCalendarDate }}
+                }
+              </p>
               <p class="trip-price">{{ trip.pricePerSeatCents | rmMoney }}</p>
               @if (trip.availableSeats > 0) {
                 <p class="trip-seats">{{ 'catalogue.seatsLeft' | translate: { count: trip.availableSeats } }}</p>

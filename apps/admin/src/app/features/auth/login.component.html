@@ -1,7 +1,13 @@
 <div class="login-page">
-  <mat-card class="login-card">
+  <section class="login-brand" aria-hidden="true">
+    <img src="brand/logo-on-light.png" alt="" class="login-logo" width="160" height="160" />
+    <p class="login-wordmark">La Ruta<br />Mochilera</p>
+    <p class="login-tagline">{{ 'brand.tagline' | translate }}</p>
+  </section>
+
+  <mat-card class="login-card" appearance="outlined">
     <mat-card-header>
-      <mat-card-title>Ruta Mochilera</mat-card-title>
+      <mat-card-title>{{ 'auth.panelTitle' | translate }}</mat-card-title>
     </mat-card-header>
 
     <mat-card-content>

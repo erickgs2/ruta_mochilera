@@ -1,48 +1,134 @@
+// The posters' upper half: a big heavy headline on the brand yellow.
+.catalogue-hero {
+  background: var(--rm-yellow);
+  color: var(--rm-ink);
+  padding: 1.5rem 1rem 2.5rem;
+}
+
+.catalogue-hero-inner {
+  max-width: 1080px;
+  margin: 0 auto;
+
+  h1 {
+    margin: 0;
+    font-size: clamp(2.5rem, 9vw, 4.75rem);
+    line-height: 0.95;
+    letter-spacing: -0.035em;
+  }
+
+  p {
+    margin: 0.75rem 0 0;
+    font-weight: 600;
+    font-size: clamp(1rem, 2.5vw, 1.2rem);
+  }
+}
+
+.catalogue-page {
+  // The first card overlaps the yellow band, like the posters' post frames
+  // overlapping their headline.
+  margin-top: -1.5rem;
+}
+
 .trip-grid {
   list-style: none;
   margin: 0;
   padding: 0;
   display: grid;
-  gap: 1rem;
-  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 1.25rem;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr));
 }
 
+// Each trip is framed like the posters' social posts: a white frame around
+// the photo, the name set heavy beneath it.
 .trip-card {
-  border: 1px solid #ddd;
-  border-radius: 12px;
-  overflow: hidden;
   display: flex;
   flex-direction: column;
+  padding: 0.6rem;
+  border-radius: var(--rm-radius-card);
+  background: var(--rm-surface);
+  box-shadow: var(--rm-shadow-card);
+  transition:
+    transform 240ms var(--rm-ease-out),
+    box-shadow 240ms var(--rm-ease-out);
+
+  &:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 18px 32px -16px rgb(42 41 36 / 0.4);
+  }
 
   img {
     width: 100%;
-    aspect-ratio: 16 / 9;
+    aspect-ratio: 1 / 1;
     object-fit: cover;
+    border-radius: calc(var(--rm-radius-card) - 6px);
+    background: var(--rm-cream);
   }
 
   h2 {
-    font-size: 1.125rem;
-    margin: 0 0 0.5rem;
+    font-size: 1.45rem;
+    margin: 0;
 
     a {
       color: inherit;
       text-decoration: none;
+
+      // The whole frame is the link's target on touch screens.
+      &::after {
+        content: '';
+        position: absolute;
+        inset: 0;
+      }
     }
   }
 }
 
 .trip-card-body {
-  padding: 1rem;
+  position: relative;
+  padding: 0.9rem 0.4rem 0.4rem;
   display: flex;
   flex-direction: column;
-  gap: 0.25rem;
+  gap: 0.5rem;
 
   p {
     margin: 0;
   }
 
   .trip-reserve {
-    margin-top: 0.75rem;
-    align-self: flex-start;
+    position: relative;
+    z-index: 1;
+    margin-top: 0.5rem;
+    align-self: stretch;
+  }
+}
+
+// The next departure leads: on wide screens it takes two columns, photo
+// beside its text.
+@media (min-width: 900px) {
+  .trip-card:first-child {
+    grid-column: span 2;
+    flex-direction: row;
+    gap: 1rem;
+
+    img {
+      width: 55%;
+      flex-shrink: 0;
+    }
+
+    h2 {
+      font-size: 2.25rem;
+    }
+
+    .trip-card-body {
+      justify-content: center;
+      padding: 1rem 1rem 1rem 0;
+    }
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .trip-card,
+  .trip-card:hover {
+    transition: none;
+    transform: none;
   }
 }

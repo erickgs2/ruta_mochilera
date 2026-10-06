@@ -1,14 +1,54 @@
 .login-page {
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   min-height: 100vh;
-  padding: 1rem;
+}
+
+// The posters' yellow band, with the logo in the posters' charcoal.
+.login-brand {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 1rem;
+  padding: 3rem clamp(1.5rem, 6vw, 5rem);
+  background: var(--rm-yellow);
+  color: var(--rm-ink);
+}
+
+.login-logo {
+  width: clamp(96px, 14vw, 160px);
+  height: auto;
+}
+
+.login-wordmark {
+  margin: 0;
+  font-size: clamp(2.5rem, 6vw, 4.5rem);
+  font-weight: 800;
+  line-height: 0.95;
+  letter-spacing: -0.035em;
+}
+
+.login-tagline {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 600;
 }
 
 .login-card {
-  width: 100%;
+  align-self: center;
+  justify-self: center;
+  width: calc(100% - 2rem);
   max-width: 24rem;
+  margin: 2rem 1rem;
+  padding: 0.5rem;
+  border-radius: var(--rm-radius-card);
+  background: var(--rm-surface);
+}
+
+.login-card mat-card-title {
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  margin-bottom: 0.75rem;
 }
 
 .full-width {
@@ -17,6 +57,35 @@
 }
 
 .login-error {
-  color: var(--mat-sys-error, #b3261e);
+  color: var(--mat-sys-error);
   margin: 0 0 1rem;
+}
+
+@media (max-width: 720px) {
+  .login-page {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto 1fr;
+  }
+
+  .login-brand {
+    flex-direction: row;
+    align-items: center;
+    padding: 1.25rem 1.5rem;
+  }
+
+  .login-logo {
+    width: 56px;
+  }
+
+  .login-wordmark {
+    font-size: 1.75rem;
+  }
+
+  .login-tagline {
+    display: none;
+  }
+
+  .login-card {
+    align-self: start;
+  }
 }

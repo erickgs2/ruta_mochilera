@@ -18,9 +18,9 @@
 .inbox-unread-count {
   min-width: 1.5rem;
   padding: 0 0.4rem;
-  border-radius: 999px;
-  background: #b00020;
-  color: #fff;
+  border-radius: var(--rm-radius-pill);
+  background: var(--rm-danger);
+  color: var(--rm-surface);
   font-size: 0.875rem;
   text-align: center;
 }
@@ -35,12 +35,13 @@
 }
 
 .inbox-item {
-  border: 1px solid #ddd;
-  border-radius: 8px;
+  border: 1px solid var(--rm-line);
+  border-radius: var(--rm-radius-control);
 }
 
 .inbox-item--unread {
-  border-left: 4px solid #1a73e8;
+  background: var(--rm-cream);
+  border-color: var(--rm-yellow);
 
   .inbox-item-title {
     font-weight: 700;
@@ -63,7 +64,7 @@
 
 .inbox-item-date {
   font-size: 0.75rem;
-  color: #555;
+  color: var(--rm-ink-soft);
 }
 
 .inbox-item-body {
@@ -73,10 +74,10 @@
 }
 
 .inbox-error {
-  color: #b00020;
+  color: var(--rm-danger);
 }
 
 .inbox-empty {
-  color: #555;
+  color: var(--rm-ink-soft);
   text-align: center;
 }

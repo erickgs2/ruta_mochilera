@@ -12,8 +12,8 @@ form,
 }
 
 fieldset {
-  border: 1px solid #ddd;
-  border-radius: 8px;
+  border: 1px solid var(--rm-line);
+  border-radius: var(--rm-radius-control);
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
@@ -34,21 +34,21 @@ label.payment-option {
 }
 
 .payments-error {
-  color: #b00020;
+  color: var(--rm-danger);
 }
 
 .payments-unavailable,
 .voucher-notice {
-  color: #555;
+  color: var(--rm-ink-soft);
 }
 
 button {
   padding: 0.875rem;
   font-size: 1rem;
   border: none;
-  border-radius: 8px;
-  background: #1a73e8;
-  color: #fff;
+  border-radius: var(--rm-radius-control);
+  background: var(--rm-yellow);
+  color: var(--rm-ink);
 
   &:disabled {
     opacity: 0.6;
@@ -100,15 +100,15 @@ button {
   grid-template-columns: 1fr auto;
   gap: 0.25rem 1rem;
   padding: 0.75rem;
-  border: 1px solid #ddd;
-  border-radius: 8px;
+  border: 1px solid var(--rm-line);
+  border-radius: var(--rm-radius-control);
 }
 
 // Not money received yet: an unpaid OXXO voucher or an unconfirmed card.
 .payment-row--pending {
   border-style: dashed;
-  background: #fff8e1;
-  color: #555;
+  background: var(--rm-cream);
+  color: var(--rm-ink-soft);
 }
 
 .payment-row-amount {

@@ -1,4 +1,7 @@
 {
+  "brand": {
+    "tagline": "Building community across Mexico and the world!"
+  },
   "common": {
     "save": "Save",
     "cancel": "Cancel",
@@ -65,10 +68,11 @@
       "success": "Done: your password has changed. For your security we signed you out everywhere; sign in with the new password.",
       "linkInvalid": "This link no longer works: it may have expired or already been used.",
       "requestNewLink": "Request a new link"
-    }
+    },
+    "panelTitle": "Admin panel"
   },
   "catalogue": {
-    "title": "Trips",
+    "title": "Upcoming routes",
     "myAccount": "My account",
     "empty": "There are no published trips right now. Check back soon.",
     "seatsLeft": "{{count}} seats left",

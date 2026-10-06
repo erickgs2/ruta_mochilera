@@ -25,12 +25,10 @@
   color: var(--mat-sys-error, #b3261e);
 }
 
-// The rows that wait on a person: a tinted background plus a left rule, so
-// they read as "act on these" without relying on colour alone (the chip says
-// it in words too).
+// The rows that wait on a person: a tinted background, and the chip says it
+// in words too, so it never relies on colour alone.
 .reservations-pending {
   background: var(--mat-sys-error-container, #fde7e9);
-  box-shadow: inset 4px 0 0 var(--mat-sys-error, #b3261e);
 }
 
 .reservations-table-container {

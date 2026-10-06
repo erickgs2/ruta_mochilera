@@ -9,6 +9,7 @@
     "db:deploy": "prisma migrate deploy",
     "db:reset": "prisma migrate reset --force",
     "db:seed": "tsx libs/db/prisma/seed.ts",
+    "db:seed:demo": "tsx libs/db/prisma/seed-demo.ts",
     "api:types": "tsx tools/generate-api-client.ts"
   },
   "private": true,
@@ -83,6 +84,7 @@
     "@aparajita/capacitor-secure-storage": "^8.0.1",
     "@aws-sdk/client-s3": "^3.1141.0",
     "@capacitor/core": "^8.5.2",
+    "@fontsource/poppins": "^5.3.0",
     "@ngx-translate/core": "18.0.0",
     "@ngx-translate/http-loader": "18.0.0",
     "@node-rs/argon2": "^2.2.1",

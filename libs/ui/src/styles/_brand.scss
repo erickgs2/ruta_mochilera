@@ -1,0 +1,92 @@
+// La Ruta Mochilera -- brand tokens shared by apps/admin and apps/client.
+//
+// Taken from the agency's own material (assets/branding/logo.png and the
+// route posters in assets/rutas/): the logo's yellow, the posters' charcoal
+// lettering and the cream of their date pill, set in Poppins as the posters
+// are. Poppins is self-hosted (@fontsource/poppins, listed in each app's
+// `styles`), so the packaged Capacitor app never depends on a font CDN.
+//
+// Plain CSS custom properties so component styles in both apps -- Material
+// or not -- read the same values. See docs/brand.md for when to use which.
+
+$font:
+  'Poppins',
+  system-ui,
+  -apple-system,
+  'Segoe UI',
+  sans-serif;
+
+@mixin tokens {
+  // Brand yellow: the logo's (#F9D423) and the posters' print yellow (#FFD600).
+  --rm-yellow: #f9d423;
+  --rm-yellow-strong: #ffd600;
+  --rm-yellow-soft: #fff3b0;
+  // The posters' date pill and the page ground tinted from it.
+  --rm-cream: #fcf6da;
+  --rm-ground: #fffcf0;
+  --rm-surface: #ffffff;
+  // Charcoal lettering. On yellow, cream or white it clears 4.5:1 comfortably.
+  --rm-ink: #2a2924;
+  --rm-ink-soft: #57544a;
+  --rm-line: #e8e0c4;
+  // Form-control borders: 3:1 against the ground (WCAG 1.4.11).
+  --rm-line-strong: #8a8470;
+  --rm-danger: #b3261e;
+  --rm-danger-soft: #fce8e6;
+  --rm-success: #1e6b34;
+  --rm-success-soft: #e3f3e6;
+
+  --rm-font: #{$font};
+  --rm-radius-card: 14px;
+  --rm-radius-control: 10px;
+  --rm-radius-pill: 999px;
+  --rm-shadow-card: 0 10px 24px -14px rgb(42 41 36 / 0.35);
+  --rm-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+// The parts of the page nobody draws but everybody sees: selection, caret,
+// focus ring, scrollbars, link underlines and tabular figures for money.
+@mixin browser-surfaces {
+  ::selection {
+    background: var(--rm-yellow);
+    color: var(--rm-ink);
+  }
+
+  html {
+    caret-color: var(--rm-ink);
+    scrollbar-color: #c9bf97 transparent;
+    -webkit-tap-highlight-color: rgb(249 212 35 / 0.35);
+  }
+
+  :focus-visible {
+    outline: 3px solid var(--rm-ink);
+    outline-offset: 2px;
+  }
+
+  a {
+    text-underline-offset: 0.2em;
+    text-decoration-thickness: 0.08em;
+  }
+
+  // Money and dates line up in columns.
+  .rm-figures,
+  td,
+  .trip-price {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+// The posters' date pill: cream, fully rounded, heavy charcoal figures.
+// The brand's one signature move -- use it for a trip's dates, nowhere else.
+@mixin date-pill {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.35em;
+  padding: 0.3em 0.85em;
+  border-radius: var(--rm-radius-pill);
+  background: var(--rm-cream);
+  color: var(--rm-ink);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}

@@ -28,17 +28,17 @@
   input[type='tel'] {
     padding: 0.75rem;
     font-size: 1rem;
-    border: 1px solid #ccc;
-    border-radius: 8px;
+    border: 1px solid var(--rm-line-strong);
+    border-radius: var(--rm-radius-control);
   }
 
   button {
     padding: 0.875rem;
     font-size: 1rem;
     border: none;
-    border-radius: 8px;
-    background: #1a73e8;
-    color: #fff;
+    border-radius: var(--rm-radius-control);
+    background: var(--rm-yellow);
+    color: var(--rm-ink);
 
     &:disabled {
       opacity: 0.6;
@@ -67,8 +67,8 @@
 .profile-photo--empty {
   display: grid;
   place-items: center;
-  background: #e8f0fe;
-  color: #1a73e8;
+  background: var(--rm-yellow-soft);
+  color: var(--rm-ink);
   font-size: 1.75rem;
   font-weight: 600;
 }
@@ -86,21 +86,21 @@
 .profile-hint {
   margin: 0;
   font-size: 0.75rem;
-  color: #555;
+  color: var(--rm-ink-soft);
 }
 
 .field-error {
-  color: #b00020;
+  color: var(--rm-danger);
   font-size: 0.875rem;
 }
 
 .profile-notice {
-  color: #1e7e34;
+  color: var(--rm-success);
   font-size: 0.875rem;
 }
 
 .profile-page button.profile-sign-out {
   background: transparent;
-  color: #b00020;
-  border: 1px solid #b00020;
+  color: var(--rm-danger);
+  border: 1px solid var(--rm-danger);
 }

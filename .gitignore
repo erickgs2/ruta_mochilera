@@ -6,6 +6,8 @@ tmp/
 .env.local
 .env.prod
 /storage/
+# Local upload root as seen by `nx dev api`, which runs from apps/api.
+/apps/api/storage/
 .DS_Store
 .superpowers/
 

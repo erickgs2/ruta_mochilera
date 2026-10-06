@@ -1,7 +1,12 @@
+<header class="brand-bar">
+  <a routerLink="/" class="brand-home" aria-label="La Ruta Mochilera">
+    <img src="brand/logo-on-light.png" alt="" width="40" height="40" />
+    <span>La Ruta <strong>Mochilera</strong></span>
+  </a>
+  <a routerLink="/" class="brand-pill-link">{{ 'catalogue.backToCatalogue' | translate }}</a>
+</header>
+
 <div class="catalogue-page">
-  <header class="catalogue-header">
-    <a routerLink="/">← {{ 'catalogue.backToCatalogue' | translate }}</a>
-  </header>
 
   @switch (status()) {
     @case ('loading') {
@@ -29,15 +34,25 @@
             </div>
           }
 
-          <p class="trip-dates">{{ trip.departureDate | rmCalendarDate }} – {{ trip.returnDate | rmCalendarDate }}</p>
-          <p class="trip-price">{{ trip.pricePerSeatCents | rmMoney }}</p>
+          <p class="trip-dates">
+                {{ trip.departureDate | rmCalendarDate }}@if (trip.returnDate !== trip.departureDate) {
+                  – {{ trip.returnDate | rmCalendarDate }}
+                }
+              </p>
 
-          @if (trip.availableSeats > 0) {
-            <p class="trip-seats">{{ 'catalogue.seatsLeft' | translate: { count: trip.availableSeats } }}</p>
-            <a class="trip-reserve" [routerLink]="['/trips', trip.slug, 'reserve']">{{ 'catalogue.reserve' | translate }}</a>
-          } @else {
-            <p class="trip-sold-out">{{ 'catalogue.soldOut' | translate }}</p>
-          }
+          <div class="trip-cta">
+            <div>
+              <p class="trip-price">{{ trip.pricePerSeatCents | rmMoney }}</p>
+              @if (trip.availableSeats > 0) {
+                <p class="trip-seats">{{ 'catalogue.seatsLeft' | translate: { count: trip.availableSeats } }}</p>
+              }
+            </div>
+            @if (trip.availableSeats > 0) {
+              <a class="trip-reserve" [routerLink]="['/trips', trip.slug, 'reserve']">{{ 'catalogue.reserve' | translate }}</a>
+            } @else {
+              <p class="trip-sold-out">{{ 'catalogue.soldOut' | translate }}</p>
+            }
+          </div>
 
           @if (translation(); as text) {
             <section>

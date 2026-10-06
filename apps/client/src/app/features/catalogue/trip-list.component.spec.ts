@@ -124,4 +124,17 @@ describe('TripListComponent', () => {
       expect(dates).toContain('Nov 24, 2026');
     });
   });
+
+  it('shows a one-day trip with its single date, not the same day twice', () => {
+    const { fixture, http } = setup();
+
+    http
+      .expectOne('/api/v1/public/trips')
+      .flush([trip({ departureDate: '2026-10-18T00:00:00.000Z', returnDate: '2026-10-18T00:00:00.000Z' })]);
+    fixture.detectChanges();
+
+    const dates: string = fixture.nativeElement.querySelector('.trip-dates').textContent;
+    expect(dates.match(/Oct 18, 2026/g)).toHaveLength(1);
+    expect(dates).not.toContain('–');
+  });
 });

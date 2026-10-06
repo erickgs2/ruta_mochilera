@@ -5,15 +5,40 @@
   padding: 2rem 1rem;
   min-height: 100vh;
   box-sizing: border-box;
+  // The posters' yellow band behind the top of the card.
+  background: linear-gradient(var(--rm-yellow) 0 11rem, var(--rm-ground) 11rem);
 }
 
 .auth-card {
   width: 100%;
-  max-width: 360px;
+  max-width: 380px;
+  align-self: flex-start;
+  margin-top: 2rem;
+  padding: 1.5rem 1.25rem;
+  border-radius: var(--rm-radius-card);
+  background: var(--rm-surface);
+  box-shadow: var(--rm-shadow-card);
+
+  .auth-logo {
+    display: block;
+    width: 72px;
+    margin: -3.5rem auto 0.5rem;
+    padding: 0.35rem;
+    // The posters' seal: white mark on a yellow disc in a white ring.
+    border-radius: 50%;
+    background: var(--rm-yellow);
+    box-shadow: 0 0 0 6px var(--rm-surface);
+
+    img {
+      display: block;
+      width: 100%;
+      height: auto;
+    }
+  }
 
   h1 {
-    font-size: 1.5rem;
-    margin-bottom: 1.5rem;
+    font-size: 1.75rem;
+    margin: 0 0 1.25rem;
     text-align: center;
   }
 
@@ -38,8 +63,15 @@
   input[inputmode='numeric'] {
     padding: 0.75rem;
     font-size: 1rem;
-    border: 1px solid #ccc;
-    border-radius: 8px;
+    border: 1px solid var(--rm-line-strong);
+    border-radius: var(--rm-radius-control);
+    background: var(--rm-surface);
+
+    &:focus-visible {
+      outline: 3px solid var(--rm-yellow);
+      outline-offset: 0;
+      border-color: var(--rm-ink);
+    }
   }
 
   .auth-checkbox {
@@ -49,12 +81,12 @@
 
   .auth-error,
   .field-error {
-    color: #b00020;
+    color: var(--rm-danger);
     font-size: 0.875rem;
   }
 
   .auth-notice {
-    color: #1e7e34;
+    color: var(--rm-success);
     font-size: 0.875rem;
   }
 
@@ -65,17 +97,17 @@
 
   .auth-secondary {
     background: transparent;
-    color: #1a73e8;
-    border: 1px solid #1a73e8;
+    color: var(--rm-ink);
+    border: 2px solid var(--rm-ink);
   }
 
   button {
     padding: 0.875rem;
     font-size: 1rem;
     border: none;
-    border-radius: 8px;
-    background: #1a73e8;
-    color: #fff;
+    border-radius: var(--rm-radius-control);
+    background: var(--rm-yellow);
+    color: var(--rm-ink);
 
     &:disabled {
       opacity: 0.6;

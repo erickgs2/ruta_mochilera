@@ -1,4 +1,7 @@
 {
+  "brand": {
+    "tagline": "¡Haciendo comunidad x México y el Mundo!"
+  },
   "common": {
     "save": "Guardar",
     "cancel": "Cancelar",
@@ -65,10 +68,11 @@
       "success": "Listo: tu contraseña cambió. Por seguridad cerramos todas tus sesiones; inicia sesión con la contraseña nueva.",
       "linkInvalid": "Este enlace ya no funciona: puede que haya vencido o que ya se haya usado.",
       "requestNewLink": "Solicitar un enlace nuevo"
-    }
+    },
+    "panelTitle": "Panel de administración"
   },
   "catalogue": {
-    "title": "Viajes",
+    "title": "Próximas rutas",
     "myAccount": "Mi cuenta",
     "empty": "Por ahora no hay viajes publicados. Vuelve pronto.",
     "seatsLeft": "Quedan {{count}} lugares",
