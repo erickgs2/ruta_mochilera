@@ -1,5 +1,7 @@
 import { TestBed } from '@angular/core/testing';
+import { provideTranslateService } from '@ngx-translate/core';
 import { CalendarDatePipe } from './calendar-date.pipe';
+import { LanguageService } from './language.service';
 
 describe('CalendarDatePipe', () => {
   let pipe: CalendarDatePipe;
@@ -11,6 +13,9 @@ describe('CalendarDatePipe', () => {
     // assignment, so this holds regardless of the machine running the suite.
     previousTimeZone = process.env['TZ'];
     process.env['TZ'] = 'America/Mexico_City';
+    localStorage.clear();
+    TestBed.configureTestingModule({ providers: [provideTranslateService({ lang: 'es', fallbackLang: 'es' })] });
+    TestBed.inject(LanguageService).use('es');
     pipe = TestBed.runInInjectionContext(() => new CalendarDatePipe());
   });
 
@@ -20,7 +25,15 @@ describe('CalendarDatePipe', () => {
   });
 
   it('renders a midnight-UTC calendar date as the stored day for a viewer west of UTC', () => {
-    expect(pipe.transform('2026-11-20T00:00:00.000Z')).toBe('Nov 20, 2026');
+    expect(pipe.transform('2026-11-20T00:00:00.000Z')).toBe('20 nov 2026');
+  });
+
+  it('writes the date in the language the interface is in, and follows a switch', () => {
+    expect(pipe.transform('2027-01-23T00:00:00.000Z')).toBe('23 ene 2027');
+
+    TestBed.inject(LanguageService).use('en');
+
+    expect(pipe.transform('2027-01-23T00:00:00.000Z')).toBe('Jan 23, 2027');
   });
 
   it('accepts a custom format', () => {

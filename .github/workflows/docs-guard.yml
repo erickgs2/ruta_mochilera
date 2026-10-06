@@ -3,7 +3,7 @@ name: Business rules documentation
 # Enforces the "living documentation" rule in CLAUDE.md: a PR that changes a
 # domain module's source under `libs/domain/<module>/src/` must, in the same
 # PR, update that module's file in `docs/business-rules/` and -- for trips,
-# costing and reservations -- its diagram in `docs/diagrams/`. The mapping
+# costing, reservations and payments -- its diagram in `docs/diagrams/`. The mapping
 # below mirrors the table in CLAUDE.md exactly; modules with no row there
 # (currently `identity`, `staff`, `audit`) carry no requirement.
 #
@@ -35,13 +35,13 @@ jobs:
           echo
 
           # module:business-rules-file:diagram-file (diagram-file empty when
-          # the module has none -- payments, notifications and rbac document
-          # rules in prose only, no diagram).
+          # the module has none -- notifications and rbac document rules in
+          # prose only, no diagram).
           RULES="
           trips:docs/business-rules/trips.md:docs/diagrams/trip-creation.md
           costing:docs/business-rules/costing.md:docs/diagrams/trip-costing.md
           reservations:docs/business-rules/reservations.md:docs/diagrams/trip-reservation.md
-          payments:docs/business-rules/payments.md:
+          payments:docs/business-rules/payments.md:docs/diagrams/payment-flow.md
           notifications:docs/business-rules/notifications.md:
           rbac:docs/business-rules/rbac.md:
           "

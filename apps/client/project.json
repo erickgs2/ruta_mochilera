@@ -64,7 +64,8 @@
               "maximumError": "8kb"
             }
           ],
-          "outputHashing": "all"
+          "outputHashing": "all",
+          "baseHref": "/app/"
         },
         "development": {
           "optimization": false,

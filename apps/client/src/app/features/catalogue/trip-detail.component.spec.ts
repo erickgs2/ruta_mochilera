@@ -130,8 +130,9 @@ describe('TripDetailComponent', () => {
       harness.detectChanges();
 
       const dates: string = harness.routeNativeElement!.querySelector('.trip-dates')!.textContent ?? '';
-      expect(dates).toContain('Nov 20, 2026');
-      expect(dates).toContain('Nov 24, 2026');
+      // Written in the interface's language (Spanish here), and still the stored day.
+      expect(dates).toContain('20 nov 2026');
+      expect(dates).toContain('24 nov 2026');
     });
   });
 });

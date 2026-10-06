@@ -1,4 +1,5 @@
-# Static admin panel (apps/admin) served by Nginx. Same multi-arch build as
+# Both static Angular apps served by one Nginx: the admin panel (apps/admin)
+# at /admin/ and the customer app (apps/client) at /app/. Same multi-arch build as
 # Dockerfile.api: dev on the Raspberry Pi (arm64), qa/production on EC2
 # (amd64). Build context is the repo root:
 #   docker buildx build -f infra/docker/Dockerfile.web -t rm-web:latest .
@@ -9,7 +10,7 @@ COPY pnpm-lock.yaml package.json pnpm-workspace.yaml ./
 RUN pnpm fetch
 COPY . .
 RUN pnpm install --offline --frozen-lockfile \
- && pnpm nx build admin --skip-nx-cache
+ && pnpm nx run-many -t build -p admin client --configuration=production --skip-nx-cache
 
 FROM nginx:1.27-alpine
 # A `.template` file under `/etc/nginx/templates/` is rendered by the
@@ -20,6 +21,8 @@ FROM nginx:1.27-alpine
 # `compose.prod.yml` for where `DOMAIN_NAME` comes from.
 COPY infra/nginx/nginx.conf.template /etc/nginx/templates/default.conf.template
 # @angular/build:application emits the browser bundle under a `browser/`
-# subdirectory of the configured outputPath (dist/apps/admin) -- see
-# apps/admin/project.json's build target.
+# subdirectory of the configured outputPath (dist/apps/<app>) -- see each
+# app's project.json build target. The directory names match the base href
+# each production build bakes into its index.html.
 COPY --from=builder /app/dist/apps/admin/browser /usr/share/nginx/html/admin
+COPY --from=builder /app/dist/apps/client/browser /usr/share/nginx/html/app

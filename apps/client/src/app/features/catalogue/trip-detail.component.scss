@@ -81,6 +81,43 @@
   }
 }
 
+// On a wide screen the photo and the decision sit side by side, so the
+// price and the reserve button are in the first view instead of below a
+// photo the full width of the page.
+@media (min-width: 900px) {
+  .trip-detail {
+    display: grid;
+    grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+    column-gap: 2rem;
+    row-gap: 0.75rem;
+    align-items: start;
+    max-width: 1080px;
+
+    h1 {
+      grid-column: 1 / -1;
+    }
+
+    > :not(h1, .trip-gallery) {
+      grid-column: 2;
+    }
+
+    .trip-dates {
+      justify-self: start;
+    }
+  }
+
+  .trip-gallery {
+    grid-column: 1;
+    grid-row: 2 / span 6;
+    position: sticky;
+    top: 1rem;
+  }
+
+  .trip-detail h2 {
+    margin-top: 1rem;
+  }
+}
+
 // Staff write these fields as plain text with line breaks.
 .trip-text {
   white-space: pre-line;

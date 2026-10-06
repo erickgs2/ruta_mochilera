@@ -39,15 +39,15 @@ sequenceDiagram
     participant DB as PostgreSQL
     participant B as "Cliente B"
 
-    A->>DB: "BEGIN; SELECT ... FOR UPDATE (viaje X)"
+    A->>DB: "BEGIN, SELECT ... FOR UPDATE (viaje X)"
     DB-->>A: "bloqueo concedido"
-    B->>DB: "BEGIN; SELECT ... FOR UPDATE (viaje X)"
+    B->>DB: "BEGIN, SELECT ... FOR UPDATE (viaje X)"
     Note over B,DB: "B queda esperando: A tiene la fila"
     A->>DB: "conteo = 0 comprometidos, queda 1 lugar"
-    A->>DB: "INSERT reserva; COMMIT"
+    A->>DB: "INSERT reserva, COMMIT"
     DB-->>B: "bloqueo concedido (A ya hizo COMMIT)"
     B->>DB: "conteo = 1 comprometido, quedan 0 lugares"
-    B-->>B: "TRIP_SOLD_OUT; ROLLBACK"
+    B-->>B: "TRIP_SOLD_OUT, ROLLBACK"
 ```
 
 Sin el `FOR UPDATE`, B no espera: cuenta cero al mismo tiempo que A, inserta
@@ -170,6 +170,13 @@ stateDiagram-v2
     EXPIRED --> [*]
     CANCELLED --> [*]
 ```
+
+Los dos jobs de `apps/worker` que tocan este ciclo: `expireHolds` (cada 5
+minutos) dispara `HELD → EXPIRED` y cancela los Payment Intents pendientes;
+`warnExpiringHolds` (cada hora) no cambia el estado, sólo avisa
+`HOLD_EXPIRING` cuando queda menos de un cuarto del plazo del apartado.
+`HELD → ACTIVE` no lo dispara ningún job: llega con el webhook de Stripe (o,
+en la Fase 2B, con un pago del mostrador), nunca con la respuesta de la app.
 
 La solicitud del cliente (`requestCancellation`) **no** es una transición: no
 aparece en este diagrama porque no cambia el estado. Sólo pone la reserva en

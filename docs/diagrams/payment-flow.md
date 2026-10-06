@@ -47,6 +47,41 @@ sequenceDiagram
     W-->>S: "200"
 ```
 
+## Tres métodos, tres tiempos (Tarea 20)
+
+Los tres métodos terminan igual —la verdad del pago llega **sólo** por el
+webhook, nunca por lo que diga la app— pero tardan distinto y fallan distinto.
+
+```mermaid
+flowchart TD
+    A["POST /reservations/{id}/payment-intents<br/>intent FULL o DEPOSIT, método"] --> M{"Método"}
+
+    M -- "CARD" --> C1["Stripe Elements confirma en la app"]
+    C1 --> C2["La app muestra «procesando»:<br/>no cambia nada por su cuenta"]
+    C2 --> W
+
+    M -- "OXXO" --> O1["Ficha con vencimiento<br/>= hold_expires_at, nunca después"]
+    O1 --> O2["Payment PENDING: no reduce el saldo<br/>ni detiene el apartado"]
+    O2 --> O3{"¿Se pagó en tienda<br/>antes de vencer?"}
+    O3 -- Sí --> W
+    O3 -- No --> O4["payment_failed con<br/>payment_intent_payment_attempt_expired"]
+    O4 --> O5["Payment EXPIRED, aviso VOUCHER_EXPIRED"]
+
+    M -- "SPEI" --> S1["customer_balance con mx_bank_transfer:<br/>referencia para transferir"]
+    S1 --> S2["Payment PENDING hasta que el banco liquide"]
+    S2 --> W
+
+    W["Webhook payment_intent.succeeded"] --> V["Payment SUCCEEDED, paid_cents += monto,<br/>HELD → ACTIVE si cubre el anticipo"]
+    V --> N["Aviso PAYMENT_CONFIRMED,<br/>o el caso límite de §5.3 (abajo)"]
+```
+
+**SPEI está en la API y en el adaptador, pero no en la app.** `payment-intents`
+acepta `SPEI` y `StripePaymentProvider` lo traduce a `customer_balance` con
+`mx_bank_transfer`, sin verificar todavía contra una cuenta real de Stripe
+(ver `libs/payments-stripe/README.md`). La pantalla de pago del cliente sólo
+ofrece tarjeta y OXXO; añadir SPEI ahí es trabajo pendiente, no una omisión
+de este diagrama.
+
 ## El candado: por qué la fila de `stripe_events` va primero
 
 Stripe reenvía, duplica y reordena entregas. La inserción de `stripe_events`
