@@ -15,7 +15,7 @@ describe('appRoutes', () => {
     }
   );
 
-  it.each(['account', 'trips/:slug/reserve', 'reservations/:id', 'reservations/:id/payments', 'inbox'])('keeps "%s" behind the session guard', (path) => {
+  it.each(['account', 'trips/:slug/reserve', 'reservations', 'reservations/:id', 'reservations/:id/payments', 'inbox'])('keeps "%s" behind the session guard', (path) => {
     expect(route(path).canActivate).toEqual([authGuard]);
   });
 });

@@ -115,6 +115,10 @@
     "processingSlow": "Tu pago sigue en proceso. Actualiza en unos minutos para ver si ya se acreditó.",
     "paymentHistory": "Ver historial de pagos"
   },
+  "reservations": {
+    "title": "Mis reservas",
+    "empty": "Todavía no tienes reservas. Explora los viajes y aparta tu lugar."
+  },
   "payments": {
     "whatToPay": "¿Qué quieres pagar?",
     "payFull": "Todo el saldo",

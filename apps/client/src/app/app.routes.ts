@@ -23,6 +23,12 @@ export const appRoutes: Routes = [
     loadComponent: () => import('./features/reservations/reserve.component').then((m) => m.ReserveComponent),
   },
   {
+    path: 'reservations',
+    canActivate: [authGuard],
+    loadComponent: () =>
+      import('./features/reservations/reservation-list.component').then((m) => m.ReservationListComponent),
+  },
+  {
     path: 'reservations/:id',
     canActivate: [authGuard],
     loadComponent: () =>

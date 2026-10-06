@@ -115,6 +115,10 @@
     "processingSlow": "Your payment is still being processed. Refresh in a few minutes to see whether it was credited.",
     "paymentHistory": "See payment history"
   },
+  "reservations": {
+    "title": "My reservations",
+    "empty": "You have no reservations yet. Browse the trips and hold your seat."
+  },
   "payments": {
     "whatToPay": "What do you want to pay?",
     "payFull": "The full balance",
