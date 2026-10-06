@@ -142,3 +142,15 @@ con el permiso `reservation.cancel`, no un efecto de esta solicitud. El aviso
 a quien sí tiene ese permiso (nodo `G2`, Tarea 14) es lo que pone la
 solicitud frente a esa persona; sin él, sellar la columna no alcanza por
 nadie a menos que alguien revise la base a mano.
+
+## «Mis reservas»: el listado del cliente (Tarea 18)
+
+```mermaid
+flowchart LR
+    A["GET /reservations"] --> B["listReservationsForCustomer:<br/>reservas del cliente, más recientes primero,<br/>canceladas y vencidas incluidas"]
+    B --> C["include trip:<br/>slug, departure_date,<br/>traducción es"]
+    C --> D["Fila: folio, estado, saldo,<br/>tripName = nombre es o slug,<br/>tripDepartureDate"]
+```
+
+El nombre del viaje usa la misma regla que el resumen del catálogo público.
+Ver `docs/business-rules/reservations.md`, «Leer una reserva propia».

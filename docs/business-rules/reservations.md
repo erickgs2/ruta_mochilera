@@ -323,6 +323,16 @@ mismo cuerpo, sin `details`.
 `listReservationsForCustomer` devuelve el historial completo del cliente —las
 canceladas y expiradas incluidas— de la más reciente a la más antigua.
 
+**Cada fila nombra su viaje (Tarea 18, «Mis reservas»):** `tripName` y
+`tripDepartureDate`. El cliente no puede resolver un `tripId` por su cuenta:
+el listado público va por `slug` y sólo muestra viajes publicados, mientras
+que el historial incluye viajes que ya terminaron o se cancelaron. El nombre
+sigue la misma regla que el resumen del catálogo público: la traducción en
+español y, si no existe, el `slug`, nunca un nombre inventado.
+`tripDepartureDate` es una fecha de calendario (`@db.Date`) y se muestra como
+ese mismo día, sin correrla por la zona horaria de quien la ve. La consulta
+trae el viaje con un solo `include` sobre la misma lectura, sin N+1.
+
 `balance_cents` nunca se almacena: es `total_price_cents − paid_cents` con
 piso en cero, recalculado en cada lectura.
 

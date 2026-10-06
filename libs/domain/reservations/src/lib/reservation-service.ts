@@ -37,15 +37,20 @@ export interface ReservationDto {
 
 /**
  * What a list row needs. Drops the detail-only fields (`minimumDepositCents`,
- * `creditCents`, `cancellationRequestedAt`) and carries no trip data: the
- * catalogue already serves trips, and `tripId` is what joins the two. A list
- * that reached into `TripTranslation` would guess at a screen that does not
- * exist yet and would cost a join per page.
+ * `creditCents`, `cancellationRequestedAt`) and carries just enough of the
+ * trip to name the row (Task 18, "Mis reservas"): the client cannot resolve
+ * a `tripId` on its own -- the public list is keyed by slug and only shows
+ * published trips, while a customer's history includes trips that have since
+ * finished or been cancelled.
  */
 export interface ReservationSummaryDto {
   id: string;
   code: string;
   tripId: string;
+  /** The Spanish translation's name, else the slug -- the same rule as the public catalogue's summary. */
+  tripName: string;
+  /** A calendar date (`@db.Date`): render it as that day, never shifted by the viewer's zone. */
+  tripDepartureDate: Date;
   status: ReservationStatus;
   holdExpiresAt: Date | null;
   totalPriceCents: number;
@@ -104,11 +109,24 @@ function toDto(reservation: Reservation): ReservationDto {
   };
 }
 
-function toSummaryDto(reservation: Reservation): ReservationSummaryDto {
+/** What `listReservationsForCustomer` loads of each row's trip. */
+const SUMMARY_TRIP_SELECT = {
+  slug: true,
+  departureDate: true,
+  translations: { where: { locale: 'es' as const }, select: { name: true } },
+};
+
+type ReservationWithSummaryTrip = Reservation & {
+  trip: { slug: string; departureDate: Date; translations: { name: string }[] };
+};
+
+function toSummaryDto(reservation: ReservationWithSummaryTrip): ReservationSummaryDto {
   return {
     id: reservation.id,
     code: reservation.code,
     tripId: reservation.tripId,
+    tripName: reservation.trip.translations[0]?.name ?? reservation.trip.slug,
+    tripDepartureDate: reservation.trip.departureDate,
     status: reservation.status,
     holdExpiresAt: reservation.holdExpiresAt,
     totalPriceCents: reservation.totalPriceCents,
@@ -300,6 +318,7 @@ export async function listReservationsForCustomer(
 ): Promise<Result<ReservationSummaryDto[]>> {
   const reservations = await db.reservation.findMany({
     where: { customerId },
+    include: { trip: { select: SUMMARY_TRIP_SELECT } },
     orderBy: { createdAt: 'desc' },
   });
   return ok(reservations.map(toSummaryDto));

@@ -50,6 +50,8 @@ export const reservationSummarySchema = z.object({
   id: uuidSchema,
   code: z.string(),
   tripId: uuidSchema,
+  tripName: z.string(),
+  tripDepartureDate: z.iso.datetime(),
   status: reservationStatusSchema,
   holdExpiresAt: z.iso.datetime().nullable(),
   totalPriceCents: z.number().int(),

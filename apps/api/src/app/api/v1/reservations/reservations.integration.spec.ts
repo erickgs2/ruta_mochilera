@@ -176,6 +176,20 @@ describe('reservation endpoints', () => {
       expect(betoList).toHaveLength(1);
     });
 
+    it("names each row's trip and its departure date", async () => {
+      const trip = await seedPublishedTrip();
+      const { token } = await loginAsCustomer(db, 'ana-named@agency.test');
+      await createReservationFor(token, trip.id);
+
+      const list = (await (await listReservationsRoute(request('/api/v1/reservations', token))).json()) as {
+        tripName: string;
+        tripDepartureDate: string;
+      }[];
+
+      expect(list[0]?.tripName).toBe('Viaje');
+      expect(list[0]?.tripDepartureDate).toBe('2028-03-01T00:00:00.000Z');
+    });
+
     it('returns 401 for an unauthenticated caller', async () => {
       const response = await listReservationsRoute(request('/api/v1/reservations'));
       expect(response.status).toBe(401);

@@ -3160,6 +3160,9 @@ export interface components {
             code: string;
             /** Format: uuid */
             tripId: string;
+            tripName: string;
+            /** Format: date-time */
+            tripDepartureDate: string;
             /** @enum {string} */
             status: "HELD" | "ACTIVE" | "CANCELLED" | "EXPIRED";
             /** Format: date-time */

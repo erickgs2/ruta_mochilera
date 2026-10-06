@@ -507,6 +507,30 @@ describe('reservation service', () => {
       expect(listed.value[0]?.balanceCents).toBe(500_000);
     });
 
+    it("names each row's trip from its Spanish translation, like the public summary, plus its departure date", async () => {
+      const named = await seedTrip(db);
+      await db.tripTranslation.createMany({
+        data: [
+          { tripId: named.id, locale: 'es', name: 'Oaxaca Mágica', description: 'd', itinerary: 'i', includes: 'inc', excludes: 'exc' },
+          { tripId: named.id, locale: 'en', name: 'Magic Oaxaca', description: 'd', itinerary: 'i', includes: 'inc', excludes: 'exc' },
+        ],
+      });
+      const unnamed = await seedTrip(db);
+      const customerId = await seedCustomer(db);
+      await createReservation(db, { tripId: named.id, customerId });
+      await createReservation(db, { tripId: unnamed.id, customerId });
+
+      const listed = await listReservationsForCustomer(db, customerId);
+
+      expect(listed.ok).toBe(true);
+      if (!listed.ok) return;
+      const byTrip = new Map(listed.value.map((row) => [row.tripId, row]));
+      expect(byTrip.get(named.id)?.tripName).toBe('Oaxaca Mágica');
+      expect(byTrip.get(named.id)?.tripDepartureDate.toISOString().slice(0, 10)).toBe('2027-12-01');
+      // No Spanish translation: the slug, never an invented name -- same fallback as the public summary.
+      expect(byTrip.get(unnamed.id)?.tripName).toBe(unnamed.slug);
+    });
+
     it('returns an empty list for a customer who has never reserved', async () => {
       const listed = await listReservationsForCustomer(db, await seedCustomer(db));
 
