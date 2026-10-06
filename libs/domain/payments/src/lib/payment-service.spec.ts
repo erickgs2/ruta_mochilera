@@ -7,6 +7,7 @@ import {
   confirmPayment,
   confirmPaymentWithin,
   listPaymentsForCustomer,
+  listPaymentsForReservation,
   recordPayment,
   suggestedMonthlyForReservation,
 } from './payment-service';
@@ -1119,6 +1120,45 @@ describe('payment service', () => {
       expect(listed.ok).toBe(true);
       if (!listed.ok) return;
       expect(listed.value).toEqual([]);
+    });
+  });
+
+  describe('listPaymentsForReservation', () => {
+    it("returns that reservation's payments only, newest first, pending and failed ones included", async () => {
+      const reservation = await seedReservation(db);
+      const other = await seedReservation(db);
+      for (const [amountCents, status] of [
+        [1_000, 'SUCCEEDED'],
+        [2_000, 'FAILED'],
+        [3_000, 'PENDING'],
+      ] as const) {
+        await db.$transaction((tx) =>
+          recordPayment(tx, { reservationId: reservation.id, amountCents, method: 'CASH', status, provider: 'MANUAL' })
+        );
+      }
+      await db.$transaction((tx) =>
+        recordPayment(tx, {
+          reservationId: other.id,
+          amountCents: 9_000,
+          method: 'CASH',
+          status: 'SUCCEEDED',
+          provider: 'MANUAL',
+        })
+      );
+
+      const listed = await listPaymentsForReservation(db, reservation.id);
+
+      expect(listed.ok).toBe(true);
+      if (!listed.ok) return;
+      expect(listed.value.map((payment) => payment.amountCents)).toEqual([3_000, 2_000, 1_000]);
+      expect(listed.value.map((payment) => payment.status)).toEqual(['PENDING', 'FAILED', 'SUCCEEDED']);
+    });
+
+    it('answers NOT_FOUND for an unknown reservation rather than an empty history', async () => {
+      const listed = await listPaymentsForReservation(db, '00000000-0000-4000-8000-000000000000');
+
+      expect(listed.ok).toBe(false);
+      if (!listed.ok) expect(listed.error.code).toBe('NOT_FOUND');
     });
   });
 

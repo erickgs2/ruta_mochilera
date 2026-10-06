@@ -119,6 +119,54 @@
     "title": "My reservations",
     "empty": "You have no reservations yet. Browse the trips and hold your seat."
   },
+  "adminReservations": {
+    "title": "Reservations",
+    "back": "Back to reservations",
+    "filterAll": "All",
+    "tripFilterLabel": "Trip",
+    "statusFilterLabel": "Status",
+    "pendingOnly": "Pending cancellation requests only",
+    "pendingSummary": "Cancellation requests to resolve: {{count}}",
+    "pendingChip": "Asked to cancel",
+    "empty": "No reservations match these filters.",
+    "view": "View reservation",
+    "balance": "Balance",
+    "requestedAt": "Requested on",
+    "columns": {
+      "code": "Code",
+      "customer": "Customer",
+      "trip": "Trip",
+      "status": "Status",
+      "balance": "Balance",
+      "actions": "Actions"
+    },
+    "requestTitle": "Cancellation request",
+    "requestReason": "Customer's reason",
+    "noReason": "The customer gave no reason.",
+    "cancelledAt": "Cancelled by {{by}} on",
+    "customer": "Customer",
+    "trip": "Trip",
+    "departure": "Departure",
+    "holdExpiresAt": "Hold expires",
+    "money": "Amounts",
+    "paymentsTitle": "Payment history",
+    "paymentColumns": {
+      "recordedAt": "Recorded",
+      "amount": "Amount",
+      "method": "Method",
+      "status": "Status"
+    },
+    "cancelSection": "Cancel the reservation",
+    "cancelExplanation": "Cancelling releases the seat on the trip. What was paid and the payment history are kept; refunding or applying that money is handled separately.",
+    "cancelReasonLabel": "Reason (the customer will see it in their notice)",
+    "cancelReasonRequired": "Write the reason for the cancellation.",
+    "cancelAction": "Cancel reservation",
+    "cancelTitle": "Cancel reservation {{code}}?",
+    "cancelMessage": "One seat on {{trip}} will be released. The {{paid}} already paid and the whole payment history are kept: nothing is deleted or refunded automatically. The customer will be notified with the reason.",
+    "cancelConfirm": "Yes, cancel",
+    "cancelBack": "No, go back",
+    "cancelled": "Reservation cancelled. The seat is free."
+  },
   "payments": {
     "whatToPay": "What do you want to pay?",
     "payFull": "The full balance",
@@ -183,6 +231,7 @@
   },
   "nav": {
     "trips": "Trips",
+    "reservations": "Reservations",
     "staff": "Administrators",
     "roles": "Roles"
   },

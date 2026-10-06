@@ -20,6 +20,7 @@ export type DeliveryEventType =
   | 'PAYMENT_FAILED'
   | 'VOUCHER_EXPIRED'
   | 'PAYMENT_AFTER_EXPIRY'
+  | 'PAYMENT_AFTER_CANCELLATION'
   | 'RESERVATION_CANCELLED'
   | 'CANCELLATION_REQUESTED'
   | 'ORPHAN_PAYMENT'
@@ -33,6 +34,7 @@ export const DELIVERY_EVENT_TYPES: readonly DeliveryEventType[] = [
   'PAYMENT_FAILED',
   'VOUCHER_EXPIRED',
   'PAYMENT_AFTER_EXPIRY',
+  'PAYMENT_AFTER_CANCELLATION',
   'RESERVATION_CANCELLED',
   'CANCELLATION_REQUESTED',
   'ORPHAN_PAYMENT',
@@ -139,6 +141,20 @@ const TEMPLATES: Record<DeliveryEventType, LocaleTemplates> = {
     en: template(
       'We received your payment for {{tripName}}, but your hold had already expired',
       'We received your payment of {{amount}} for {{tripName}}, but your hold had already expired and the seat was released. Your payment is on record and will not be lost: someone from the team will contact you to sort it out.'
+    ),
+  },
+  // Task 19: the counterpart of `PAYMENT_AFTER_EXPIRY` for a reservation
+  // staff cancelled while a voucher or card intent was still payable. Same
+  // promise -- the money is recorded and a person will follow up -- and, like
+  // it, no balance: there is no seat left for a balance to be owed on.
+  PAYMENT_AFTER_CANCELLATION: {
+    es: template(
+      'Recibimos tu pago para {{tripName}}, pero tu reservación ya estaba cancelada',
+      'Recibimos tu pago de {{amount}} para {{tripName}}, pero tu reservación ya estaba cancelada. Tu pago está registrado y nadie lo va a perder: un asesor te contactará para resolverlo contigo.'
+    ),
+    en: template(
+      'We received your payment for {{tripName}}, but your reservation had already been cancelled',
+      'We received your payment of {{amount}} for {{tripName}}, but your reservation had already been cancelled. Your payment is on record and will not be lost: someone from the team will contact you to sort it out.'
     ),
   },
   RESERVATION_CANCELLED: {

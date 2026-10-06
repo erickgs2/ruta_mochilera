@@ -4,6 +4,7 @@ import { createPrismaClient } from '@rm/db';
 import { loadEnv } from '@rm/shared-utils';
 import { createEmail } from '@rm/email';
 import { deliverQueuedEmail } from '@rm/domain-notifications';
+import { createCancelPendingPaymentIntents } from '@rm/domain-payments';
 import { organizationTimeZone } from '@rm/domain-settings';
 import { createPaymentProvider } from '@rm/payments-stripe';
 import {
@@ -14,7 +15,7 @@ import {
   WARN_EXPIRING_HOLDS_JOB,
   type SendNotificationEmailPayload,
 } from '@rm/jobs';
-import { createCancelPendingPaymentIntents, expireHolds } from './jobs/expire-holds';
+import { expireHolds } from './jobs/expire-holds';
 import { warnExpiringHolds } from './jobs/warn-expiring-holds';
 import { reconcilePaidCents } from './jobs/reconcile-paid-cents';
 

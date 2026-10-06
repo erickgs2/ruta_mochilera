@@ -434,6 +434,26 @@ export async function listPaymentsForCustomer(
 }
 
 /**
+ * Every payment of one reservation, newest first -- the history the panel's
+ * reservation detail shows staff (Task 19). Same order and same inclusions
+ * as `listPaymentsForCustomer`: by `recorded_at`, failed, expired and pending
+ * rows included, because a person deciding a cancellation needs to see the
+ * OXXO voucher that is still outstanding as much as the money that arrived.
+ *
+ * An unknown reservation is `NOT_FOUND`, not an empty list: "no payments yet"
+ * and "no such reservation" are different answers for a screen to give.
+ */
+export async function listPaymentsForReservation(
+  db: Db,
+  reservationId: string
+): Promise<Result<PaymentDto[]>> {
+  const reservation = await db.reservation.findUnique({ where: { id: reservationId }, select: { id: true } });
+  if (!reservation) return fail('NOT_FOUND');
+  const payments = await db.payment.findMany({ where: { reservationId }, orderBy: { recordedAt: 'desc' } });
+  return ok(payments.map(toDto));
+}
+
+/**
  * The instalment to suggest for one reservation right now (business rule
  * 5.4): its balance spread over the first-of-month days left before the
  * payment deadline, in the organisation's timezone.

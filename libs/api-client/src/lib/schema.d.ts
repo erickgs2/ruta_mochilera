@@ -2602,6 +2602,290 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/reservations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Every customer's reservations for the panel, filtered by trip, status and pending cancellation request. Unresolved cancellation requests come first, oldest request first; the rest follow newest first. Requires reservation.view; a CUSTOMER actor is refused whatever roles they hold. */
+        get: {
+            parameters: {
+                query?: {
+                    tripId?: string;
+                    status?: "HELD" | "ACTIVE" | "CANCELLED" | "EXPIRED";
+                    cancellationPending?: "true" | "false";
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Reservations */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["StaffReservationSummary"][];
+                    };
+                };
+                /** @description Missing or invalid access token */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description PERMISSION_DENIED -- requires reservation.view */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description VALIDATION_FAILED -- a malformed filter */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/reservations/{reservationId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description One reservation, any customer's, with the customer's contact details and the cancellation request reason. Requires reservation.view. The payment history is a separate endpoint. */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    reservationId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Reservation detail */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["StaffReservationDetail"];
+                    };
+                };
+                /** @description Missing or invalid access token */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description PERMISSION_DENIED -- requires reservation.view */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description NOT_FOUND */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/reservations/{reservationId}/payments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description One reservation's payments, newest first, pending, failed and expired ones included. Requires payment.view. */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    reservationId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Payments */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Payment"][];
+                    };
+                };
+                /** @description Missing or invalid access token */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description PERMISSION_DENIED -- requires payment.view */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description NOT_FOUND */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/reservations/{reservationId}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Cancels a HELD or ACTIVE reservation (spec §5.6): releases its seat, keeps paid_cents and every payment, cancels pending payment intents, notifies the customer with RESERVATION_CANCELLED and audits the actor and the reason. Idempotent: an already CANCELLED reservation is answered as it is. Requires reservation.cancel. */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    reservationId: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["CancelReservationRequest"];
+                };
+            };
+            responses: {
+                /** @description Reservation cancelled (or already cancelled) */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["StaffReservationDetail"];
+                    };
+                };
+                /** @description Missing or invalid access token */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description PERMISSION_DENIED -- requires reservation.cancel */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description NOT_FOUND */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description INVALID_STATUS_TRANSITION -- the reservation already EXPIRED */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description VALIDATION_FAILED -- the reason is missing or longer than 500 characters */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/payments": {
         parameters: {
             query?: never;
@@ -3247,6 +3531,68 @@ export interface components {
             /** @enum {string} */
             method: "CARD" | "OXXO" | "SPEI";
         };
+        StaffReservationSummary: {
+            /** Format: uuid */
+            id: string;
+            code: string;
+            /** Format: uuid */
+            tripId: string;
+            tripName: string;
+            /** Format: date-time */
+            tripDepartureDate: string;
+            /** Format: uuid */
+            customerId: string;
+            customerName: string;
+            /** @enum {string} */
+            status: "HELD" | "ACTIVE" | "CANCELLED" | "EXPIRED";
+            /** Format: date-time */
+            holdExpiresAt: string | null;
+            totalPriceCents: number;
+            paidCents: number;
+            balanceCents: number;
+            /** Format: date-time */
+            paymentDeadline: string;
+            /** Format: date-time */
+            cancellationRequestedAt: string | null;
+            cancellationPending: boolean;
+            /** Format: date-time */
+            createdAt: string;
+        };
+        StaffReservationDetail: {
+            /** Format: uuid */
+            id: string;
+            code: string;
+            /** Format: uuid */
+            tripId: string;
+            /** Format: uuid */
+            customerId: string;
+            /** @enum {string} */
+            status: "HELD" | "ACTIVE" | "CANCELLED" | "EXPIRED";
+            /** Format: date-time */
+            holdExpiresAt: string | null;
+            totalPriceCents: number;
+            minimumDepositCents: number;
+            paidCents: number;
+            creditCents: number;
+            balanceCents: number;
+            /** Format: date-time */
+            paymentDeadline: string;
+            /** Format: date-time */
+            cancellationRequestedAt: string | null;
+            /** Format: date-time */
+            createdAt: string;
+            tripName: string;
+            /** Format: date-time */
+            tripDepartureDate: string;
+            customerName: string;
+            customerEmail: string;
+            customerPhone: string;
+            cancellationReason: string | null;
+            cancellationPending: boolean;
+            /** Format: date-time */
+            cancelledAt: string | null;
+            cancelledByName: string | null;
+        };
         Payment: {
             /** Format: uuid */
             id: string;
@@ -3266,6 +3612,9 @@ export interface components {
             providerVoucherUrl: string | null;
             /** Format: date-time */
             voucherExpiresAt: string | null;
+        };
+        CancelReservationRequest: {
+            reason: string;
         };
         InboxPage: {
             items: {

@@ -2,9 +2,13 @@
 
 ## Estados
 
-`HELD` → `ACTIVE` → `CANCELLED`. `EXPIRED` se alcanza sólo desde `HELD`
-(un apartado cuyo `hold_expires_at` pasó sin que se cubriera el depósito
-mínimo). `CANCELLED` y `EXPIRED` son terminales.
+`HELD` → `ACTIVE`, con dos salidas terminales. `EXPIRED` se alcanza sólo desde
+`HELD` (un apartado cuyo `hold_expires_at` pasó sin que se cubriera el depósito
+mínimo, lo dispara el job `expireHolds`). `CANCELLED` se alcanza desde `HELD` o
+desde `ACTIVE`, y sólo por decisión de una persona con `reservation.cancel`
+desde el panel (Tarea 19, ver «Cancelar una reserva»). `CANCELLED` y `EXPIRED`
+son terminales. El diagrama de estados completo está en
+`docs/diagrams/trip-reservation.md`.
 
 Implementado en el modelo `Reservation` (`libs/db/prisma/schema.prisma`).
 `libs/domain/reservations` ya existe y contiene el cálculo del cupo y su
@@ -367,6 +371,87 @@ no una cancelación; cancelar es una decisión humana con el permiso
   prohíbe de verdad es que `reservations` y `payments` se importen entre sí,
   no que cualquiera de los dos dependa de `notifications`.
 
+## El panel: la bandeja de solicitudes (Tarea 19)
+
+`listReservationsForStaff(db, { tripId?, status?, cancellationPending? })`
+devuelve las reservas de **todos** los clientes, con el nombre del viaje y
+del cliente en cada fila. Los filtros se combinan con AND.
+
+**Una solicitud está pendiente** (`cancellationPending`) cuando el cliente la
+pidió (`cancellation_requested_at` no nulo) **y** la reserva sigue `HELD` o
+`ACTIVE`. Es un valor derivado, nunca una columna: una solicitud sobre una
+reserva que ya se canceló o venció es historia, no trabajo, y deja de
+contarse sola sin que nadie tenga que «cerrarla».
+
+**El orden es la bandeja de trabajo del administrador** y lo decide el
+backend, no la pantalla: primero las solicitudes pendientes, de la más antigua
+a la más reciente (quien pidió primero se atiende primero); después todo lo
+demás, de la reserva más reciente a la más antigua. Pedir sólo pendientes y a
+la vez un estado terminal (`?cancellationPending=true&status=CANCELLED`)
+responde vacío, no ignora uno de los dos filtros.
+
+No está paginado, igual que `listTrips`: las reservas de una agencia caben en
+una respuesta durante el horizonte de esta fase.
+
+`getReservationForStaff(db, id)` devuelve cualquier reserva, con el correo y
+el teléfono del cliente, el motivo de su solicitud y quién la canceló. A
+diferencia del cliente, un id desconocido es `NOT_FOUND` simple: el personal
+con `reservation.view` sí puede saber qué reservas existen, así que no hay
+oráculo que proteger. El historial de pagos **no** viene aquí: lo sirve
+`@rm/domain-payments` en un endpoint aparte con su propio permiso
+(`payment.view`, ver `payments.md`).
+
+## Cancelar una reserva (§5.6, Tarea 19)
+
+`cancelReservation(db, queue, { reservationId, actorId, reason },
+cancelPendingPaymentIntents?)` es la decisión humana que la solicitud del
+cliente sólo pide. La ruta exige `reservation.cancel` y nada más (un único
+permiso, así que `permission` y no `anyPermission`); un actor `CUSTOMER` no
+la alcanza aunque un rol le diera ese permiso, porque `requirePermission`
+rechaza a todo actor que no sea `STAFF`.
+
+1. **Liberar el lugar no es una escritura propia.** El cupo se deriva
+   (§5.1): con la fila en `CANCELLED`, `countCommittedSeats` deja de contarla
+   y el lugar vuelve al catálogo. Ninguna columna del viaje cambia. Si algún
+   día cancelar resta de un contador almacenado, el modelo se rompió.
+2. **El dinero se queda donde está.** `paid_cents` y todas las filas
+   `Payment` se conservan intactas. Aplicar ese dinero a otro viaje o
+   devolverlo es Fase 2B; borrarlo aquí destruiría el registro contable.
+3. **Se registra quién y cuándo.** `cancelled_at` y `cancelled_by`.
+   `cancellation_requested_at` y `cancellation_reason` —lo que escribió el
+   cliente— **no** se sobrescriben: el motivo del personal va al aviso del
+   cliente y a la auditoría, no a la columna del cliente.
+4. **Se avisa al cliente** con `RESERVATION_CANCELLED`, con el nombre del
+   viaje en su idioma y el motivo del personal, dentro de la misma
+   transacción (Regla 11 de `notifications.md`).
+5. **Se audita** `reservation.cancelled` con el actor, el estado anterior, el
+   motivo y `paid_cents` antes y después (iguales, por la regla 2).
+6. **Se cancelan los Payment Intents pendientes**, con el mismo
+   `createCancelPendingPaymentIntents` que usa `expireHolds` (ahora en
+   `@rm/domain-payments`): una ficha de OXXO que siguiera cobrable para una
+   reserva cancelada es dinero que llega por un lugar que ya no existe. Un
+   fallo del proveedor se registra y no impide la cancelación. Si la ficha
+   se paga de todos modos (la carrera existe), el webhook lo trata como el
+   caso límite de §5.3; ver `payments.md`.
+
+**Idempotente.** Cancelar una reserva ya `CANCELLED` responde la reserva
+como está: sin segundo aviso, sin segunda entrada de auditoría y sin volver a
+cancelar intents. La escritura es un `updateMany` condicionado a `status IN
+('HELD', 'ACTIVE')`, así que dos personas pulsando a la vez —o un pago que
+activa la reserva en medio— se resuelven en la base: exactamente una voltea
+la fila y hace el resto; la otra relee, ve `CANCELLED` y responde igual.
+
+**Una reserva `EXPIRED` no se cancela** → `INVALID_STATUS_TRANSITION`. Su
+lugar ya está libre y no hay nada que decidir; reetiquetarla reescribiría lo
+que pasó.
+
+**Pendiente de decidir: rechazar una solicitud.** El panel puede cancelar,
+pero no tiene una acción para «no procede» que saque la solicitud de la
+bandeja sin cancelar la reserva. Mientras la reserva siga viva, la solicitud
+sigue apareciendo como pendiente. Ni el plan ni el esquema lo contemplan
+(haría falta una columna o un estado de resolución), así que queda señalado
+aquí en vez de inventarlo.
+
 ## Errores de este módulo
 
 | Código | Cuándo | HTTP |
@@ -376,7 +461,7 @@ no una cancelación; cancelar es una decisión humana con el permiso
 | `EMAIL_NOT_VERIFIED` | El cliente no ha confirmado su correo. | 403 |
 | `DUPLICATE_RESERVATION` | El cliente ya tiene una reserva `HELD` o `ACTIVE` en ese viaje. | 409 |
 | `TRIP_SOLD_OUT` | No queda cupo disponible. | 409 |
-| `NOT_FOUND` | El viaje no existe, o el id de cliente no corresponde a un cliente. | 404 |
+| `NOT_FOUND` | El viaje no existe, o el id de cliente no corresponde a un cliente; en el panel, la reserva no existe. | 404 |
 | `RESERVATION_NOT_OWNED` | La reserva no existe **o** es de otro cliente. | 404 |
-| `INVALID_STATUS_TRANSITION` | Se solicita cancelar una reserva ya `CANCELLED` o `EXPIRED`. | 409 |
+| `INVALID_STATUS_TRANSITION` | Se solicita cancelar una reserva ya `CANCELLED` o `EXPIRED`, o el personal intenta cancelar una `EXPIRED`. | 409 |
 | `CONFLICT` | Dos choques seguidos de folio: generador roto, no mala suerte. | 409 |

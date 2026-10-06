@@ -165,6 +165,14 @@ apartado expiró:
 El dinero existe y debe verse; devolverlo o aplicarlo a otro viaje es decisión
 humana. Ningún movimiento de dinero es automático.
 
+**Lo mismo para una reserva `CANCELLED` (Tarea 19).** Si el personal canceló
+la reserva mientras una ficha o un intento de tarjeta seguían cobrables (la
+cancelación los cancela en el proveedor, pero una ficha pagada en ese mismo
+minuto, o una caída de Stripe, pueden llegar igual), el pago se registra, la
+reserva sigue `CANCELLED`, el cliente recibe `PAYMENT_AFTER_CANCELLATION` y el
+personal `ORPHAN_PAYMENT`. Una plantilla propia y no `PAYMENT_AFTER_EXPIRY`:
+esa dice «tu apartado venció», que es falso para una reserva cancelada.
+
 El aviso al cliente **no** es `PAYMENT_CONFIRMED`. Esa plantilla cita el saldo
 restante y se leería como "sí vas"; a alguien cuyo lugar se liberó hay que
 decirle lo que de verdad pasó: su dinero está registrado, el lugar no, y una
@@ -219,6 +227,7 @@ desaparecen: nadie recibe un correo sobre un pago que no se registró.
 |---|---|---|
 | `payment_intent.succeeded` | Confirma o registra el pago, sube `paid_cents`, activa la reserva si alcanza el anticipo | `PAYMENT_CONFIRMED` al cliente |
 | `payment_intent.succeeded` sobre una reserva `EXPIRED` | Pago `SUCCEEDED`, reserva intacta (§5.3 arriba) | `PAYMENT_AFTER_EXPIRY` al cliente y `ORPHAN_PAYMENT` al personal |
+| `payment_intent.succeeded` sobre una reserva `CANCELLED` (Tarea 19) | Pago `SUCCEEDED`, reserva intacta | `PAYMENT_AFTER_CANCELLATION` al cliente y `ORPHAN_PAYMENT` al personal |
 | `payment_intent.succeeded` sin reserva a la que atarlo | Ninguno: un `Payment` necesita una reserva | `ORPHAN_PAYMENT` al personal, y **200** a Stripe |
 | `payment_intent.payment_failed` | Pago a `FAILED`, el saldo no se mueve | `PAYMENT_FAILED` al cliente |
 | `payment_intent.payment_failed` con `payment_intent_payment_attempt_expired` | Pago a `EXPIRED`, el saldo no se mueve | `VOUCHER_EXPIRED` al cliente |
@@ -346,6 +355,15 @@ inyecta en `expireHolds` mediante `createCancelPendingPaymentIntents`, el
 mismo hueco que la Tarea 8 dejó deliberadamente abierto en vez de inventar
 una dependencia de Stripe que esa tarea no tenía forma de probar de verdad.
 
+**Desde la Tarea 19 vive en `@rm/domain-payments`**
+(`libs/domain/payments/src/lib/payment-intent-cancellation.ts`), no en
+`apps/worker`: la cancelación desde el panel (`cancelReservation`, ver
+`reservations.md`) necesita el mismo cierre y una app no puede importar de
+otra. El comportamiento no cambió; sus pruebas siguen en
+`expire-holds.spec.ts` y la ruta del panel tiene la suya. `@rm/domain-
+reservations` declara el mismo tipo de función de forma estructural, sin
+importar este módulo, para que los dos dominios sigan sin depender entre sí.
+
 **Un fallo al cancelar en el proveedor no impide que el apartado expire.**
 `createCancelPendingPaymentIntents` nunca lanza: si `cancelIntent` devuelve
 un error, sólo se registra con `console.error` y el lugar se libera igual.
@@ -359,6 +377,22 @@ una segunda pasada sobre una reserva ya `EXPIRED` no encuentra candidatos y
 nunca vuelve a invocarlo. `cancelIntent` es además idempotente por su propio
 contrato (`libs/payments-stripe/src/testing/payment-contract.ts`), así que
 una segunda llamada —si alguna vez ocurriera— tampoco sería un error.
+
+## Historial de pagos de una reserva para el personal (Tarea 19)
+
+`listPaymentsForReservation(db, reservationId)` devuelve los pagos de una
+reserva, del más reciente al más antiguo por `recorded_at`, con los
+pendientes, rechazados y vencidos incluidos: quien decide una cancelación
+necesita ver la ficha de OXXO que sigue abierta tanto como el dinero que ya
+llegó. Mismo orden y mismas inclusiones que `listPaymentsForCustomer`.
+
+Una reserva inexistente es `NOT_FOUND`, no una lista vacía: «todavía no hay
+pagos» y «no existe esa reserva» son respuestas distintas.
+
+La ruta (`GET /api/v1/admin/reservations/{id}/payments`) exige
+`payment.view`, no `reservation.view`: el catálogo de permisos ya separa
+quién ve dinero de quién ve reservas, y el detalle del panel sólo pide el
+historial cuando quien mira tiene ese permiso.
 
 ## `reconcilePaidCents`: la conciliación nocturna (Tarea 8, §6 de la spec)
 

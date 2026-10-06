@@ -141,6 +141,21 @@ viaja por `{{reason}}` es el código de fallo del proveedor en
 `PAYMENT_FAILED` (`card_declined`, por ejemplo): es un identificador estable,
 no prosa, y es lo que una persona buscaría en el panel de Stripe.
 
+## Avisos de la cancelación desde el panel (Tarea 19)
+
+- **`RESERVATION_CANCELLED`** existía desde la Tarea 7 sin que nada lo
+  emitiera. Ahora lo envía `cancelReservation` al cliente, con el nombre del
+  viaje en su idioma y el motivo que escribió el personal (`{{reason}}`),
+  dentro de la transacción que cancela. Cancelar dos veces no lo repite.
+- **`PAYMENT_AFTER_CANCELLATION`** es nuevo (`DeliveryEventType` pasa a 11
+  miembros): el dinero llegó por una reserva que el personal ya había
+  cancelado. Es el gemelo de `PAYMENT_AFTER_EXPIRY` —mismo compromiso, el
+  pago está registrado y una persona dará seguimiento, y tampoco cita saldo—
+  pero con su propia plantilla, por la misma razón que esa sección explica:
+  «tu apartado venció» sería falso aquí y un `{{reason}}` no puede estar bien
+  escrito en los dos idiomas a la vez. El personal recibe además
+  `ORPHAN_PAYMENT`, como en el caso del apartado vencido.
+
 ## `notifyAdmins`: tres avisos sin cliente al que ir
 
 Tres avisos de esta fase no tienen un cliente al que notificar porque son

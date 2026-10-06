@@ -6,7 +6,7 @@ import {
   type ReservationStatus,
 } from '@rm/db';
 import { recordAudit } from '@rm/domain-audit';
-import { notifyAdmins, type NotificationQueue } from '@rm/domain-notifications';
+import { notifyAdmins, notifyCustomer, type NotificationQueue } from '@rm/domain-notifications';
 import { organizationTimeZone } from '@rm/domain-settings';
 import { fail, isPastDate, ok, type Result } from '@rm/shared-utils';
 import { availableSeats, countCommittedSeats, lockTripForCapacity } from './capacity';
@@ -59,6 +59,79 @@ export interface ReservationSummaryDto {
   paymentDeadline: Date;
   createdAt: Date;
 }
+
+/** What staff can narrow the panel's reservation list by (Task 19). Every field is optional and they combine with AND. */
+export interface StaffReservationFilter {
+  tripId?: string;
+  status?: ReservationStatus;
+  /** `true` keeps only the unresolved cancellation requests -- see `cancellationPending`. */
+  cancellationPending?: boolean;
+}
+
+/**
+ * A row of the panel's reservation list: the customer's summary plus who the
+ * customer is and where their cancellation request stands. Staff read many
+ * customers' reservations at once, so the row names the customer; the
+ * customer's own list never needs to.
+ */
+export interface StaffReservationSummaryDto {
+  id: string;
+  code: string;
+  tripId: string;
+  /** Same rule as `ReservationSummaryDto.tripName`: the Spanish name, else the slug. */
+  tripName: string;
+  tripDepartureDate: Date;
+  customerId: string;
+  customerName: string;
+  status: ReservationStatus;
+  holdExpiresAt: Date | null;
+  totalPriceCents: number;
+  paidCents: number;
+  balanceCents: number;
+  paymentDeadline: Date;
+  cancellationRequestedAt: Date | null;
+  /**
+   * Derived, never stored: the customer asked to cancel and the reservation
+   * is still `HELD` or `ACTIVE`, so a person has a decision to make. A
+   * request on a reservation that has since been cancelled or has expired is
+   * history, not work.
+   */
+  cancellationPending: boolean;
+  createdAt: Date;
+}
+
+/** One reservation as the panel's detail screen reads it. Payments come from `@rm/domain-payments`, never from here. */
+export interface StaffReservationDetailDto extends ReservationDto {
+  tripName: string;
+  tripDepartureDate: Date;
+  customerName: string;
+  customerEmail: string;
+  customerPhone: string;
+  /** What the customer wrote when asking to cancel. Never overwritten by staff: their reason lives in the audit log. */
+  cancellationReason: string | null;
+  cancellationPending: boolean;
+  cancelledAt: Date | null;
+  /** The staff member's full name, or `null` while the reservation is not cancelled. */
+  cancelledByName: string | null;
+}
+
+export interface CancelReservationInput {
+  reservationId: string;
+  /** The staff member deciding. Recorded on the row (`cancelled_by`) and in the audit entry. */
+  actorId: string;
+  /** Why staff cancelled. Goes to the customer's notice and to the audit entry. */
+  reason: string;
+}
+
+/**
+ * Cancels the provider-side payment intents still pending on one
+ * reservation, inside the caller's transaction. The same shape `expireHolds`
+ * (`apps/worker`) takes, and implemented once, by `@rm/domain-payments`'
+ * `createCancelPendingPaymentIntents` -- typed here structurally so this
+ * library never imports the payments domain (see
+ * `docs/business-rules/reservations.md`).
+ */
+export type CancelPendingPaymentIntents = (tx: DbTransactionClient, reservationId: string) => Promise<void>;
 
 const HOUR_MS = 60 * 60 * 1000;
 
@@ -426,4 +499,216 @@ async function ownedReservation(
   const reservation = await db.reservation.findUnique({ where: { id: reservationId } });
   if (!reservation || reservation.customerId !== customerId) return undefined;
   return reservation;
+}
+
+/** What the staff list and detail load of each reservation's trip and customer. */
+const STAFF_INCLUDE = {
+  trip: { select: SUMMARY_TRIP_SELECT },
+  customer: { select: { fullName: true, phone: true, user: { select: { email: true } } } },
+  cancelledBy: { select: { staffProfile: { select: { fullName: true } } } },
+};
+
+type ReservationForStaff = Reservation & {
+  trip: { slug: string; departureDate: Date; translations: { name: string }[] };
+  customer: { fullName: string; phone: string; user: { email: string } };
+  cancelledBy: { staffProfile: { fullName: string } | null } | null;
+};
+
+function isCancellationPending(reservation: Reservation): boolean {
+  return reservation.cancellationRequestedAt !== null && isLive(reservation.status);
+}
+
+function toStaffSummaryDto(reservation: ReservationForStaff): StaffReservationSummaryDto {
+  return {
+    id: reservation.id,
+    code: reservation.code,
+    tripId: reservation.tripId,
+    tripName: reservation.trip.translations[0]?.name ?? reservation.trip.slug,
+    tripDepartureDate: reservation.trip.departureDate,
+    customerId: reservation.customerId,
+    customerName: reservation.customer.fullName,
+    status: reservation.status,
+    holdExpiresAt: reservation.holdExpiresAt,
+    totalPriceCents: reservation.totalPriceCents,
+    paidCents: reservation.paidCents,
+    balanceCents: balanceOf(reservation),
+    paymentDeadline: reservation.paymentDeadline,
+    cancellationRequestedAt: reservation.cancellationRequestedAt,
+    cancellationPending: isCancellationPending(reservation),
+    createdAt: reservation.createdAt,
+  };
+}
+
+function toStaffDetailDto(reservation: ReservationForStaff): StaffReservationDetailDto {
+  return {
+    ...toDto(reservation),
+    tripName: reservation.trip.translations[0]?.name ?? reservation.trip.slug,
+    tripDepartureDate: reservation.trip.departureDate,
+    customerName: reservation.customer.fullName,
+    customerEmail: reservation.customer.user.email,
+    customerPhone: reservation.customer.phone,
+    cancellationReason: reservation.cancellationReason,
+    cancellationPending: isCancellationPending(reservation),
+    cancelledAt: reservation.cancelledAt,
+    cancelledByName: reservation.cancelledBy?.staffProfile?.fullName ?? null,
+  };
+}
+
+/**
+ * The panel's reservation list (Task 19): every customer's reservations,
+ * narrowed by `filter`, ordered as the administrator's work queue.
+ *
+ * **Unresolved cancellation requests come first**, oldest request first --
+ * they are the only rows that wait on a person, and first come, first
+ * served. Everything else follows newest first, like the customer's own
+ * list. The order is decided here, not in the screen, so every client of
+ * this endpoint sees the same queue.
+ *
+ * Not paginated, like `listTrips`: one agency's reservations fit in one
+ * response for the foreseeable future, and a cursor would complicate the
+ * "pending first" order for no present benefit.
+ */
+export async function listReservationsForStaff(
+  db: Db,
+  filter: StaffReservationFilter
+): Promise<Result<StaffReservationSummaryDto[]>> {
+  const reservations = await db.reservation.findMany({
+    where: {
+      tripId: filter.tripId,
+      status: filter.status,
+      ...(filter.cancellationPending === undefined
+        ? {}
+        : filter.cancellationPending
+          ? { cancellationRequestedAt: { not: null }, status: filterLiveStatus(filter.status) }
+          : {
+              OR: [{ cancellationRequestedAt: null }, { status: { notIn: [...LIVE_STATUSES] } }],
+            }),
+    },
+    include: STAFF_INCLUDE,
+    orderBy: { createdAt: 'desc' },
+  });
+
+  const rows = reservations.map(toStaffSummaryDto);
+  const pending = rows
+    .filter((row) => row.cancellationPending)
+    .sort((a, b) => (a.cancellationRequestedAt?.getTime() ?? 0) - (b.cancellationRequestedAt?.getTime() ?? 0));
+  const rest = rows.filter((row) => !row.cancellationPending);
+  return ok([...pending, ...rest]);
+}
+
+/**
+ * The status condition for "pending only": the live statuses, intersected
+ * with the caller's own `status` filter when there is one -- so asking for
+ * pending `CANCELLED` rows correctly answers nothing instead of ignoring
+ * one of the two filters.
+ */
+function filterLiveStatus(status: ReservationStatus | undefined) {
+  if (status === undefined) return { in: [...LIVE_STATUSES] };
+  return isLive(status) ? status : { in: [] };
+}
+
+/**
+ * Any reservation, for staff. Unlike `getReservationForCustomer` there is no
+ * ownership to hide behind, so an unknown id is a plain `NOT_FOUND`: the
+ * route is already gated on `reservation.view`, and staff are allowed to
+ * know which reservations exist.
+ */
+export async function getReservationForStaff(
+  db: Db,
+  reservationId: string
+): Promise<Result<StaffReservationDetailDto>> {
+  const reservation = await db.reservation.findUnique({ where: { id: reservationId }, include: STAFF_INCLUDE });
+  if (!reservation) return fail('NOT_FOUND');
+  return ok(toStaffDetailDto(reservation));
+}
+
+/**
+ * A person with `reservation.cancel` cancels a reservation (§5.6, Task 19).
+ *
+ * **Releasing the seat is not a write of its own.** Available seats are
+ * derived (§5.1): once the row is `CANCELLED`, `countCommittedSeats` stops
+ * counting it. Nothing here touches the trip.
+ *
+ * **Money stays exactly where it is.** `paid_cents` and every `Payment` row
+ * are left untouched: applying that money elsewhere or refunding it is Phase
+ * 2B, and erasing it here would destroy the accounting record.
+ *
+ * **Idempotent.** Cancelling an already `CANCELLED` reservation answers it as
+ * it is, with no second notice, audit entry or intent cancellation. The
+ * write is a conditional `updateMany` on the live statuses, so two people
+ * pressing the button at once -- or a payment activating the reservation in
+ * between -- resolve in the database, not in a read followed by a write:
+ * exactly one of them flips the row and does the rest.
+ *
+ * **An `EXPIRED` reservation is refused** (`INVALID_STATUS_TRANSITION`): its
+ * seat is already free and its hold is over, so there is nothing for a
+ * person to decide, and relabelling it would rewrite what happened.
+ *
+ * Pending payment intents are cancelled through `cancelPendingPaymentIntents`
+ * when the caller provides it, inside the same transaction and only on the
+ * call that actually cancelled: an OXXO voucher left payable for a cancelled
+ * reservation is money that arrives for a seat that no longer exists.
+ */
+export async function cancelReservation(
+  db: Db,
+  queue: NotificationQueue,
+  input: CancelReservationInput,
+  cancelPendingPaymentIntents?: CancelPendingPaymentIntents
+): Promise<Result<StaffReservationDetailDto>> {
+  const outcome = await db.$transaction(async (tx: DbTransactionClient): Promise<Result<null>> => {
+    const reservation = await tx.reservation.findUnique({
+      where: { id: input.reservationId },
+      include: {
+        customer: { select: { user: { select: { locale: true } } } },
+        trip: { select: { slug: true, translations: { select: { locale: true, name: true } } } },
+      },
+    });
+    if (!reservation) return fail('NOT_FOUND');
+
+    const cancelled = await tx.reservation.updateMany({
+      where: { id: input.reservationId, status: { in: [...LIVE_STATUSES] } },
+      data: { status: 'CANCELLED', cancelledAt: new Date(), cancelledById: input.actorId },
+    });
+
+    if (cancelled.count === 0) {
+      // Re-read rather than trust the first read: a concurrent cancellation
+      // may have committed between the two statements.
+      const current = await tx.reservation.findUniqueOrThrow({
+        where: { id: input.reservationId },
+        select: { status: true },
+      });
+      if (current.status === 'CANCELLED') return ok(null);
+      return fail('INVALID_STATUS_TRANSITION', { status: current.status });
+    }
+
+    await recordAudit(tx, {
+      actorUserId: input.actorId,
+      action: 'reservation.cancelled',
+      entityType: 'Reservation',
+      entityId: reservation.id,
+      before: { status: reservation.status, paidCents: reservation.paidCents },
+      after: { status: 'CANCELLED', reason: input.reason, paidCents: reservation.paidCents },
+    });
+
+    const locale = reservation.customer.user.locale;
+    await notifyCustomer(tx, queue, {
+      customerId: reservation.customerId,
+      reservationId: reservation.id,
+      eventType: 'RESERVATION_CANCELLED',
+      params: { tripName: tripNameFor(reservation.trip, locale), reason: input.reason },
+    });
+
+    if (cancelPendingPaymentIntents) await cancelPendingPaymentIntents(tx, reservation.id);
+
+    return ok(null);
+  });
+
+  if (!outcome.ok) return outcome;
+  return getReservationForStaff(db, input.reservationId);
+}
+
+/** The trip's name in the recipient's locale, else any translation, else the slug -- as `expireHolds` names it. */
+function tripNameFor(trip: { slug: string; translations: { locale: string; name: string }[] }, locale: string): string {
+  const translation = trip.translations.find((candidate) => candidate.locale === locale) ?? trip.translations[0];
+  return translation?.name ?? trip.slug;
 }

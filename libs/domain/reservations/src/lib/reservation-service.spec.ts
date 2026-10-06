@@ -4,10 +4,14 @@ import { closeTestDb, prepareTestDb, resetDatabase, withTestDb } from '@rm/db/te
 import type { Db, DbTransactionClient } from '@rm/db';
 import type { NotificationQueue } from '@rm/domain-notifications';
 import { closeTestQueue, resetTestQueue, withTestQueue } from '@rm/jobs/testing';
+import { availableSeats, countCommittedSeats } from './capacity';
 import {
+  cancelReservation,
   createReservation,
   getReservationForCustomer,
+  getReservationForStaff,
   listReservationsForCustomer,
+  listReservationsForStaff,
   requestCancellation,
 } from './reservation-service';
 
@@ -680,5 +684,388 @@ describe('reservation service', () => {
         if (!requested.ok) expect(requested.error.code).toBe('INVALID_STATUS_TRANSITION');
       }
     );
+  });
+
+  describe('cancelReservation', () => {
+    /** A HELD reservation on a fresh trip, plus everything the assertions read. */
+    async function heldReservation(tripOverrides: Parameters<typeof seedTrip>[1] = {}) {
+      const trip = await seedTrip(db, tripOverrides);
+      const customerId = await seedCustomer(db);
+      const created = await createReservation(db, { tripId: trip.id, customerId });
+      if (!created.ok) throw new Error(`could not seed a reservation: ${created.error.code}`);
+      return { trip, customerId, reservation: created.value };
+    }
+
+    async function seatsLeft(tripId: string): Promise<number> {
+      const trip = await db.trip.findUniqueOrThrow({ where: { id: tripId } });
+      return availableSeats({
+        totalCapacity: trip.totalCapacity,
+        preSoldSeats: trip.preSoldSeats,
+        ...(await countCommittedSeats(db, tripId)),
+      });
+    }
+
+    it('releases the seat: the trip has one more seat available afterwards', async () => {
+      const { trip, reservation } = await heldReservation({ totalCapacity: 3 });
+      expect(await seatsLeft(trip.id)).toBe(2);
+
+      const cancelled = await cancelReservation(db, queue, {
+        reservationId: reservation.id,
+        actorId: staffId,
+        reason: 'Solicitud del cliente',
+      });
+
+      expect(cancelled.ok).toBe(true);
+      if (!cancelled.ok) return;
+      expect(cancelled.value.status).toBe('CANCELLED');
+      expect(await seatsLeft(trip.id)).toBe(3);
+      // The seat comes back because the count stops seeing the row, not
+      // because a stored counter moved: the trip row itself is untouched.
+      const storedTrip = await db.trip.findUniqueOrThrow({ where: { id: trip.id } });
+      expect(storedTrip.totalCapacity).toBe(3);
+      expect(storedTrip.preSoldSeats).toBe(0);
+    });
+
+    it('also cancels an ACTIVE reservation and releases its seat', async () => {
+      const { trip, reservation } = await heldReservation({ totalCapacity: 1 });
+      await db.reservation.update({
+        where: { id: reservation.id },
+        data: { status: 'ACTIVE', holdExpiresAt: null, paidCents: 100_000 },
+      });
+      expect(await seatsLeft(trip.id)).toBe(0);
+
+      const cancelled = await cancelReservation(db, queue, {
+        reservationId: reservation.id,
+        actorId: staffId,
+        reason: 'Viaje reprogramado',
+      });
+
+      expect(cancelled.ok).toBe(true);
+      expect(await seatsLeft(trip.id)).toBe(1);
+    });
+
+    it('keeps paid_cents and every recorded payment: applying or refunding that money is Phase 2B', async () => {
+      const { reservation } = await heldReservation();
+      await db.payment.create({
+        data: {
+          reservationId: reservation.id,
+          amountCents: 150_000,
+          method: 'CARD',
+          status: 'SUCCEEDED',
+          provider: 'STRIPE',
+          providerIntentId: 'pi_kept',
+          paidAt: new Date(),
+        },
+      });
+      await db.reservation.update({
+        where: { id: reservation.id },
+        data: { status: 'ACTIVE', holdExpiresAt: null, paidCents: 150_000 },
+      });
+
+      const cancelled = await cancelReservation(db, queue, {
+        reservationId: reservation.id,
+        actorId: staffId,
+        reason: 'Solicitud del cliente',
+      });
+
+      expect(cancelled.ok).toBe(true);
+      if (!cancelled.ok) return;
+      expect(cancelled.value.paidCents).toBe(150_000);
+      const stored = await db.reservation.findUniqueOrThrow({ where: { id: reservation.id } });
+      expect(stored.paidCents).toBe(150_000);
+      const payments = await db.payment.findMany({ where: { reservationId: reservation.id } });
+      expect(payments).toHaveLength(1);
+      expect(payments[0]?.status).toBe('SUCCEEDED');
+      expect(payments[0]?.amountCents).toBe(150_000);
+    });
+
+    it('records who cancelled and when, and keeps the customer request and its reason', async () => {
+      const { customerId, reservation } = await heldReservation();
+      await requestCancellation(db, reservation.id, customerId, queue, 'Me enfermé');
+
+      const cancelled = await cancelReservation(db, queue, {
+        reservationId: reservation.id,
+        actorId: staffId,
+        reason: 'Solicitud del cliente',
+      });
+
+      expect(cancelled.ok).toBe(true);
+      const stored = await db.reservation.findUniqueOrThrow({ where: { id: reservation.id } });
+      expect(stored.status).toBe('CANCELLED');
+      expect(stored.cancelledById).toBe(staffId);
+      expect(stored.cancelledAt).toBeInstanceOf(Date);
+      expect(stored.cancellationRequestedAt).toBeInstanceOf(Date);
+      expect(stored.cancellationReason).toBe('Me enfermé');
+    });
+
+    it('notifies the customer with RESERVATION_CANCELLED, naming the trip and the reason', async () => {
+      const { customerId, reservation } = await heldReservation();
+
+      await cancelReservation(db, queue, {
+        reservationId: reservation.id,
+        actorId: staffId,
+        reason: 'Viaje reprogramado',
+      });
+
+      const deliveries = await db.notificationDelivery.findMany({
+        where: { userId: customerId, eventType: 'RESERVATION_CANCELLED' },
+      });
+      expect(deliveries.map((delivery) => delivery.channel).sort()).toEqual(['EMAIL', 'INBOX']);
+      expect(deliveries.every((delivery) => delivery.reservationId === reservation.id)).toBe(true);
+      expect(deliveries.every((delivery) => delivery.renderedBody.includes('Viaje reprogramado'))).toBe(true);
+      expect(deliveries.every((delivery) => delivery.renderedBody.includes('oaxaca-'))).toBe(true);
+    });
+
+    it('writes an audit entry with the actor and the reason', async () => {
+      const { reservation } = await heldReservation();
+
+      await cancelReservation(db, queue, {
+        reservationId: reservation.id,
+        actorId: staffId,
+        reason: 'Viaje reprogramado',
+      });
+
+      const entries = await db.auditLog.findMany({
+        where: { entityId: reservation.id, action: 'reservation.cancelled' },
+      });
+      expect(entries).toHaveLength(1);
+      expect(entries[0]?.actorUserId).toBe(staffId);
+      expect(entries[0]?.entityType).toBe('Reservation');
+      expect(entries[0]?.before).toMatchObject({ status: 'HELD' });
+      expect(entries[0]?.after).toMatchObject({ status: 'CANCELLED', reason: 'Viaje reprogramado' });
+    });
+
+    it('is idempotent on an already CANCELLED reservation: no second notice and no second audit entry', async () => {
+      const { customerId, reservation } = await heldReservation();
+      const first = await cancelReservation(db, queue, {
+        reservationId: reservation.id,
+        actorId: staffId,
+        reason: 'Primera',
+      });
+      expect(first.ok).toBe(true);
+      if (!first.ok) return;
+
+      const second = await cancelReservation(db, queue, {
+        reservationId: reservation.id,
+        actorId: staffId,
+        reason: 'Segunda',
+      });
+
+      expect(second.ok).toBe(true);
+      if (!second.ok) return;
+      expect(second.value.status).toBe('CANCELLED');
+      expect(second.value.cancelledAt).toEqual(first.value.cancelledAt);
+      const notices = await db.notificationDelivery.count({
+        where: { userId: customerId, eventType: 'RESERVATION_CANCELLED' },
+      });
+      expect(notices).toBe(2); // the first call's EMAIL + INBOX pair, nothing more
+      const entries = await db.auditLog.count({
+        where: { entityId: reservation.id, action: 'reservation.cancelled' },
+      });
+      expect(entries).toBe(1);
+    });
+
+    it('lets exactly one of two concurrent cancellations notify', async () => {
+      const { customerId, reservation } = await heldReservation();
+
+      const results = await Promise.all([
+        cancelReservation(db, queue, { reservationId: reservation.id, actorId: staffId, reason: 'A' }),
+        cancelReservation(db, queue, { reservationId: reservation.id, actorId: staffId, reason: 'B' }),
+      ]);
+
+      expect(results.every((result) => result.ok)).toBe(true);
+      const notices = await db.notificationDelivery.count({
+        where: { userId: customerId, eventType: 'RESERVATION_CANCELLED' },
+      });
+      expect(notices).toBe(2);
+      const entries = await db.auditLog.count({
+        where: { entityId: reservation.id, action: 'reservation.cancelled' },
+      });
+      expect(entries).toBe(1);
+    });
+
+    it('refuses an EXPIRED reservation: its seat is already free and there is nothing to decide', async () => {
+      const { reservation } = await heldReservation();
+      await db.reservation.update({ where: { id: reservation.id }, data: { status: 'EXPIRED' } });
+
+      const cancelled = await cancelReservation(db, queue, {
+        reservationId: reservation.id,
+        actorId: staffId,
+        reason: 'Tarde',
+      });
+
+      expect(cancelled.ok).toBe(false);
+      if (!cancelled.ok) expect(cancelled.error.code).toBe('INVALID_STATUS_TRANSITION');
+      const stored = await db.reservation.findUniqueOrThrow({ where: { id: reservation.id } });
+      expect(stored.status).toBe('EXPIRED');
+      expect(stored.cancelledById).toBeNull();
+    });
+
+    it('answers NOT_FOUND for an id that is no reservation', async () => {
+      const cancelled = await cancelReservation(db, queue, {
+        reservationId: '00000000-0000-4000-8000-000000000000',
+        actorId: staffId,
+        reason: 'Nada',
+      });
+
+      expect(cancelled.ok).toBe(false);
+      if (!cancelled.ok) expect(cancelled.error.code).toBe('NOT_FOUND');
+    });
+
+    it('asks to cancel the pending payment intents, inside the cancellation, exactly once', async () => {
+      const { reservation } = await heldReservation();
+      const calls: string[] = [];
+
+      await cancelReservation(
+        db,
+        queue,
+        { reservationId: reservation.id, actorId: staffId, reason: 'Viaje reprogramado' },
+        async (_tx, reservationId) => {
+          calls.push(reservationId);
+        }
+      );
+      await cancelReservation(
+        db,
+        queue,
+        { reservationId: reservation.id, actorId: staffId, reason: 'Otra vez' },
+        async (_tx, reservationId) => {
+          calls.push(reservationId);
+        }
+      );
+
+      expect(calls).toEqual([reservation.id]);
+    });
+  });
+
+  describe('listReservationsForStaff', () => {
+    it('puts unresolved cancellation requests first, oldest request first, then the rest newest first', async () => {
+      const trip = await seedTrip(db);
+      const ids: string[] = [];
+      for (let index = 0; index < 4; index++) {
+        const customerId = await seedCustomer(db);
+        const created = await createReservation(db, { tripId: trip.id, customerId });
+        if (!created.ok) throw new Error(created.error.code);
+        ids.push(created.value.id);
+        await settle(5);
+      }
+      const [oldest, second, third, newest] = ids as [string, string, string, string];
+      // Two requests, the later reservation asking first.
+      const thirdRow = await db.reservation.findUniqueOrThrow({ where: { id: third } });
+      await requestCancellation(db, third, thirdRow.customerId, queue, 'Primero');
+      await settle(5);
+      const secondRow = await db.reservation.findUniqueOrThrow({ where: { id: second } });
+      await requestCancellation(db, second, secondRow.customerId, queue, 'Después');
+
+      const listed = await listReservationsForStaff(db, {});
+
+      expect(listed.ok).toBe(true);
+      if (!listed.ok) return;
+      expect(listed.value.map((row) => row.id)).toEqual([third, second, newest, oldest]);
+      expect(listed.value.map((row) => row.cancellationPending)).toEqual([true, true, false, false]);
+    });
+
+    it('does not count a request on a reservation that is no longer live as pending', async () => {
+      const trip = await seedTrip(db);
+      const customerId = await seedCustomer(db);
+      const created = await createReservation(db, { tripId: trip.id, customerId });
+      if (!created.ok) throw new Error(created.error.code);
+      await requestCancellation(db, created.value.id, customerId, queue, 'Me enfermé');
+      await db.reservation.update({ where: { id: created.value.id }, data: { status: 'EXPIRED' } });
+
+      const listed = await listReservationsForStaff(db, { cancellationPending: true });
+
+      expect(listed.ok).toBe(true);
+      if (listed.ok) expect(listed.value).toEqual([]);
+    });
+
+    it('filters by trip and by status', async () => {
+      const tripA = await seedTrip(db);
+      const tripB = await seedTrip(db);
+      const customerId = await seedCustomer(db);
+      const inA = await createReservation(db, { tripId: tripA.id, customerId });
+      const inB = await createReservation(db, { tripId: tripB.id, customerId });
+      if (!inA.ok || !inB.ok) throw new Error('seed failed');
+      await db.reservation.update({ where: { id: inB.value.id }, data: { status: 'CANCELLED' } });
+
+      const byTrip = await listReservationsForStaff(db, { tripId: tripA.id });
+      const byStatus = await listReservationsForStaff(db, { status: 'CANCELLED' });
+      const both = await listReservationsForStaff(db, { tripId: tripA.id, status: 'CANCELLED' });
+
+      expect(byTrip.ok && byTrip.value.map((row) => row.id)).toEqual([inA.value.id]);
+      expect(byStatus.ok && byStatus.value.map((row) => row.id)).toEqual([inB.value.id]);
+      expect(both.ok && both.value).toEqual([]);
+    });
+
+    it('names the trip and the customer on every row', async () => {
+      const trip = await seedTrip(db);
+      const customerId = await seedCustomer(db);
+      const created = await createReservation(db, { tripId: trip.id, customerId });
+      if (!created.ok) throw new Error(created.error.code);
+
+      const listed = await listReservationsForStaff(db, {});
+
+      expect(listed.ok).toBe(true);
+      if (!listed.ok) return;
+      expect(listed.value[0]).toMatchObject({
+        code: created.value.code,
+        tripId: trip.id,
+        tripName: trip.slug,
+        customerId,
+        customerName: expect.stringMatching(/^Cliente /),
+        status: 'HELD',
+        balanceCents: 500_000,
+        cancellationRequestedAt: null,
+        cancellationPending: false,
+      });
+    });
+  });
+
+  describe('getReservationForStaff', () => {
+    it('returns any reservation with its customer contact and the request reason', async () => {
+      const trip = await seedTrip(db);
+      const customerId = await seedCustomer(db);
+      const created = await createReservation(db, { tripId: trip.id, customerId });
+      if (!created.ok) throw new Error(created.error.code);
+      await requestCancellation(db, created.value.id, customerId, queue, 'Me enfermé');
+
+      const detail = await getReservationForStaff(db, created.value.id);
+
+      expect(detail.ok).toBe(true);
+      if (!detail.ok) return;
+      expect(detail.value).toMatchObject({
+        id: created.value.id,
+        tripName: trip.slug,
+        customerName: expect.stringMatching(/^Cliente /),
+        customerEmail: expect.stringMatching(/@agency\.test$/),
+        customerPhone: '5512345678',
+        cancellationReason: 'Me enfermé',
+        cancellationPending: true,
+        cancelledAt: null,
+        cancelledByName: null,
+      });
+    });
+
+    it('names the staff member who cancelled it', async () => {
+      const trip = await seedTrip(db);
+      const customerId = await seedCustomer(db);
+      const created = await createReservation(db, { tripId: trip.id, customerId });
+      if (!created.ok) throw new Error(created.error.code);
+      await cancelReservation(db, queue, { reservationId: created.value.id, actorId: staffId, reason: 'x' });
+
+      const detail = await getReservationForStaff(db, created.value.id);
+
+      expect(detail.ok).toBe(true);
+      if (!detail.ok) return;
+      expect(detail.value.cancelledByName).toBe('Staff');
+      expect(detail.value.cancelledAt).toBeInstanceOf(Date);
+      expect(detail.value.cancellationPending).toBe(false);
+    });
+
+    it('answers NOT_FOUND for an unknown id', async () => {
+      const detail = await getReservationForStaff(db, '00000000-0000-4000-8000-000000000000');
+
+      expect(detail.ok).toBe(false);
+      if (!detail.ok) expect(detail.error.code).toBe('NOT_FOUND');
+    });
   });
 });

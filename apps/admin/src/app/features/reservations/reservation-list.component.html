@@ -1,0 +1,122 @@
+<rm-page-header [title]="'adminReservations.title' | translate"></rm-page-header>
+
+<form [formGroup]="filters" class="reservations-filters">
+  @if (canFilterByTrip) {
+    <mat-form-field appearance="outline" class="reservations-trip-field">
+      <mat-label>{{ 'adminReservations.tripFilterLabel' | translate }}</mat-label>
+      <mat-select formControlName="tripId">
+        <mat-option value="">{{ 'adminReservations.filterAll' | translate }}</mat-option>
+        @for (trip of trips(); track trip.id) {
+          <mat-option [value]="trip.id">{{ trip.name }}</mat-option>
+        }
+      </mat-select>
+    </mat-form-field>
+  }
+
+  <mat-form-field appearance="outline" class="reservations-status-field">
+    <mat-label>{{ 'adminReservations.statusFilterLabel' | translate }}</mat-label>
+    <mat-select formControlName="status">
+      <mat-option value="">{{ 'adminReservations.filterAll' | translate }}</mat-option>
+      @for (status of statusOptions; track status) {
+        <mat-option [value]="status">{{ 'reservation.status.' + status | translate }}</mat-option>
+      }
+    </mat-select>
+  </mat-form-field>
+
+  <mat-slide-toggle formControlName="pendingOnly" class="reservations-pending-toggle">
+    {{ 'adminReservations.pendingOnly' | translate }}
+  </mat-slide-toggle>
+</form>
+
+@if (pendingCount() > 0) {
+  <p class="reservations-pending-summary" role="status">
+    <mat-icon>pending_actions</mat-icon>
+    {{ 'adminReservations.pendingSummary' | translate: { count: pendingCount() } }}
+  </p>
+}
+
+@if (isEmpty()) {
+  <p>{{ 'adminReservations.empty' | translate }}</p>
+} @else if (isHandset()) {
+  <div class="reservations-cards">
+    @for (row of reservations(); track row.id) {
+      <a class="reservations-card" [class.reservations-pending]="row.cancellationPending" [routerLink]="[row.id]">
+        <h2 class="reservations-card-code">{{ row.code }}</h2>
+        <mat-chip-set>
+          <mat-chip [color]="statusColor(row.status)" [highlighted]="!!statusColor(row.status)">
+            {{ 'reservation.status.' + row.status | translate }}
+          </mat-chip>
+          @if (row.cancellationPending) {
+            <mat-chip color="warn" highlighted class="reservations-pending-chip">
+              {{ 'adminReservations.pendingChip' | translate }}
+            </mat-chip>
+          }
+        </mat-chip-set>
+        <p class="reservations-card-meta">{{ row.customerName }}</p>
+        <p class="reservations-card-meta">{{ row.tripName }}</p>
+        <p class="reservations-card-meta">{{ 'adminReservations.balance' | translate }}: {{ row.balanceCents | rmMoney }}</p>
+        @if (row.cancellationPending) {
+          <p class="reservations-card-meta">
+            {{ 'adminReservations.requestedAt' | translate }}: {{ row.cancellationRequestedAt | date: 'short' }}
+          </p>
+        }
+      </a>
+    }
+  </div>
+} @else {
+  <div class="reservations-table-container">
+    <table mat-table [dataSource]="reservations()" class="reservations-table">
+      <ng-container matColumnDef="code">
+        <th mat-header-cell *matHeaderCellDef>{{ 'adminReservations.columns.code' | translate }}</th>
+        <td mat-cell *matCellDef="let row">{{ row.code }}</td>
+      </ng-container>
+
+      <ng-container matColumnDef="customer">
+        <th mat-header-cell *matHeaderCellDef>{{ 'adminReservations.columns.customer' | translate }}</th>
+        <td mat-cell *matCellDef="let row">{{ row.customerName }}</td>
+      </ng-container>
+
+      <ng-container matColumnDef="trip">
+        <th mat-header-cell *matHeaderCellDef>{{ 'adminReservations.columns.trip' | translate }}</th>
+        <td mat-cell *matCellDef="let row">{{ row.tripName }}</td>
+      </ng-container>
+
+      <ng-container matColumnDef="status">
+        <th mat-header-cell *matHeaderCellDef>{{ 'adminReservations.columns.status' | translate }}</th>
+        <td mat-cell *matCellDef="let row">
+          <mat-chip-set>
+            <mat-chip [color]="statusColor(row.status)" [highlighted]="!!statusColor(row.status)">
+              {{ 'reservation.status.' + row.status | translate }}
+            </mat-chip>
+            @if (row.cancellationPending) {
+              <mat-chip color="warn" highlighted class="reservations-pending-chip">
+                {{ 'adminReservations.pendingChip' | translate }}
+              </mat-chip>
+            }
+          </mat-chip-set>
+        </td>
+      </ng-container>
+
+      <ng-container matColumnDef="balance">
+        <th mat-header-cell *matHeaderCellDef>{{ 'adminReservations.columns.balance' | translate }}</th>
+        <td mat-cell *matCellDef="let row">{{ row.balanceCents | rmMoney }}</td>
+      </ng-container>
+
+      <ng-container matColumnDef="actions">
+        <th mat-header-cell *matHeaderCellDef>{{ 'adminReservations.columns.actions' | translate }}</th>
+        <td mat-cell *matCellDef="let row">
+          <a mat-icon-button [routerLink]="[row.id]" [attr.aria-label]="'adminReservations.view' | translate">
+            <mat-icon>visibility</mat-icon>
+          </a>
+        </td>
+      </ng-container>
+
+      <tr mat-header-row *matHeaderRowDef="displayedColumns"></tr>
+      <tr
+        mat-row
+        *matRowDef="let row; columns: displayedColumns"
+        [class.reservations-pending]="row.cancellationPending"
+      ></tr>
+    </table>
+  </div>
+}

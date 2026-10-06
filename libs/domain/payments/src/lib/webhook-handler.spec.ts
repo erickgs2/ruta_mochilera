@@ -404,6 +404,34 @@ describe('handleStripeEvent', () => {
     });
   });
 
+  describe('a succeeded payment for a reservation staff already cancelled (Task 19)', () => {
+    async function arrange() {
+      const reservation = await seedReservation(db, { status: 'CANCELLED', totalPriceCents: 500_000 });
+      await seedPendingPayment(db, reservation.id, 'pi_after_cancel', 150_000);
+      await handleStripeEvent(db, queue, event({ intent: { providerIntentId: 'pi_after_cancel' } }));
+      return reservation;
+    }
+
+    it('records the money without reviving the reservation', async () => {
+      const reservation = await arrange();
+
+      const payment = await db.payment.findUniqueOrThrow({ where: { providerIntentId: 'pi_after_cancel' } });
+      expect(payment.status).toBe('SUCCEEDED');
+      const after = await db.reservation.findUniqueOrThrow({ where: { id: reservation.id } });
+      expect(after.status).toBe('CANCELLED');
+      expect(after.paidCents).toBe(150_000);
+    });
+
+    it('tells the customer their reservation was cancelled, never that the payment confirmed a seat, and alerts staff', async () => {
+      const reservation = await arrange();
+
+      expect(await noticesFor(reservation.customerId, 'PAYMENT_AFTER_CANCELLATION')).toBe(2);
+      expect(await noticesFor(reservation.customerId, 'PAYMENT_CONFIRMED')).toBe(0);
+      expect(await noticesFor(reservation.customerId, 'PAYMENT_AFTER_EXPIRY')).toBe(0);
+      expect(await noticesFor(staffId, 'ORPHAN_PAYMENT')).toBe(2);
+    });
+  });
+
   describe('payment_intent.payment_failed', () => {
     it('marks the payment FAILED, warns the customer and leaves the balance alone', async () => {
       const reservation = await seedReservation(db);

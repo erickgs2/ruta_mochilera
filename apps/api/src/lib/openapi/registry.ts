@@ -5,6 +5,7 @@ import {
   customerProfileSchema as customerProfileSchemaImport,
   updateCustomerProfileRequestSchema,
   budgetItemRequestSchema as budgetItemRequestSchemaImport,
+  cancelReservationRequestSchema as cancelReservationRequestSchemaImport,
   changeStatusRequestSchema as changeStatusRequestSchemaImport,
   createPaymentIntentRequestSchema as createPaymentIntentRequestSchemaImport,
   createReservationRequestSchema as createReservationRequestSchemaImport,
@@ -14,6 +15,7 @@ import {
   forgotPasswordRequestSchema as forgotPasswordRequestSchemaImport,
   inboxItemSchema as inboxItemSchemaImport,
   listInboxQuerySchema,
+  listStaffReservationsQuerySchema,
   inboxPageSchema as inboxPageSchemaImport,
   loginRequestSchema as loginRequestSchemaImport,
   paymentSchema as paymentSchemaImport,
@@ -33,6 +35,8 @@ import {
   roleSchema as roleSchemaImport,
   sessionResponseSchema as sessionResponseSchemaImport,
   socialLoginRequestSchema as socialLoginRequestSchemaImport,
+  staffReservationDetailSchema as staffReservationDetailSchemaImport,
+  staffReservationSummarySchema as staffReservationSummarySchemaImport,
   staffSchema as staffSchemaImport,
   tripTranslationSchema,
   updateStaffRequestSchema as updateStaffRequestSchemaImport,
@@ -42,7 +46,12 @@ import {
 import type { TripCostingDto, BudgetItemDto } from '@rm/domain-costing';
 import type { InboxItemDto, InboxPageDto } from '@rm/domain-notifications';
 import type { CreatedPaymentIntentDto, PaymentDto } from '@rm/domain-payments';
-import type { ReservationDto, ReservationSummaryDto } from '@rm/domain-reservations';
+import type {
+  ReservationDto,
+  ReservationSummaryDto,
+  StaffReservationDetailDto,
+  StaffReservationSummaryDto,
+} from '@rm/domain-reservations';
 import type { PublicTripDetailDto, PublicTripSummaryDto, TripDto, TripImageDto, TripSummaryDto } from '@rm/domain-trips';
 import type { CustomerProfileDto } from '@rm/domain-identity';
 import type { ReservationDetail } from '../http/reservation-response';
@@ -90,6 +99,9 @@ const requestCancellationRequestSchema = requestCancellationRequestSchemaImport.
 const reservationSchema = reservationSchemaImport.meta({ id: 'Reservation' });
 const reservationDetailSchema = reservationDetailSchemaImport.meta({ id: 'ReservationDetail' });
 const reservationSummarySchema = reservationSummarySchemaImport.meta({ id: 'ReservationSummary' });
+const cancelReservationRequestSchema = cancelReservationRequestSchemaImport.meta({ id: 'CancelReservationRequest' });
+const staffReservationSummarySchema = staffReservationSummarySchemaImport.meta({ id: 'StaffReservationSummary' });
+const staffReservationDetailSchema = staffReservationDetailSchemaImport.meta({ id: 'StaffReservationDetail' });
 const createPaymentIntentRequestSchema = createPaymentIntentRequestSchemaImport.meta({
   id: 'CreatePaymentIntentRequest',
 });
@@ -313,6 +325,12 @@ type _reservationDetailSchemaMatchesDto = Expect<
 type _reservationSummarySchemaMatchesDto = Expect<
   Equals<z.infer<typeof reservationSummarySchema>, DateToString<ReservationSummaryDto>>
 >;
+type _staffReservationSummarySchemaMatchesDto = Expect<
+  Equals<z.infer<typeof staffReservationSummarySchema>, DateToString<StaffReservationSummaryDto>>
+>;
+type _staffReservationDetailSchemaMatchesDto = Expect<
+  Equals<z.infer<typeof staffReservationDetailSchema>, DateToString<StaffReservationDetailDto>>
+>;
 type _paymentSchemaMatchesDto = Expect<Equals<z.infer<typeof paymentSchema>, DateToString<PaymentDto>>>;
 type _createdPaymentIntentSchemaMatchesDto = Expect<
   Equals<z.infer<typeof createdPaymentIntentSchema>, DateToString<CreatedPaymentIntentDto>>
@@ -349,6 +367,8 @@ export type _OpenApiDtoAssertions = [
   _reservationSchemaMatchesDto,
   _reservationDetailSchemaMatchesDto,
   _reservationSummarySchemaMatchesDto,
+  _staffReservationSummarySchemaMatchesDto,
+  _staffReservationDetailSchemaMatchesDto,
   _paymentSchemaMatchesDto,
   _createdPaymentIntentSchemaMatchesDto,
   _inboxItemSchemaMatchesDto,
@@ -1037,6 +1057,81 @@ export function buildOpenApiDocument() {
       409: problem('INVALID_STATUS_TRANSITION -- the reservation is CANCELLED or EXPIRED'),
       422: problem('Nothing left to charge, or an OXXO window shorter than a day'),
       502: problem('PAYMENT_PROVIDER_ERROR'),
+    },
+  });
+
+  // --- reservations (staff, panel -- Task 19) -------------------------------
+  registry.registerPath({
+    method: 'get',
+    path: '/api/v1/admin/reservations',
+    tags: ['reservations', 'admin'],
+    security: [{ bearerAuth: [] }],
+    description:
+      'Every customer\'s reservations for the panel, filtered by trip, status and pending cancellation ' +
+      'request. Unresolved cancellation requests come first, oldest request first; the rest follow ' +
+      'newest first. Requires reservation.view; a CUSTOMER actor is refused whatever roles they hold.',
+    // The exact schema object the route validates against, as for /notifications.
+    request: { query: listStaffReservationsQuerySchema },
+    responses: {
+      200: { description: 'Reservations', ...json(staffReservationSummarySchema.array()) },
+      401: problem('Missing or invalid access token'),
+      403: problem('PERMISSION_DENIED -- requires reservation.view'),
+      422: problem('VALIDATION_FAILED -- a malformed filter'),
+    },
+  });
+
+  registry.registerPath({
+    method: 'get',
+    path: '/api/v1/admin/reservations/{reservationId}',
+    tags: ['reservations', 'admin'],
+    security: [{ bearerAuth: [] }],
+    description:
+      'One reservation, any customer\'s, with the customer\'s contact details and the cancellation ' +
+      'request reason. Requires reservation.view. The payment history is a separate endpoint.',
+    request: { params: uuidParam('reservationId') },
+    responses: {
+      200: { description: 'Reservation detail', ...json(staffReservationDetailSchema) },
+      401: problem('Missing or invalid access token'),
+      403: problem('PERMISSION_DENIED -- requires reservation.view'),
+      404: problem('NOT_FOUND'),
+    },
+  });
+
+  registry.registerPath({
+    method: 'get',
+    path: '/api/v1/admin/reservations/{reservationId}/payments',
+    tags: ['reservations', 'payments', 'admin'],
+    security: [{ bearerAuth: [] }],
+    description:
+      'One reservation\'s payments, newest first, pending, failed and expired ones included. ' +
+      'Requires payment.view.',
+    request: { params: uuidParam('reservationId') },
+    responses: {
+      200: { description: 'Payments', ...json(paymentSchema.array()) },
+      401: problem('Missing or invalid access token'),
+      403: problem('PERMISSION_DENIED -- requires payment.view'),
+      404: problem('NOT_FOUND'),
+    },
+  });
+
+  registry.registerPath({
+    method: 'post',
+    path: '/api/v1/admin/reservations/{reservationId}/cancel',
+    tags: ['reservations', 'admin'],
+    security: [{ bearerAuth: [] }],
+    description:
+      'Cancels a HELD or ACTIVE reservation (spec §5.6): releases its seat, keeps paid_cents and every ' +
+      'payment, cancels pending payment intents, notifies the customer with RESERVATION_CANCELLED and ' +
+      'audits the actor and the reason. Idempotent: an already CANCELLED reservation is answered as it ' +
+      'is. Requires reservation.cancel.',
+    request: { params: uuidParam('reservationId'), body: requestBody(cancelReservationRequestSchema) },
+    responses: {
+      200: { description: 'Reservation cancelled (or already cancelled)', ...json(staffReservationDetailSchema) },
+      401: problem('Missing or invalid access token'),
+      403: problem('PERMISSION_DENIED -- requires reservation.cancel'),
+      404: problem('NOT_FOUND'),
+      409: problem('INVALID_STATUS_TRANSITION -- the reservation already EXPIRED'),
+      422: problem('VALIDATION_FAILED -- the reason is missing or longer than 500 characters'),
     },
   });
 

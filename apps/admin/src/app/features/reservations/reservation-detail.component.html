@@ -1,0 +1,119 @@
+<a mat-button routerLink=".." class="reservation-back">
+  <mat-icon>arrow_back</mat-icon>
+  {{ 'adminReservations.back' | translate }}
+</a>
+
+@if (loadError(); as error) {
+  <p class="reservation-error" role="alert">{{ error | rmErrorCode }}</p>
+} @else if (reservation(); as reservation) {
+  <rm-page-header [title]="reservation.code"></rm-page-header>
+
+  <mat-chip-set class="reservation-status">
+    <mat-chip highlighted>{{ 'reservation.status.' + reservation.status | translate }}</mat-chip>
+    @if (reservation.cancellationPending) {
+      <mat-chip color="warn" highlighted>{{ 'adminReservations.pendingChip' | translate }}</mat-chip>
+    }
+  </mat-chip-set>
+
+  @if (reservation.cancellationRequestedAt) {
+    <section class="reservation-request" [class.reservation-request-pending]="reservation.cancellationPending">
+      <h2>{{ 'adminReservations.requestTitle' | translate }}</h2>
+      <p>{{ 'adminReservations.requestedAt' | translate }}: {{ reservation.cancellationRequestedAt | date: 'medium' }}</p>
+      <p class="reservation-request-reason">
+        {{ 'adminReservations.requestReason' | translate }}:
+        {{ reservation.cancellationReason || ('adminReservations.noReason' | translate) }}
+      </p>
+    </section>
+  }
+
+  @if (reservation.cancelledAt) {
+    <section class="reservation-cancelled">
+      <p>
+        {{ 'adminReservations.cancelledAt' | translate: { by: reservation.cancelledByName ?? '—' } }}
+        {{ reservation.cancelledAt | date: 'medium' }}
+      </p>
+    </section>
+  }
+
+  <div class="reservation-grid">
+    <section>
+      <h2>{{ 'adminReservations.customer' | translate }}</h2>
+      <p>{{ reservation.customerName }}</p>
+      <p><a [href]="'mailto:' + reservation.customerEmail">{{ reservation.customerEmail }}</a></p>
+      <p><a [href]="'tel:' + reservation.customerPhone">{{ reservation.customerPhone }}</a></p>
+    </section>
+
+    <section>
+      <h2>{{ 'adminReservations.trip' | translate }}</h2>
+      <p>{{ reservation.tripName }}</p>
+      <p>{{ 'adminReservations.departure' | translate }}: {{ reservation.tripDepartureDate | rmCalendarDate }}</p>
+      @if (reservation.holdExpiresAt && reservation.status === 'HELD') {
+        <p>{{ 'adminReservations.holdExpiresAt' | translate }}: {{ reservation.holdExpiresAt | date: 'medium' }}</p>
+      }
+    </section>
+
+    <section>
+      <h2>{{ 'adminReservations.money' | translate }}</h2>
+      <p>{{ 'reservation.total' | translate }}: {{ reservation.totalPriceCents | rmMoney }}</p>
+      <p>{{ 'reservation.paid' | translate }}: {{ reservation.paidCents | rmMoney }}</p>
+      <p>{{ 'reservation.balance' | translate }}: {{ reservation.balanceCents | rmMoney }}</p>
+      <p>{{ 'reservation.paymentDeadline' | translate }}: {{ reservation.paymentDeadline | rmCalendarDate }}</p>
+    </section>
+  </div>
+
+  @if (canViewPayments) {
+    <section class="reservation-payments">
+      <h2>{{ 'adminReservations.paymentsTitle' | translate }}</h2>
+      @if (payments().length === 0) {
+        <p>{{ 'payments.history.empty' | translate }}</p>
+      } @else {
+        <div class="reservation-payments-table-container">
+          <table mat-table [dataSource]="payments()" class="reservation-payments-table">
+            <ng-container matColumnDef="recordedAt">
+              <th mat-header-cell *matHeaderCellDef>{{ 'adminReservations.paymentColumns.recordedAt' | translate }}</th>
+              <td mat-cell *matCellDef="let payment">{{ payment.recordedAt | date: 'short' }}</td>
+            </ng-container>
+            <ng-container matColumnDef="amount">
+              <th mat-header-cell *matHeaderCellDef>{{ 'adminReservations.paymentColumns.amount' | translate }}</th>
+              <td mat-cell *matCellDef="let payment">{{ payment.amountCents | rmMoney }}</td>
+            </ng-container>
+            <ng-container matColumnDef="method">
+              <th mat-header-cell *matHeaderCellDef>{{ 'adminReservations.paymentColumns.method' | translate }}</th>
+              <td mat-cell *matCellDef="let payment">{{ 'payments.method.' + payment.method | translate }}</td>
+            </ng-container>
+            <ng-container matColumnDef="status">
+              <th mat-header-cell *matHeaderCellDef>{{ 'adminReservations.paymentColumns.status' | translate }}</th>
+              <td mat-cell *matCellDef="let payment">{{ 'payments.status.' + payment.status | translate }}</td>
+            </ng-container>
+            <tr mat-header-row *matHeaderRowDef="paymentColumns"></tr>
+            <tr mat-row *matRowDef="let payment; columns: paymentColumns"></tr>
+          </table>
+        </div>
+      }
+    </section>
+  }
+
+  @if (isCancellable()) {
+    <section class="reservation-cancel" *rmHasPermission="'reservation.cancel'">
+      <h2>{{ 'adminReservations.cancelSection' | translate }}</h2>
+      <p>{{ 'adminReservations.cancelExplanation' | translate }}</p>
+      <mat-form-field appearance="outline" class="reservation-cancel-reason">
+        <mat-label>{{ 'adminReservations.cancelReasonLabel' | translate }}</mat-label>
+        <textarea matInput [formControl]="reason" [maxlength]="reasonMaxLength" rows="3"></textarea>
+        <mat-hint align="end">{{ reason.value.length }} / {{ reasonMaxLength }}</mat-hint>
+        @if (reason.touched && reason.hasError('required')) {
+          <mat-error>{{ 'adminReservations.cancelReasonRequired' | translate }}</mat-error>
+        }
+      </mat-form-field>
+      <button
+        mat-flat-button
+        color="warn"
+        class="reservation-cancel-button"
+        (click)="cancel()"
+        [disabled]="cancelling() || !reason.value.trim()"
+      >
+        {{ 'adminReservations.cancelAction' | translate }}
+      </button>
+    </section>
+  }
+}

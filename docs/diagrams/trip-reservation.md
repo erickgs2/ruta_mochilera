@@ -154,3 +154,57 @@ flowchart LR
 
 El nombre del viaje usa la misma regla que el resumen del catálogo público.
 Ver `docs/business-rules/reservations.md`, «Leer una reserva propia».
+
+## Estados de una reserva y quién dispara cada transición
+
+El ciclo completo a la fecha de la Tarea 19. El esquema no tiene un estado
+`COMPLETED` para la reserva; el viaje sí lo tiene, la reserva no.
+
+```mermaid
+stateDiagram-v2
+    [*] --> HELD: "createReservation (el cliente reserva)"
+    HELD --> ACTIVE: "recordPayment / webhook: paid_cents ≥ anticipo mínimo"
+    HELD --> EXPIRED: "job expireHolds: hold_expires_at vencido"
+    HELD --> CANCELLED: "cancelReservation (personal con reservation.cancel)"
+    ACTIVE --> CANCELLED: "cancelReservation (personal con reservation.cancel)"
+    EXPIRED --> [*]
+    CANCELLED --> [*]
+```
+
+La solicitud del cliente (`requestCancellation`) **no** es una transición: no
+aparece en este diagrama porque no cambia el estado. Sólo pone la reserva en
+la bandeja del personal (sección anterior).
+
+## Cancelar desde el panel (Tarea 19)
+
+```mermaid
+flowchart TD
+    A["El personal pulsa «Cancelar reserva»<br/>con un motivo"] --> P{"¿Tiene reservation.cancel<br/>y es STAFF?"}
+    P -- No --> R0["403 PERMISSION_DENIED"]
+    P -- Sí --> B[("BEGIN")]
+    B --> C{"¿Existe la reserva?"}
+    C -- No --> R1["NOT_FOUND"]
+    C -- Sí --> D["UPDATE ... SET status = CANCELLED,<br/>cancelled_at, cancelled_by<br/>WHERE status IN (HELD, ACTIVE)"]
+    D --> E{"¿Volteó la fila?"}
+    E -- No --> F{"Estado actual"}
+    F -- "CANCELLED" --> OK1["Responde la reserva como está:<br/>sin aviso ni auditoría (idempotente)"]
+    F -- "EXPIRED" --> R2["INVALID_STATUS_TRANSITION"]
+    E -- Sí --> G["recordAudit: reservation.cancelled<br/>(actor, motivo, paid_cents)"]
+    G --> H["notifyCustomer: RESERVATION_CANCELLED"]
+    H --> I["cancelPendingPaymentIntents<br/>(un fallo del proveedor sólo se registra)"]
+    I --> J[("COMMIT")]
+    J --> K["El lugar vuelve al cupo: countCommittedSeats<br/>ya no cuenta la fila. paid_cents y los pagos intactos"]
+```
+
+Ningún contador cambia en el nodo `K`: el cupo se deriva de las filas (ver
+«Qué ocupa lugar y qué no»).
+
+## La bandeja del personal (Tarea 19)
+
+```mermaid
+flowchart LR
+    A["GET /admin/reservations<br/>(reservation.view)"] --> B["listReservationsForStaff:<br/>filtros tripId, status, cancellationPending"]
+    B --> C{"¿cancellation_requested_at no nulo<br/>y status HELD o ACTIVE?"}
+    C -- Sí --> D["Pendiente: arriba,<br/>la solicitud más antigua primero"]
+    C -- No --> E["Resto: la reserva más reciente primero"]
+```

@@ -209,6 +209,32 @@ async function applySucceeded(
     return ok(null);
   }
 
+  if (context.reservation.status === 'CANCELLED') {
+    // Task 19: staff cancelled the reservation while a voucher or a card
+    // intent was still payable (the cancellation asks the provider to cancel
+    // it, but a voucher paid at the counter in that same minute, or a
+    // provider outage, can still land here). Same treatment as an expired
+    // hold -- money recorded, reservation left as it is, a person decides --
+    // in words that say "cancelled" rather than "your hold expired".
+    await notifyCustomer(tx, queue, {
+      customerId: context.customerId,
+      reservationId: context.reservation.id,
+      eventType: 'PAYMENT_AFTER_CANCELLATION',
+      params: {
+        tripName: context.tripName,
+        amount: formatMoney(confirmed.value.amountCents, context.locale),
+      },
+    });
+    await escalateOrphanPayment(
+      tx,
+      queue,
+      confirmed.value.amountCents,
+      intent.providerIntentId,
+      context.reservation.id
+    );
+    return ok(null);
+  }
+
   await notifyCustomer(tx, queue, {
     customerId: context.customerId,
     reservationId: context.reservation.id,

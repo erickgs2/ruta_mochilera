@@ -119,6 +119,54 @@
     "title": "Mis reservas",
     "empty": "Todavía no tienes reservas. Explora los viajes y aparta tu lugar."
   },
+  "adminReservations": {
+    "title": "Reservas",
+    "back": "Volver a reservas",
+    "filterAll": "Todas",
+    "tripFilterLabel": "Viaje",
+    "statusFilterLabel": "Estado",
+    "pendingOnly": "Sólo solicitudes de cancelación pendientes",
+    "pendingSummary": "Solicitudes de cancelación por resolver: {{count}}",
+    "pendingChip": "Solicitó cancelar",
+    "empty": "No hay reservas con estos filtros.",
+    "view": "Ver reserva",
+    "balance": "Saldo",
+    "requestedAt": "Solicitada el",
+    "columns": {
+      "code": "Folio",
+      "customer": "Cliente",
+      "trip": "Viaje",
+      "status": "Estado",
+      "balance": "Saldo",
+      "actions": "Acciones"
+    },
+    "requestTitle": "Solicitud de cancelación",
+    "requestReason": "Motivo del cliente",
+    "noReason": "El cliente no indicó motivo.",
+    "cancelledAt": "Cancelada por {{by}} el",
+    "customer": "Cliente",
+    "trip": "Viaje",
+    "departure": "Salida",
+    "holdExpiresAt": "El apartado vence",
+    "money": "Montos",
+    "paymentsTitle": "Historial de pagos",
+    "paymentColumns": {
+      "recordedAt": "Registrado",
+      "amount": "Monto",
+      "method": "Forma de pago",
+      "status": "Estado"
+    },
+    "cancelSection": "Cancelar la reserva",
+    "cancelExplanation": "Cancelar libera el lugar en el viaje. Lo pagado y el historial de pagos se conservan; devolver o aplicar ese dinero se resuelve aparte.",
+    "cancelReasonLabel": "Motivo (el cliente lo verá en su aviso)",
+    "cancelReasonRequired": "Escribe el motivo de la cancelación.",
+    "cancelAction": "Cancelar reserva",
+    "cancelTitle": "¿Cancelar la reserva {{code}}?",
+    "cancelMessage": "Se liberará un lugar en {{trip}}. Se conservan {{paid}} ya pagados y todo el historial de pagos: nada se borra ni se devuelve automáticamente. El cliente recibirá un aviso con el motivo.",
+    "cancelConfirm": "Sí, cancelar",
+    "cancelBack": "No, volver",
+    "cancelled": "Reserva cancelada. El lugar quedó libre."
+  },
   "payments": {
     "whatToPay": "¿Qué quieres pagar?",
     "payFull": "Todo el saldo",
@@ -183,6 +231,7 @@
   },
   "nav": {
     "trips": "Viajes",
+    "reservations": "Reservas",
     "staff": "Administradores",
     "roles": "Roles"
   },

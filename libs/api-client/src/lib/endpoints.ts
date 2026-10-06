@@ -246,6 +246,41 @@ export class NotificationsApi {
   }
 }
 
+/** The query `AdminReservationsApi.list` accepts: the generated query type of `GET /api/v1/admin/reservations`. */
+type AdminReservationsQuery = NonNullable<paths['/api/v1/admin/reservations']['get']['parameters']['query']>;
+
+/**
+ * The panel's view of every customer's reservations (Task 19). Each call is
+ * gated by the API on its own permission -- `reservation.view` to read,
+ * `payment.view` for the payment history, `reservation.cancel` to cancel --
+ * whatever the screen chooses to show.
+ */
+@Injectable({ providedIn: 'root' })
+export class AdminReservationsApi {
+  private readonly api = inject(ApiClient);
+
+  /** Unresolved cancellation requests first, oldest request first; the rest newest first. */
+  list(query: AdminReservationsQuery = {}): Observable<Ok<'/api/v1/admin/reservations', 'get'>> {
+    return this.api.get('/api/v1/admin/reservations', query);
+  }
+
+  get(reservationId: string): Observable<Ok<'/api/v1/admin/reservations/{reservationId}', 'get'>> {
+    return this.api.get(`/api/v1/admin/reservations/${reservationId}`);
+  }
+
+  payments(reservationId: string): Observable<Ok<'/api/v1/admin/reservations/{reservationId}/payments', 'get'>> {
+    return this.api.get(`/api/v1/admin/reservations/${reservationId}/payments`);
+  }
+
+  /** Idempotent on the API side: cancelling twice answers the already-cancelled reservation. */
+  cancel(
+    reservationId: string,
+    reason: string
+  ): Observable<Ok<'/api/v1/admin/reservations/{reservationId}/cancel', 'post'>> {
+    return this.api.post(`/api/v1/admin/reservations/${reservationId}/cancel`, { reason });
+  }
+}
+
 /** Trips: catalog CRUD, status transitions and gallery images. */
 @Injectable({ providedIn: 'root' })
 export class TripsApi {

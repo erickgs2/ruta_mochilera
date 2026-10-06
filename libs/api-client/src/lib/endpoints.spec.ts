@@ -3,6 +3,7 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { TestBed } from '@angular/core/testing';
 import { API_BASE_URL } from './api-client';
 import {
+  AdminReservationsApi,
   AuthApi,
   CostingApi,
   NotificationsApi,
@@ -202,6 +203,28 @@ describe('endpoints', () => {
     TestBed.inject(TripsApi).changeStatus('trip1', 'PUBLISHED').subscribe();
     const req = httpMock.expectOne('https://api.test/api/v1/trips/trip1/status');
     expect(req.request.body).toEqual({ status: 'PUBLISHED' });
+    req.flush({});
+  });
+
+  it('AdminReservationsApi.list sends only the filters that are set', () => {
+    TestBed.inject(AdminReservationsApi).list({ status: 'HELD', cancellationPending: 'true' }).subscribe();
+    const req = httpMock.expectOne('https://api.test/api/v1/admin/reservations?status=HELD&cancellationPending=true');
+    expect(req.request.method).toBe('GET');
+    req.flush([]);
+  });
+
+  it('AdminReservationsApi.payments reads the payment history of one reservation', () => {
+    TestBed.inject(AdminReservationsApi).payments('res1').subscribe();
+    const req = httpMock.expectOne('https://api.test/api/v1/admin/reservations/res1/payments');
+    expect(req.request.method).toBe('GET');
+    req.flush([]);
+  });
+
+  it('AdminReservationsApi.cancel posts the reason to the cancel action', () => {
+    TestBed.inject(AdminReservationsApi).cancel('res1', 'Viaje reprogramado').subscribe();
+    const req = httpMock.expectOne('https://api.test/api/v1/admin/reservations/res1/cancel');
+    expect(req.request.method).toBe('POST');
+    expect(req.request.body).toEqual({ reason: 'Viaje reprogramado' });
     req.flush({});
   });
 

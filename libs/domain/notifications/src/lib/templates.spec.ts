@@ -70,8 +70,9 @@ describe('renderTemplate', () => {
     expect(DELIVERY_EVENT_TYPES).toContain(sample);
     // Eight from Task 7, plus the two the Stripe webhook needs (Task 10):
     // an expired OXXO voucher and a payment that landed after its hold had
-    // already expired.
-    expect(DELIVERY_EVENT_TYPES).toHaveLength(10);
+    // already expired; and Task 19's payment that landed after staff had
+    // cancelled the reservation.
+    expect(DELIVERY_EVENT_TYPES).toHaveLength(11);
   });
 
   it('tells the customer their OXXO voucher expired, not that a payment was declined', () => {
@@ -97,5 +98,18 @@ describe('renderTemplate', () => {
 
     expect(rendered.body).toContain('$1,000.00 MXN');
     expect(rendered.body).not.toContain('{{');
+  });
+
+  it('tells a customer who paid after staff cancelled that the payment is recorded, in both locales', () => {
+    for (const locale of ['es', 'en'] as const) {
+      const rendered = renderTemplate('PAYMENT_AFTER_CANCELLATION', locale, {
+        tripName: 'Oaxaca',
+        amount: '$1,000.00 MXN',
+      });
+
+      expect(rendered.body).toContain('$1,000.00 MXN');
+      expect(rendered.body).toContain('Oaxaca');
+      expect(`${rendered.subject} ${rendered.body}`).not.toContain('{{');
+    }
   });
 });

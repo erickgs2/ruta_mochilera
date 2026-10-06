@@ -131,9 +131,17 @@ flowchart TD
     C -- "EXPIRED" --> F["La reserva NO se reactiva: sigue EXPIRED"]
     F --> G["Aviso PAYMENT_AFTER_EXPIRY al cliente"]
     F --> H["Aviso ORPHAN_PAYMENT al personal"]
+    C -- "CANCELLED (Tarea 19)" --> F2["La reserva NO se reactiva: sigue CANCELLED"]
+    F2 --> G2["Aviso PAYMENT_AFTER_CANCELLATION al cliente"]
+    F2 --> H
     G --> I["«El dinero existe y debe verse;<br/>devolverlo o moverlo es decisión humana»"]
+    G2 --> I
     H --> I
 ```
+
+Una reserva `CANCELLED` sigue el mismo camino desde la Tarea 19: el panel
+cancela en el proveedor las fichas pendientes al cancelar, pero una pagada en
+ese mismo minuto puede llegar igual.
 
 Y el caso en que no hay siquiera reserva a la que atar el dinero —un intento
 creado fuera de la app, sin `metadata.reservationId`—: no se puede escribir un

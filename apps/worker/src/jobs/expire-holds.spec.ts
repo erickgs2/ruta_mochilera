@@ -2,9 +2,9 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vites
 import { closeTestDb, prepareTestDb, resetDatabase, withTestDb } from '@rm/db/testing';
 import { closeTestQueue, resetTestQueue, withTestQueue } from '@rm/jobs/testing';
 import type { Db, DbTransactionClient, Reservation, ReservationStatus } from '@rm/db';
-import { recordPayment } from '@rm/domain-payments';
+import { createCancelPendingPaymentIntents, recordPayment } from '@rm/domain-payments';
 import { FakePaymentProvider, PROVIDER_CANCEL_REJECTED_TEST_RESERVATION_ID } from '@rm/payments-stripe';
-import { createCancelPendingPaymentIntents, expireHolds } from './expire-holds';
+import { expireHolds } from './expire-holds';
 
 const db = withTestDb();
 const HOUR_MS = 60 * 60 * 1000;

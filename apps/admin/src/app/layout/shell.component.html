@@ -39,6 +39,12 @@
           <span matListItemTitle>{{ 'nav.trips' | translate }}</span>
         </a>
       </ng-container>
+      <ng-container *rmHasPermission="'reservation.view'">
+        <a mat-list-item routerLink="/reservations" routerLinkActive="active-link">
+          <mat-icon matListItemIcon>event_seat</mat-icon>
+          <span matListItemTitle>{{ 'nav.reservations' | translate }}</span>
+        </a>
+      </ng-container>
       <ng-container *rmHasPermission="'staff.view'">
         <a mat-list-item routerLink="/staff" routerLinkActive="active-link">
           <mat-icon matListItemIcon>badge</mat-icon>
