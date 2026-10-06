@@ -6,12 +6,12 @@ import { provideTranslateService, TranslateService } from '@ngx-translate/core';
 import { API_BASE_URL } from '@rm/api-client';
 import { LanguageService } from '@rm/i18n';
 import { formatMoney } from '@rm/shared-utils';
-import { STRIPE_PUBLISHABLE_KEY } from '../../core/stripe/stripe-loader';
+import { STRIPE_LOADER, STRIPE_PUBLISHABLE_KEY } from '../../core/stripe/stripe-loader';
 import { keyedTranslations, shown } from '../../testing/keyed-translations';
 import { reservation, type ReservationDetail } from '../../testing/reservation-fixtures';
 import { PaymentMethodComponent } from './payment-method.component';
 
-function setup(value: ReservationDetail = reservation()) {
+function setup(value: ReservationDetail = reservation(), { publishableKey = 'pk_test_123' } = {}) {
   localStorage.clear();
   TestBed.configureTestingModule({
     imports: [PaymentMethodComponent],
@@ -21,8 +21,10 @@ function setup(value: ReservationDetail = reservation()) {
       provideRouter([]),
       provideTranslateService({ lang: 'es', fallbackLang: 'es' }),
       { provide: API_BASE_URL, useValue: '' },
-      // No key: the card branch must degrade, never load Stripe, in these tests.
-      { provide: STRIPE_PUBLISHABLE_KEY, useValue: '' },
+      { provide: STRIPE_PUBLISHABLE_KEY, useValue: publishableKey },
+      // Stripe.js is never loaded in these tests: a card form that does get
+      // rendered degrades to "unavailable" instead of fetching the script.
+      { provide: STRIPE_LOADER, useValue: () => Promise.reject(new Error('Stripe.js is not loaded in tests')) },
     ],
   });
   TestBed.inject(TranslateService).setTranslation(
@@ -131,5 +133,42 @@ describe('PaymentMethodComponent', () => {
     expect(fixture.nativeElement.textContent).toContain(shown('errors.VALIDATION_FAILED'));
     expect(component.loading()).toBe(false);
     expect(fixture.nativeElement.querySelector('rm-voucher')).toBeNull();
+  });
+
+  describe('in a build with no Stripe publishable key', () => {
+    it('shows card payments as unavailable at once and never creates an intent for them', async () => {
+      const { fixture, component } = setup(reservation(), { publishableKey: '' });
+      component.intent.set('DEPOSIT');
+      component.method.set('CARD');
+      fixture.detectChanges();
+
+      expect(fixture.nativeElement.textContent).toContain(shown('payments.unavailable'));
+      expect(fixture.nativeElement.querySelector('button[type="submit"]').disabled).toBe(true);
+
+      await component.submit();
+
+      // `verify()` in afterEach also fails on any request left unhandled.
+      TestBed.inject(HttpTestingController).expectNone('/api/v1/reservations/res-1/payment-intents');
+      expect(component.created()).toBeNull();
+    });
+
+    it('still lets the customer pay at OXXO', async () => {
+      const { fixture, component, http } = setup(reservation(), { publishableKey: '' });
+      component.method.set('OXXO');
+      fixture.detectChanges();
+
+      expect(fixture.nativeElement.textContent).not.toContain(shown('payments.unavailable'));
+      expect(fixture.nativeElement.querySelector('button[type="submit"]').disabled).toBe(false);
+
+      const submitted = component.submit();
+      http
+        .expectOne('/api/v1/reservations/res-1/payment-intents')
+        .flush(
+          { providerIntentId: 'pi_1', clientSecret: 's_1', amountCents: 500_000, method: 'OXXO', voucherUrl: 'https://v.test/1', voucherExpiresAt: '2028-01-01T00:00:00.000Z' },
+          { status: 201, statusText: 'Created' }
+        );
+      await submitted;
+      expect(component.created()?.method).toBe('OXXO');
+    });
   });
 });

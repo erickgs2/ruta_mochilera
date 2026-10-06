@@ -41,11 +41,15 @@
 
     <p class="payment-amount">{{ 'payments.youPay' | translate }} {{ amountToShow() | rmMoney }}</p>
 
+    @if (methodUnavailable()) {
+      <p class="payments-unavailable">{{ 'payments.unavailable' | translate }}</p>
+    }
+
     @if (error()) {
       <p class="payments-error">{{ error() | rmErrorCode }}</p>
     }
 
-    <button type="submit" [disabled]="loading()">
+    <button type="submit" [disabled]="loading() || methodUnavailable()">
       {{ loading() ? ('payments.submitting' | translate) : ('payments.continue' | translate) }}
     </button>
   </form>
