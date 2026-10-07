@@ -1,0 +1,64 @@
+<rm-page-header [title]="'adminCustomers.title' | translate">
+  <a mat-flat-button routerLink="new" *rmHasPermission="'customer.manage'" class="customers-new">
+    <mat-icon>person_add</mat-icon>
+    {{ 'adminCustomers.new' | translate }}
+  </a>
+</rm-page-header>
+
+<mat-form-field appearance="outline" class="customers-search">
+  <mat-label>{{ 'adminCustomers.searchLabel' | translate }}</mat-label>
+  <mat-icon matPrefix>search</mat-icon>
+  <input matInput type="search" [formControl]="search" autocomplete="off" />
+</mat-form-field>
+
+@if (result().items.length === 0) {
+  <p class="customers-empty">{{ 'adminCustomers.empty' | translate }}</p>
+} @else if (isHandset()) {
+  <div class="customers-cards">
+    @for (customer of result().items; track customer.id) {
+      <a class="customers-card" [routerLink]="[customer.id]">
+        <h2 class="customers-card-name">{{ customer.fullName }}</h2>
+        <p>{{ customer.email }}</p>
+        <p>{{ customer.phone }}</p>
+        <p class="customers-account">{{ accountKey(customer) | translate }}</p>
+      </a>
+    }
+  </div>
+} @else {
+  <div class="customers-table-container">
+    <table mat-table [dataSource]="result().items" class="customers-table">
+      <ng-container matColumnDef="name">
+        <th mat-header-cell *matHeaderCellDef>{{ 'adminCustomers.columns.name' | translate }}</th>
+        <td mat-cell *matCellDef="let customer">
+          <a [routerLink]="[customer.id]">{{ customer.fullName }}</a>
+        </td>
+      </ng-container>
+      <ng-container matColumnDef="email">
+        <th mat-header-cell *matHeaderCellDef>{{ 'adminCustomers.columns.email' | translate }}</th>
+        <td mat-cell *matCellDef="let customer">{{ customer.email }}</td>
+      </ng-container>
+      <ng-container matColumnDef="phone">
+        <th mat-header-cell *matHeaderCellDef>{{ 'adminCustomers.columns.phone' | translate }}</th>
+        <td mat-cell *matCellDef="let customer">{{ customer.phone }}</td>
+      </ng-container>
+      <ng-container matColumnDef="account">
+        <th mat-header-cell *matHeaderCellDef>{{ 'adminCustomers.columns.account' | translate }}</th>
+        <td mat-cell *matCellDef="let customer">{{ accountKey(customer) | translate }}</td>
+      </ng-container>
+      <tr mat-header-row *matHeaderRowDef="columns"></tr>
+      <tr mat-row *matRowDef="let customer; columns: columns"></tr>
+    </table>
+  </div>
+}
+
+@if (pages() > 1) {
+  <nav class="customers-pager" [attr.aria-label]="'adminCustomers.pageOf' | translate: { page: page(), pages: pages() }">
+    <button mat-stroked-button type="button" (click)="previous()" [disabled]="page() === 1">
+      {{ 'adminCustomers.previous' | translate }}
+    </button>
+    <span>{{ 'adminCustomers.pageOf' | translate: { page: page(), pages: pages() } }}</span>
+    <button mat-stroked-button type="button" (click)="next()" [disabled]="page() === pages()">
+      {{ 'adminCustomers.next' | translate }}
+    </button>
+  </nav>
+}

@@ -15,12 +15,16 @@ type Body<P extends keyof paths, M extends keyof paths[P]> = paths[P][M] extends
   ? Json<R>
   : never;
 
-/** The 200 or 201 JSON response type for `paths[P][M]` -- every success status this API uses. */
+/** The 200, 201 or 202 JSON response type for `paths[P][M]` -- every success status this API uses. */
 type Ok<P extends keyof paths, M extends keyof paths[P]> = paths[P][M] extends { responses: { 200: infer R } }
   ? Json<R>
   : paths[P][M] extends { responses: { 201: infer R } }
     ? Json<R>
-    : never;
+    : paths[P][M] extends { responses: { 202: infer R } }
+      ? Json<R> extends never
+        ? unknown
+        : Json<R>
+      : never;
 
 /**
  * Auth: session issuance, rotation and revocation, plus the authenticated
@@ -67,6 +71,16 @@ export class AuthApi {
     body: Body<'/api/v1/auth/reset-password', 'post'>
   ): Observable<Ok<'/api/v1/auth/reset-password', 'post'>> {
     return this.api.post('/api/v1/auth/reset-password', body);
+  }
+
+  /**
+   * A counter customer activates their account from the invitation link
+   * (Phase 2B). Fails with `TOKEN_INVALID` for an unknown, used or expired link.
+   */
+  acceptInvitation(
+    body: Body<'/api/v1/auth/invitation/accept', 'post'>
+  ): Observable<Ok<'/api/v1/auth/invitation/accept', 'post'>> {
+    return this.api.post('/api/v1/auth/invitation/accept', body);
   }
 
   login(body: Body<'/api/v1/auth/login', 'post'>): Observable<Ok<'/api/v1/auth/login', 'post'>> {
@@ -229,6 +243,16 @@ export class PaymentsApi {
   list(): Observable<Ok<'/api/v1/payments', 'get'>> {
     return this.api.get('/api/v1/payments');
   }
+
+  /** The PDF receipt of one of the caller's own SUCCEEDED payments (Phase 2B). */
+  receipt(paymentId: string): Observable<Blob> {
+    return this.api.getBlob(`/api/v1/payments/${paymentId}/receipt`);
+  }
+
+  /** The caller's own credit balance and movements, read-only (Phase 2B). */
+  credit(): Observable<Ok<'/api/v1/me/credit', 'get'>> {
+    return this.api.get('/api/v1/me/credit');
+  }
 }
 
 /** The authenticated customer's own in-app inbox. */
@@ -287,6 +311,151 @@ export class AdminReservationsApi {
   ): Observable<Ok<'/api/v1/admin/reservations/{reservationId}/decline-cancellation', 'post'>> {
     return this.api.post(`/api/v1/admin/reservations/${reservationId}/decline-cancellation`, { reason });
   }
+
+  /** A reservation at the counter (Phase 2B), optionally with its first cash payment. */
+  createAtCounter(
+    body: Body<'/api/v1/admin/reservations', 'post'>
+  ): Observable<Ok<'/api/v1/admin/reservations', 'post'>> {
+    return this.api.post('/api/v1/admin/reservations', body);
+  }
+
+  /** Cash at the counter for a live reservation. */
+  registerCash(
+    reservationId: string,
+    amountCents: number
+  ): Observable<Ok<'/api/v1/admin/reservations/{reservationId}/payments', 'post'>> {
+    return this.api.post(`/api/v1/admin/reservations/${reservationId}/payments`, { amountCents });
+  }
+
+  /** Pays part of the reservation with its customer's credit. */
+  applyCredit(
+    reservationId: string,
+    amountCents: number
+  ): Observable<Ok<'/api/v1/admin/reservations/{reservationId}/apply-credit', 'post'>> {
+    return this.api.post(`/api/v1/admin/reservations/${reservationId}/apply-credit`, { amountCents });
+  }
+}
+
+/** Payment receipts for staff (Phase 2B): download and resend. Both need `payment.view`. */
+@Injectable({ providedIn: 'root' })
+export class AdminPaymentsApi {
+  private readonly api = inject(ApiClient);
+
+  receipt(paymentId: string): Observable<Blob> {
+    return this.api.getBlob(`/api/v1/admin/payments/${paymentId}/receipt`);
+  }
+
+  resendReceipt(paymentId: string): Observable<unknown> {
+    return this.api.post(`/api/v1/admin/payments/${paymentId}/receipt/resend`, {});
+  }
+}
+
+type CustomersQuery = NonNullable<paths['/api/v1/admin/customers']['get']['parameters']['query']>;
+
+/** Customers at the counter (Phase 2B): search, register, invite, and their credit. */
+@Injectable({ providedIn: 'root' })
+export class CustomersApi {
+  private readonly api = inject(ApiClient);
+
+  search(query: CustomersQuery = {}): Observable<Ok<'/api/v1/admin/customers', 'get'>> {
+    return this.api.get('/api/v1/admin/customers', {
+      search: query.search,
+      page: query.page?.toString(),
+      pageSize: query.pageSize?.toString(),
+    });
+  }
+
+  get(customerId: string): Observable<Ok<'/api/v1/admin/customers/{customerId}', 'get'>> {
+    return this.api.get(`/api/v1/admin/customers/${customerId}`);
+  }
+
+  /** Fails with `CUSTOMER_ALREADY_EXISTS` (409) carrying `details.customerId` for an email already registered. */
+  create(body: Body<'/api/v1/admin/customers', 'post'>): Observable<Ok<'/api/v1/admin/customers', 'post'>> {
+    return this.api.post('/api/v1/admin/customers', body);
+  }
+
+  invite(customerId: string): Observable<Ok<'/api/v1/admin/customers/{customerId}/invitation', 'post'>> {
+    return this.api.post(`/api/v1/admin/customers/${customerId}/invitation`, {});
+  }
+
+  credit(customerId: string): Observable<Ok<'/api/v1/admin/customers/{customerId}/credit', 'get'>> {
+    return this.api.get(`/api/v1/admin/customers/${customerId}/credit`);
+  }
+
+  refundCredit(
+    customerId: string,
+    body: Body<'/api/v1/admin/customers/{customerId}/credit/refund', 'post'>
+  ): Observable<Ok<'/api/v1/admin/customers/{customerId}/credit/refund', 'post'>> {
+    return this.api.post(`/api/v1/admin/customers/${customerId}/credit/refund`, body);
+  }
+
+  adjustCredit(
+    customerId: string,
+    body: Body<'/api/v1/admin/customers/{customerId}/credit/adjust', 'post'>
+  ): Observable<Ok<'/api/v1/admin/customers/{customerId}/credit/adjust', 'post'>> {
+    return this.api.post(`/api/v1/admin/customers/${customerId}/credit/adjust`, body);
+  }
+}
+
+/** Historical capture (Phase 2B, `data.backfill`). */
+@Injectable({ providedIn: 'root' })
+export class BackfillApi {
+  private readonly api = inject(ApiClient);
+
+  reservation(
+    body: Body<'/api/v1/admin/backfill/reservations', 'post'>
+  ): Observable<Ok<'/api/v1/admin/backfill/reservations', 'post'>> {
+    return this.api.post('/api/v1/admin/backfill/reservations', body);
+  }
+
+  payments(
+    body: Body<'/api/v1/admin/backfill/payments', 'post'>
+  ): Observable<Ok<'/api/v1/admin/backfill/payments', 'post'>> {
+    return this.api.post('/api/v1/admin/backfill/payments', body);
+  }
+}
+
+/** CSV imports (Phase 2B, `import.manage`). */
+@Injectable({ providedIn: 'root' })
+export class ImportsApi {
+  private readonly api = inject(ApiClient);
+
+  list(): Observable<Ok<'/api/v1/admin/imports', 'get'>> {
+    return this.api.get('/api/v1/admin/imports');
+  }
+
+  get(batchId: string): Observable<Ok<'/api/v1/admin/imports/{batchId}', 'get'>> {
+    return this.api.get(`/api/v1/admin/imports/${batchId}`);
+  }
+
+  /** Validates without applying: the answer is the preview. */
+  upload(body: Body<'/api/v1/admin/imports', 'post'>): Observable<Ok<'/api/v1/admin/imports', 'post'>> {
+    return this.api.post('/api/v1/admin/imports', body);
+  }
+
+  apply(batchId: string): Observable<Ok<'/api/v1/admin/imports/{batchId}/apply', 'post'>> {
+    return this.api.post(`/api/v1/admin/imports/${batchId}/apply`, {});
+  }
+
+  template(type: 'customers' | 'payments'): Observable<Blob> {
+    return this.api.getBlob(`/api/v1/admin/imports/templates/${type}`);
+  }
+}
+
+/** The agency details receipts print (Phase 2B, `settings.manage`). */
+@Injectable({ providedIn: 'root' })
+export class SettingsApi {
+  private readonly api = inject(ApiClient);
+
+  organization(): Observable<Ok<'/api/v1/admin/settings/organization', 'get'>> {
+    return this.api.get('/api/v1/admin/settings/organization');
+  }
+
+  saveOrganization(
+    body: Body<'/api/v1/admin/settings/organization', 'put'>
+  ): Observable<Ok<'/api/v1/admin/settings/organization', 'put'>> {
+    return this.api.put('/api/v1/admin/settings/organization', body);
+  }
 }
 
 /** Trips: catalog CRUD, status transitions and gallery images. */
@@ -338,6 +507,18 @@ export class TripsApi {
     imageId: string
   ): Observable<Ok<'/api/v1/trips/{tripId}/images/{imageId}', 'delete'>> {
     return this.api.delete(`/api/v1/trips/${tripId}/images/${imageId}`);
+  }
+
+  /** Phase 2B: what bringing the trip's current price to its reservations would do. `NO_PRICE_CHANGE` when nothing. */
+  previewPriceChange(tripId: string): Observable<Ok<'/api/v1/trips/{tripId}/price-change', 'get'>> {
+    return this.api.get(`/api/v1/trips/${tripId}/price-change`);
+  }
+
+  applyPriceChange(
+    tripId: string,
+    body: Body<'/api/v1/trips/{tripId}/price-change', 'post'>
+  ): Observable<Ok<'/api/v1/trips/{tripId}/price-change', 'post'>> {
+    return this.api.post(`/api/v1/trips/${tripId}/price-change`, body);
   }
 }
 

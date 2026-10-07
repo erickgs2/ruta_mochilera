@@ -1,0 +1,22 @@
+.customer-form {
+  display: grid;
+  gap: 0.25rem;
+  max-width: 32rem;
+}
+
+.customer-form-invite {
+  margin: 0.25rem 0 1rem;
+}
+
+.customer-form-hint {
+  margin: 0.25rem 0 0 2.5rem;
+  color: var(--rm-ink-soft);
+  font-size: 0.875rem;
+}
+
+.customer-form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}

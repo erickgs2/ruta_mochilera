@@ -1,0 +1,80 @@
+<a mat-button routerLink=".." class="customer-back">
+  <mat-icon>arrow_back</mat-icon>
+  {{ 'adminCustomers.detail.back' | translate }}
+</a>
+
+@if (loadError(); as error) {
+  <p class="customer-error" role="alert">{{ error | rmErrorCode }}</p>
+} @else if (customer(); as customer) {
+  <rm-page-header [title]="customer.fullName"></rm-page-header>
+
+  <div class="customer-grid">
+    <section class="customer-card">
+      <h2>{{ 'adminCustomers.detail.data' | translate }}</h2>
+      <p><a [href]="'mailto:' + customer.email">{{ customer.email }}</a></p>
+      <p><a [href]="'tel:' + customer.phone">{{ customer.phone }}</a></p>
+      <p>{{ 'adminCustomers.detail.birthDate' | translate }}: {{ customer.birthDate | rmCalendarDate }}</p>
+      <p>{{ 'adminCustomers.detail.origin' | translate }}: {{ 'adminCustomers.detail.origins.' + customer.origin | translate }}</p>
+    </section>
+
+    <section class="customer-card customer-account">
+      <h2>{{ 'adminCustomers.detail.account' | translate }}</h2>
+      @if (customer.activatedAt) {
+        <p>{{ 'adminCustomers.detail.accountActive' | translate: { date: (customer.activatedAt | rmDateTime: 'mediumDate') } }}</p>
+      } @else if (customer.hasPassword) {
+        <p>{{ 'adminCustomers.detail.accountSelf' | translate }}</p>
+      } @else if (customer.invitedAt) {
+        <p>{{ 'adminCustomers.detail.accountInvited' | translate: { date: (customer.invitedAt | rmDateTime: 'mediumDate') } }}</p>
+      } @else {
+        <p>{{ 'adminCustomers.detail.accountNone' | translate }}</p>
+      }
+      @if (!customer.hasPassword) {
+        <button
+          mat-stroked-button
+          type="button"
+          class="customer-invite"
+          *rmHasPermission="'customer.manage'"
+          (click)="invite()"
+          [disabled]="inviting()"
+        >
+          <mat-icon>forward_to_inbox</mat-icon>
+          {{ (customer.invitedAt ? 'adminCustomers.detail.reinvite' : 'adminCustomers.detail.invite') | translate }}
+        </button>
+      }
+    </section>
+  </div>
+
+  <section class="customer-section">
+    <h2>{{ 'adminCustomers.detail.reservations' | translate }}</h2>
+    @if (customer.reservations.length === 0) {
+      <p>{{ 'adminCustomers.detail.noReservations' | translate }}</p>
+    } @else {
+      <ul class="customer-reservations">
+        @for (reservation of customer.reservations; track reservation.id) {
+          <li>
+            <a [routerLink]="['/reservations', reservation.id]" class="customer-reservation">
+              <span class="customer-reservation-code">{{ reservation.code }}</span>
+              <span>{{ reservation.tripName }} · {{ reservation.departureDate | rmCalendarDate }}</span>
+              <span>{{ 'reservation.status.' + reservation.status | translate }}</span>
+              <span>{{ reservation.paidCents | rmMoney }} / {{ reservation.totalPriceCents | rmMoney }}</span>
+            </a>
+          </li>
+        }
+      </ul>
+    }
+  </section>
+
+  <rm-customer-credit
+    *rmHasPermission="'payment.view'"
+    class="customer-section"
+    [customerId]="customer.id"
+    [customerName]="customer.fullName"
+  ></rm-customer-credit>
+
+  <rm-counter-reservation
+    *rmHasPermission="'reservation.create'"
+    class="customer-section"
+    [customerId]="customer.id"
+    [customerName]="customer.fullName"
+  ></rm-counter-reservation>
+}

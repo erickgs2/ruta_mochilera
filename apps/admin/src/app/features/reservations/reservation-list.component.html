@@ -57,7 +57,7 @@
         <p class="reservations-card-meta">{{ 'adminReservations.balance' | translate }}: {{ row.balanceCents | rmMoney }}</p>
         @if (row.cancellationPending) {
           <p class="reservations-card-meta">
-            {{ 'adminReservations.requestedAt' | translate }}: {{ row.cancellationRequestedAt | date: 'short' }}
+            {{ 'adminReservations.requestedAt' | translate }}: {{ row.cancellationRequestedAt | rmDateTime: 'short' }}
           </p>
         }
       </a>

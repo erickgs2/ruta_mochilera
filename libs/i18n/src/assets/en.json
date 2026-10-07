@@ -158,15 +158,16 @@
       "recordedAt": "Recorded",
       "amount": "Amount",
       "method": "Method",
-      "status": "Status"
+      "status": "Status",
+      "receipt": "Receipt"
     },
     "cancelSection": "Cancel the reservation",
-    "cancelExplanation": "Cancelling releases the seat on the trip. What was paid and the payment history are kept; refunding or applying that money is handled separately.",
+    "cancelExplanation": "Cancelling releases the seat on the trip. The payment history is kept and what was paid becomes the customer's account credit, which you can later apply to another reservation or record as refunded.",
     "cancelReasonLabel": "Reason (the customer will see it in their notice)",
     "cancelReasonRequired": "Write the reason for the cancellation.",
     "cancelAction": "Cancel reservation",
     "cancelTitle": "Cancel reservation {{code}}?",
-    "cancelMessage": "One seat on {{trip}} will be released. The {{paid}} already paid and the whole payment history are kept: nothing is deleted or refunded automatically. The customer will be notified with the reason.",
+    "cancelMessage": "One seat on {{trip}} will be released. The {{paid}} already paid becomes the customer's account credit and the payment history is kept. The customer will be notified with the reason.",
     "cancelConfirm": "Yes, cancel",
     "cancelBack": "No, go back",
     "cancelled": "Reservation cancelled. The seat is free.",
@@ -179,7 +180,27 @@
     "declineConfirm": "Yes, decline",
     "declined": "Request declined. The customer has been notified.",
     "declinedAt": "Declined by {{by}} on",
-    "declineReasonShown": "Reason"
+    "declineReasonShown": "Reason",
+    "cashSection": "Take cash",
+    "cashAmount": "Amount received",
+    "cashAction": "Record payment",
+    "cashTitle": "Record a cash payment",
+    "cashMessage": "Record {{amount}} in cash for reservation {{code}}. The receipt is issued and sent to the customer.",
+    "cashDone": "Payment recorded. Receipt {{receipt}}.",
+    "amountTooHigh": "It cannot exceed the balance due ({{balance}}).",
+    "amountRequired": "Enter an amount above zero.",
+    "creditSection": "Apply account credit",
+    "creditAvailable": "Customer's credit: {{amount}}",
+    "creditAmount": "Amount to apply",
+    "creditAction": "Apply credit",
+    "creditTitle": "Apply account credit",
+    "creditMessage": "Apply {{amount}} of account credit to reservation {{code}}.",
+    "creditDone": "Credit applied. Receipt {{receipt}}.",
+    "creditTooHigh": "It cannot exceed the account credit ({{credit}}).",
+    "downloadReceipt": "Download receipt",
+    "resendReceipt": "Resend receipt",
+    "resent": "Receipt on its way to the customer.",
+    "customerLink": "Open customer"
   },
   "payments": {
     "whatToPay": "What do you want to pay?",
@@ -248,7 +269,10 @@
     "trips": "Trips",
     "reservations": "Reservations",
     "staff": "Administrators",
-    "roles": "Roles"
+    "roles": "Roles",
+    "customers": "Customers",
+    "imports": "Imports",
+    "settings": "Agency details"
   },
   "forbidden": {
     "title": "Access restricted",
@@ -625,5 +649,248 @@
         "description": "Change system settings"
       }
     }
+  },
+  "adminCustomers": {
+    "title": "Customers",
+    "searchLabel": "Search by name, email or phone",
+    "new": "New customer",
+    "empty": "No customers match.",
+    "previous": "Previous",
+    "next": "Next",
+    "pageOf": "Page {{page}} of {{pages}}",
+    "columns": {
+      "name": "Name",
+      "email": "Email",
+      "phone": "Phone",
+      "account": "Account"
+    },
+    "account": {
+      "active": "Active account",
+      "invited": "Invited",
+      "none": "No account"
+    },
+    "form": {
+      "title": "New customer",
+      "fullName": "Full name",
+      "email": "Email",
+      "phone": "Phone",
+      "birthDate": "Date of birth",
+      "locale": "Language of their emails",
+      "localeEs": "Spanish",
+      "localeEn": "English",
+      "sendInvitation": "Send an invitation to activate their app account",
+      "sendInvitationHint": "Untick it if the customer does not have their email at hand: you can send it later from their page.",
+      "save": "Register",
+      "cancel": "Cancel",
+      "required": "This is required.",
+      "invalidEmail": "Enter a valid email.",
+      "minLength": "Enter at least {{min}} characters.",
+      "created": "Customer registered.",
+      "createdNoInvite": "Customer registered, but the invitation did not go out. Resend it from their page.",
+      "alreadyExists": "That email already belongs to a customer: here is their page."
+    },
+    "detail": {
+      "back": "Customers",
+      "data": "Details",
+      "birthDate": "Born",
+      "origin": "Origin",
+      "origins": {
+        "SELF_SIGNUP": "Signed up in the app",
+        "BRANCH": "Counter",
+        "IMPORT": "Import"
+      },
+      "account": "App account",
+      "accountActive": "Activated their account on {{date}}",
+      "accountInvited": "Invited on {{date}}; not activated yet",
+      "accountNone": "No app account",
+      "accountSelf": "Has an app account",
+      "invite": "Send invitation",
+      "reinvite": "Resend invitation",
+      "invited": "Invitation sent.",
+      "reservations": "Reservations",
+      "noReservations": "No reservations yet.",
+      "newReservation": "New reservation",
+      "backfill": "Historical capture"
+    },
+    "credit": {
+      "title": "Account credit",
+      "balance": "Available credit",
+      "empty": "No movements.",
+      "columns": {
+        "date": "Date",
+        "kind": "Movement",
+        "amount": "Amount",
+        "reason": "Reason"
+      },
+      "kinds": {
+        "CANCELLATION": "Cancellation",
+        "PRICE_DECREASE": "Price decrease",
+        "APPLIED": "Applied to a reservation",
+        "REFUND": "Refund",
+        "ADJUSTMENT": "Adjustment"
+      },
+      "refund": "Record a refund",
+      "adjust": "Adjust credit",
+      "amount": "Amount",
+      "reason": "Reason",
+      "reasonRequired": "Enter the reason.",
+      "amountRequired": "Enter an amount above zero.",
+      "direction": "Adjustment",
+      "increase": "Increase",
+      "decrease": "Decrease",
+      "refundTitle": "Refund outside the system",
+      "refundMessage": "Record that you returned {{amount}} to {{name}} in cash or by transfer. Their credit goes down by that amount.",
+      "adjustTitle": "Adjust account credit",
+      "adjustUpMessage": "{{name}}'s credit goes up by {{amount}}.",
+      "adjustDownMessage": "{{name}}'s credit goes down by {{amount}}.",
+      "confirm": "Confirm",
+      "back": "Back",
+      "saved": "Account credit updated."
+    },
+    "counter": {
+      "title": "New reservation at the counter",
+      "trip": "Trip",
+      "seats": "{{seats}} seats",
+      "mode": "Mode",
+      "withPayment": "Reserve and take cash",
+      "holdOnly": "Hold without payment",
+      "amount": "Amount received",
+      "amountHint": "If it covers the deposit the reservation is confirmed; otherwise it is held.",
+      "create": "Reserve",
+      "created": "Reservation {{code}} created.",
+      "noTrips": "There are no published trips.",
+      "confirmTitle": "Confirm the reservation",
+      "confirmWithPayment": "Reserve {{trip}} for {{name}} and record {{amount}} in cash.",
+      "confirmHold": "Hold {{trip}} for {{name}} without payment. The hold expires according to the trip."
+    }
+  },
+  "priceChange": {
+    "title": "Bring reservations to the current price",
+    "explanation": "Editing the price only affects new reservations. This brings the current price to held and confirmed reservations with a different one. Anything paid above it becomes account credit.",
+    "preview": "See what changes",
+    "noChange": "Every live reservation already has the current price.",
+    "price": "Current price: {{price}}",
+    "columns": {
+      "code": "Reservation",
+      "customer": "Customer",
+      "previous": "Before",
+      "new": "Now",
+      "paid": "Paid",
+      "balance": "New balance",
+      "credit": "Credit"
+    },
+    "noticeEs": "Notice for customers (Spanish)",
+    "noticeEn": "Notice in English (optional)",
+    "noticeRequired": "The Spanish notice is required.",
+    "noticeHint": "Every affected customer receives it with their new numbers.",
+    "apply": "Apply to {{count}} reservations",
+    "confirmTitle": "Update {{count}} reservations",
+    "confirmMessage": "The reservations take the price of {{price}} and every customer receives the notice. This cannot be undone.",
+    "applied": "Price updated on {{count}} reservations."
+  },
+  "backfill": {
+    "title": "Historical capture",
+    "explanation": "Load a reservation and its payments as they happened before the system. It counts for the trip's capacity.",
+    "trip": "Trip",
+    "createdAt": "Reservation date",
+    "total": "Agreed price (if different)",
+    "payments": "Payments",
+    "addPayment": "Add payment",
+    "amount": "Amount",
+    "paidAt": "Payment date",
+    "method": "Method",
+    "methods": {
+      "LEGACY": "Recorded payment",
+      "CASH": "Cash"
+    },
+    "notes": "Note",
+    "remove": "Remove payment",
+    "sendReceipts": "Email the receipts",
+    "sendReceiptsHint": "Unticked by default: old payments do not notify the customer. Receipt numbers exist anyway.",
+    "save": "Capture",
+    "saved": "Reservation {{code}} captured.",
+    "required": "This is required.",
+    "futureDate": "The date cannot be in the future."
+  },
+  "adminImports": {
+    "title": "Imports",
+    "explanation": "Load customers or payments from a spreadsheet. Every row is validated first without saving anything; then you confirm.",
+    "templates": "Templates",
+    "customersTemplate": "Customers template",
+    "paymentsTemplate": "Payments template",
+    "type": "What you are importing",
+    "types": {
+      "CUSTOMERS": "Customers",
+      "PAYMENTS": "Payments"
+    },
+    "file": "CSV file",
+    "chooseFile": "Choose file",
+    "noFile": "No file chosen",
+    "sendEmails": "Send emails (invitations to new customers or payment receipts)",
+    "sendEmailsHint": "Unticked by default.",
+    "validate": "Validate",
+    "history": "Previous batches",
+    "empty": "No imports yet.",
+    "columns": {
+      "date": "Date",
+      "file": "File",
+      "type": "Type",
+      "status": "Status",
+      "rows": "Rows"
+    },
+    "statuses": {
+      "VALIDATED": "To confirm",
+      "APPLYING": "Applying…",
+      "APPLIED": "Applied",
+      "FAILED": "Invalid file"
+    },
+    "summary": "{{ok}} rows ready and {{failed}} with errors, out of {{total}}.",
+    "row": "Row",
+    "rowStatus": {
+      "VALID": "Ready",
+      "INVALID": "With errors",
+      "EXISTS": "Already exists"
+    },
+    "outcome": {
+      "CREATED": "Imported",
+      "EXISTS": "Already existed",
+      "FAILED": "Failed"
+    },
+    "apply": "Confirm and import",
+    "applyTitle": "Import {{count}} rows",
+    "applyMessage": "Rows with errors are skipped. The rest are imported, and this cannot be undone.",
+    "applying": "Applying… this screen refreshes on its own.",
+    "applied": "Import applied.",
+    "back": "Imports",
+    "fileErrors": {
+      "EMPTY_FILE": "The file is empty.",
+      "MISSING_COLUMN": "The column “{{column}}” is missing.",
+      "NO_ROWS": "The file has no data rows."
+    },
+    "codes": {
+      "REQUIRED": "Missing value",
+      "INVALID_EMAIL": "Invalid email",
+      "INVALID_DATE": "Invalid or future date (use YYYY-MM-DD)",
+      "INVALID_AMOUNT": "Invalid amount",
+      "INVALID_PHONE": "Invalid phone",
+      "INVALID_LOCALE": "Invalid language (es or en)",
+      "EMAIL_TAKEN": "The email belongs to staff",
+      "UNKNOWN_CUSTOMER": "No customer with that email",
+      "UNKNOWN_TRIP": "No trip with that identifier",
+      "TRIP_NOT_ALLOWED": "Draft or cancelled trip",
+      "UNKNOWN_METHOD": "Unknown payment method",
+      "DUPLICATE_IN_FILE": "Repeated in the file"
+    }
+  },
+  "adminSettings": {
+    "title": "Agency details",
+    "explanation": "This is how they appear on receipts. Receipts already issued keep the details they were issued with.",
+    "name": "Name",
+    "address": "Address",
+    "phone": "Phones",
+    "website": "Website or social network",
+    "save": "Save",
+    "saved": "Details saved.",
+    "required": "The name is required."
   }
 }

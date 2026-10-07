@@ -50,6 +50,11 @@ export class ApiClient {
     return this.http.delete<TResponse>(`${this.baseUrl}${path}`, { withCredentials: true });
   }
 
+  /** Downloads a binary response (a receipt PDF, a CSV template) as a `Blob`. */
+  getBlob(path: string): Observable<Blob> {
+    return this.http.get(`${this.baseUrl}${path}`, { responseType: 'blob', withCredentials: true });
+  }
+
   /** Posts a `FormData` body (multipart), for the endpoints that accept a file. */
   upload<TResponse>(path: string, form: FormData): Observable<TResponse> {
     return this.http.post<TResponse>(`${this.baseUrl}${path}`, form, { withCredentials: true });

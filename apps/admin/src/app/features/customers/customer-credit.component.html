@@ -1,0 +1,75 @@
+<h2>{{ 'adminCustomers.credit.title' | translate }}</h2>
+
+@if (credit(); as credit) {
+  <p class="credit-balance">
+    {{ 'adminCustomers.credit.balance' | translate }}:
+    <strong>{{ credit.balanceCents | rmMoney }}</strong>
+  </p>
+
+  @if (credit.entries.length === 0) {
+    <p>{{ 'adminCustomers.credit.empty' | translate }}</p>
+  } @else {
+    <div class="credit-table-container">
+      <table mat-table [dataSource]="credit.entries" class="credit-table">
+        <ng-container matColumnDef="date">
+          <th mat-header-cell *matHeaderCellDef>{{ 'adminCustomers.credit.columns.date' | translate }}</th>
+          <td mat-cell *matCellDef="let entry">{{ entry.createdAt | rmDateTime: 'short' }}</td>
+        </ng-container>
+        <ng-container matColumnDef="kind">
+          <th mat-header-cell *matHeaderCellDef>{{ 'adminCustomers.credit.columns.kind' | translate }}</th>
+          <td mat-cell *matCellDef="let entry">{{ 'adminCustomers.credit.kinds.' + entry.kind | translate }}</td>
+        </ng-container>
+        <ng-container matColumnDef="amount">
+          <th mat-header-cell *matHeaderCellDef>{{ 'adminCustomers.credit.columns.amount' | translate }}</th>
+          <td mat-cell *matCellDef="let entry" [class.credit-negative]="entry.amountCents < 0">
+            {{ entry.amountCents | rmMoney }}
+          </td>
+        </ng-container>
+        <ng-container matColumnDef="reason">
+          <th mat-header-cell *matHeaderCellDef>{{ 'adminCustomers.credit.columns.reason' | translate }}</th>
+          <td mat-cell *matCellDef="let entry">{{ entry.reason ?? '—' }}</td>
+        </ng-container>
+        <tr mat-header-row *matHeaderRowDef="columns"></tr>
+        <tr mat-row *matRowDef="let entry; columns: columns"></tr>
+      </table>
+    </div>
+  }
+
+  <div class="credit-actions" *rmHasPermission="'payment.credit.apply'">
+    @if (mode() === null) {
+      <button mat-stroked-button type="button" class="credit-refund" (click)="open('refund')">
+        <mat-icon>undo</mat-icon>
+        {{ 'adminCustomers.credit.refund' | translate }}
+      </button>
+      <button mat-stroked-button type="button" class="credit-adjust" (click)="open('adjust')">
+        <mat-icon>tune</mat-icon>
+        {{ 'adminCustomers.credit.adjust' | translate }}
+      </button>
+    } @else {
+      <form [formGroup]="form" (ngSubmit)="submit()" class="credit-form" novalidate>
+        <h3>{{ (mode() === 'refund' ? 'adminCustomers.credit.refundTitle' : 'adminCustomers.credit.adjustTitle') | translate }}</h3>
+        @if (mode() === 'adjust') {
+          <mat-button-toggle-group formControlName="direction" [attr.aria-label]="'adminCustomers.credit.direction' | translate">
+            <mat-button-toggle value="increase">{{ 'adminCustomers.credit.increase' | translate }}</mat-button-toggle>
+            <mat-button-toggle value="decrease">{{ 'adminCustomers.credit.decrease' | translate }}</mat-button-toggle>
+          </mat-button-toggle-group>
+        }
+        <rm-money-input formControlName="amountCents" [label]="'adminCustomers.credit.amount' | translate" prefix="$" suffix="MXN"></rm-money-input>
+        @if (form.controls.amountCents.touched && form.controls.amountCents.invalid) {
+          <p class="credit-error">{{ 'adminCustomers.credit.amountRequired' | translate }}</p>
+        }
+        <mat-form-field appearance="outline">
+          <mat-label>{{ 'adminCustomers.credit.reason' | translate }}</mat-label>
+          <textarea matInput formControlName="reason" rows="2" [maxlength]="reasonMaxLength"></textarea>
+          @if (form.controls.reason.touched && form.controls.reason.invalid) {
+            <mat-error>{{ 'adminCustomers.credit.reasonRequired' | translate }}</mat-error>
+          }
+        </mat-form-field>
+        <div class="credit-form-actions">
+          <button mat-button type="button" (click)="close()">{{ 'adminCustomers.credit.back' | translate }}</button>
+          <button mat-flat-button type="submit" [disabled]="saving()">{{ 'adminCustomers.credit.confirm' | translate }}</button>
+        </div>
+      </form>
+    }
+  </div>
+}

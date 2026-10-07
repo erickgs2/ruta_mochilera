@@ -1,5 +1,4 @@
 import { BreakpointObserver } from '@angular/cdk/layout';
-import { DatePipe } from '@angular/common';
 import { Component, computed, inject } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { FormBuilder, ReactiveFormsModule } from '@angular/forms';
@@ -11,6 +10,7 @@ import { MatSelectModule } from '@angular/material/select';
 import { MatSlideToggleModule } from '@angular/material/slide-toggle';
 import { MatTableModule } from '@angular/material/table';
 import { RouterLink } from '@angular/router';
+import { DateTimePipe } from '@rm/i18n';
 import { TranslatePipe } from '@ngx-translate/core';
 import { AdminReservationsApi, TripsApi } from '@rm/api-client';
 import type { components } from '@rm/api-client';
@@ -54,7 +54,7 @@ const STATUS_COLOR: Record<ReservationStatus, 'primary' | 'accent' | undefined> 
   selector: 'rm-reservation-list',
   standalone: true,
   imports: [
-    DatePipe,
+    DateTimePipe,
     ReactiveFormsModule,
     RouterLink,
     MatButtonModule,

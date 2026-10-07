@@ -1,0 +1,45 @@
+<h2>{{ 'adminCustomers.counter.title' | translate }}</h2>
+
+@if (trips().length === 0) {
+  <p>{{ 'adminCustomers.counter.noTrips' | translate }}</p>
+} @else {
+  <form [formGroup]="form" (ngSubmit)="submit()" class="counter-form" novalidate>
+    <mat-form-field appearance="outline">
+      <mat-label>{{ 'adminCustomers.counter.trip' | translate }}</mat-label>
+      <mat-select formControlName="tripSlug">
+        @for (trip of trips(); track trip.slug) {
+          <mat-option [value]="trip.slug" [disabled]="trip.availableSeats < 1">
+            {{ trip.name }} · {{ trip.departureDate | rmCalendarDate }} · {{ trip.pricePerSeatCents | rmMoney }} ·
+            {{ 'adminCustomers.counter.seats' | translate: { seats: trip.availableSeats } }}
+          </mat-option>
+        }
+      </mat-select>
+      @if (form.controls.tripSlug.touched && form.controls.tripSlug.invalid) {
+        <mat-error>{{ 'adminCustomers.form.required' | translate }}</mat-error>
+      }
+    </mat-form-field>
+
+    @if (canTakePayment) {
+      <mat-radio-group formControlName="mode" class="counter-mode" [attr.aria-label]="'adminCustomers.counter.mode' | translate">
+        <mat-radio-button value="payment">{{ 'adminCustomers.counter.withPayment' | translate }}</mat-radio-button>
+        <mat-radio-button value="hold">{{ 'adminCustomers.counter.holdOnly' | translate }}</mat-radio-button>
+      </mat-radio-group>
+
+      @if (form.controls.mode.value === 'payment') {
+        <rm-money-input
+          formControlName="amountCents"
+          [label]="'adminCustomers.counter.amount' | translate"
+          [hint]="'adminCustomers.counter.amountHint' | translate"
+          prefix="$"
+          suffix="MXN"
+        ></rm-money-input>
+      }
+    }
+
+    <div class="counter-actions">
+      <button mat-flat-button type="submit" class="counter-submit" [disabled]="saving()">
+        {{ 'adminCustomers.counter.create' | translate }}
+      </button>
+    </div>
+  </form>
+}

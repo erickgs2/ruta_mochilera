@@ -1,0 +1,26 @@
+:host {
+  display: block;
+}
+
+h2 {
+  font-size: 1rem;
+  font-weight: 600;
+  margin: 0 0 0.5rem;
+}
+
+.counter-form {
+  display: grid;
+  gap: 0.5rem;
+  max-width: 36rem;
+}
+
+.counter-mode {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 1rem;
+}
+
+.counter-actions {
+  display: flex;
+  justify-content: flex-end;
+}

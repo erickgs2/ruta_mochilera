@@ -1,0 +1,66 @@
+.customer-back {
+  margin-bottom: 0.5rem;
+}
+
+.customer-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.customer-card {
+  border: 1px solid var(--rm-line);
+  border-radius: var(--rm-radius-card);
+  background: var(--rm-surface);
+  padding: 0.75rem 1rem;
+
+  p {
+    margin: 0.25rem 0;
+    overflow-wrap: anywhere;
+  }
+}
+
+.customer-invite {
+  margin-top: 0.5rem;
+}
+
+.customer-section {
+  display: block;
+  margin-bottom: 1.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--rm-line);
+}
+
+h2 {
+  font-size: 1rem;
+  font-weight: 600;
+  margin: 0 0 0.5rem;
+}
+
+.customer-reservations {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.customer-reservation {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 1rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: var(--rm-radius-control);
+  background: var(--rm-ground);
+  color: inherit;
+  text-decoration: none;
+}
+
+.customer-reservation-code {
+  font-weight: 600;
+}
+
+.customer-error {
+  color: var(--mat-sys-error);
+}

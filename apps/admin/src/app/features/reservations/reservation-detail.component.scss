@@ -73,3 +73,37 @@ h2 {
 .reservation-error {
   color: var(--mat-sys-error);
 }
+
+.reservation-counter {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+
+  section {
+    display: grid;
+    gap: 0.5rem;
+    align-content: start;
+    padding: 0.75rem 1rem;
+    border-radius: var(--rm-radius-card);
+    background: var(--rm-ground);
+
+    button {
+      justify-self: start;
+    }
+  }
+}
+
+.reservation-field-error {
+  margin: 0;
+  color: var(--mat-sys-error);
+  font-size: 0.8rem;
+}
+
+.reservation-receipt-cell {
+  white-space: nowrap;
+}
+
+.reservation-receipt-number {
+  margin-right: 0.25rem;
+}

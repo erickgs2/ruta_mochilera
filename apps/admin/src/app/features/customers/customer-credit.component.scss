@@ -1,0 +1,60 @@
+:host {
+  display: block;
+}
+
+h2 {
+  font-size: 1rem;
+  font-weight: 600;
+  margin: 0 0 0.5rem;
+}
+
+h3 {
+  font-size: 0.95rem;
+  font-weight: 600;
+  margin: 0 0 0.5rem;
+}
+
+.credit-balance strong {
+  font-size: 1.25rem;
+}
+
+.credit-table-container {
+  overflow-x: auto;
+  margin-bottom: 0.75rem;
+}
+
+.credit-table {
+  width: 100%;
+}
+
+.credit-negative {
+  color: var(--rm-danger);
+}
+
+.credit-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.credit-form {
+  display: grid;
+  gap: 0.5rem;
+  width: 100%;
+  max-width: 32rem;
+  padding: 0.75rem 1rem;
+  border-radius: var(--rm-radius-card);
+  background: var(--rm-ground);
+}
+
+.credit-form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+.credit-error {
+  margin: 0;
+  color: var(--mat-sys-error);
+  font-size: 0.8rem;
+}

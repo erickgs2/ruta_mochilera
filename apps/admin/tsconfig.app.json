@@ -4,10 +4,13 @@
     "outDir": "../../dist/out-tsc",
     "types": []
   },
-  "include": ["src/**/*.ts"],
+  "include": [
+    "src/**/*.ts"
+  ],
   "exclude": [
     "src/**/*.spec.ts",
     "src/**/*.test.ts",
+    "src/**/*.spec-helpers.ts",
     "jest.config.ts",
     "jest.config.cts",
     "src/test-setup.ts"

@@ -158,15 +158,16 @@
       "recordedAt": "Registrado",
       "amount": "Monto",
       "method": "Forma de pago",
-      "status": "Estado"
+      "status": "Estado",
+      "receipt": "Recibo"
     },
     "cancelSection": "Cancelar la reserva",
-    "cancelExplanation": "Cancelar libera el lugar en el viaje. Lo pagado y el historial de pagos se conservan; devolver o aplicar ese dinero se resuelve aparte.",
+    "cancelExplanation": "Cancelar libera el lugar en el viaje. El historial de pagos se conserva y lo pagado se vuelve saldo a favor del cliente, que después puedes aplicar a otra reserva o registrar como devuelto.",
     "cancelReasonLabel": "Motivo (el cliente lo verá en su aviso)",
     "cancelReasonRequired": "Escribe el motivo de la cancelación.",
     "cancelAction": "Cancelar reserva",
     "cancelTitle": "¿Cancelar la reserva {{code}}?",
-    "cancelMessage": "Se liberará un lugar en {{trip}}. Se conservan {{paid}} ya pagados y todo el historial de pagos: nada se borra ni se devuelve automáticamente. El cliente recibirá un aviso con el motivo.",
+    "cancelMessage": "Se liberará un lugar en {{trip}}. Los {{paid}} ya pagados se vuelven saldo a favor del cliente y el historial de pagos se conserva. El cliente recibirá un aviso con el motivo.",
     "cancelConfirm": "Sí, cancelar",
     "cancelBack": "No, volver",
     "cancelled": "Reserva cancelada. El lugar quedó libre.",
@@ -179,7 +180,27 @@
     "declineConfirm": "Sí, rechazar",
     "declined": "Solicitud rechazada. Avisamos al cliente.",
     "declinedAt": "Rechazada por {{by}} el",
-    "declineReasonShown": "Motivo"
+    "declineReasonShown": "Motivo",
+    "cashSection": "Cobrar en efectivo",
+    "cashAmount": "Monto recibido",
+    "cashAction": "Registrar pago",
+    "cashTitle": "Registrar pago en efectivo",
+    "cashMessage": "Registrar {{amount}} en efectivo para la reserva {{code}}. Se emite el recibo y se envía al cliente.",
+    "cashDone": "Pago registrado. Folio {{receipt}}.",
+    "amountTooHigh": "No puede exceder el saldo pendiente ({{balance}}).",
+    "amountRequired": "Escribe un monto mayor a cero.",
+    "creditSection": "Aplicar saldo a favor",
+    "creditAvailable": "Saldo a favor del cliente: {{amount}}",
+    "creditAmount": "Monto a aplicar",
+    "creditAction": "Aplicar saldo",
+    "creditTitle": "Aplicar saldo a favor",
+    "creditMessage": "Aplicar {{amount}} del saldo a favor a la reserva {{code}}.",
+    "creditDone": "Saldo aplicado. Folio {{receipt}}.",
+    "creditTooHigh": "No puede exceder el saldo a favor ({{credit}}).",
+    "downloadReceipt": "Descargar recibo",
+    "resendReceipt": "Reenviar recibo",
+    "resent": "Recibo en camino al cliente.",
+    "customerLink": "Ver ficha del cliente"
   },
   "payments": {
     "whatToPay": "¿Qué quieres pagar?",
@@ -248,7 +269,10 @@
     "trips": "Viajes",
     "reservations": "Reservas",
     "staff": "Administradores",
-    "roles": "Roles"
+    "roles": "Roles",
+    "customers": "Clientes",
+    "imports": "Importaciones",
+    "settings": "Datos de la agencia"
   },
   "forbidden": {
     "title": "Acceso restringido",
@@ -625,5 +649,248 @@
         "description": "Cambiar la configuración del sistema"
       }
     }
+  },
+  "adminCustomers": {
+    "title": "Clientes",
+    "searchLabel": "Buscar por nombre, correo o teléfono",
+    "new": "Nuevo cliente",
+    "empty": "No hay clientes que coincidan.",
+    "previous": "Anterior",
+    "next": "Siguiente",
+    "pageOf": "Página {{page}} de {{pages}}",
+    "columns": {
+      "name": "Nombre",
+      "email": "Correo",
+      "phone": "Teléfono",
+      "account": "Cuenta"
+    },
+    "account": {
+      "active": "Cuenta activa",
+      "invited": "Invitado",
+      "none": "Sin cuenta"
+    },
+    "form": {
+      "title": "Nuevo cliente",
+      "fullName": "Nombre completo",
+      "email": "Correo",
+      "phone": "Teléfono",
+      "birthDate": "Fecha de nacimiento",
+      "locale": "Idioma de sus correos",
+      "localeEs": "Español",
+      "localeEn": "Inglés",
+      "sendInvitation": "Enviar invitación para activar su cuenta en la app",
+      "sendInvitationHint": "Desmárcala si el cliente no tiene su correo a la mano: podrás enviarla después desde su ficha.",
+      "save": "Dar de alta",
+      "cancel": "Cancelar",
+      "required": "Este dato es obligatorio.",
+      "invalidEmail": "Escribe un correo válido.",
+      "minLength": "Escribe al menos {{min}} caracteres.",
+      "created": "Cliente dado de alta.",
+      "createdNoInvite": "Cliente dado de alta, pero la invitación no salió. Reenvíala desde su ficha.",
+      "alreadyExists": "Ese correo ya es de un cliente: abrimos su ficha."
+    },
+    "detail": {
+      "back": "Clientes",
+      "data": "Datos",
+      "birthDate": "Nacimiento",
+      "origin": "Origen",
+      "origins": {
+        "SELF_SIGNUP": "Se registró en la app",
+        "BRANCH": "Mostrador",
+        "IMPORT": "Importación"
+      },
+      "account": "Cuenta en la app",
+      "accountActive": "Activó su cuenta el {{date}}",
+      "accountInvited": "Invitado el {{date}}; aún no activa su cuenta",
+      "accountNone": "Sin cuenta en la app",
+      "accountSelf": "Tiene cuenta en la app",
+      "invite": "Enviar invitación",
+      "reinvite": "Reenviar invitación",
+      "invited": "Invitación enviada.",
+      "reservations": "Reservas",
+      "noReservations": "Sin reservas todavía.",
+      "newReservation": "Nueva reserva",
+      "backfill": "Captura histórica"
+    },
+    "credit": {
+      "title": "Saldo a favor",
+      "balance": "Saldo disponible",
+      "empty": "Sin movimientos.",
+      "columns": {
+        "date": "Fecha",
+        "kind": "Movimiento",
+        "amount": "Monto",
+        "reason": "Motivo"
+      },
+      "kinds": {
+        "CANCELLATION": "Cancelación",
+        "PRICE_DECREASE": "Bajada de precio",
+        "APPLIED": "Aplicado a una reserva",
+        "REFUND": "Devolución",
+        "ADJUSTMENT": "Ajuste"
+      },
+      "refund": "Registrar devolución",
+      "adjust": "Ajustar saldo",
+      "amount": "Monto",
+      "reason": "Motivo",
+      "reasonRequired": "Escribe el motivo.",
+      "amountRequired": "Escribe un monto mayor a cero.",
+      "direction": "Tipo de ajuste",
+      "increase": "Aumentar",
+      "decrease": "Disminuir",
+      "refundTitle": "Devolución fuera del sistema",
+      "refundMessage": "Registra que devolviste {{amount}} a {{name}} en efectivo o por transferencia. El saldo a favor baja en esa cantidad.",
+      "adjustTitle": "Ajustar el saldo a favor",
+      "adjustUpMessage": "El saldo a favor de {{name}} sube {{amount}}.",
+      "adjustDownMessage": "El saldo a favor de {{name}} baja {{amount}}.",
+      "confirm": "Confirmar",
+      "back": "Volver",
+      "saved": "Saldo a favor actualizado."
+    },
+    "counter": {
+      "title": "Nueva reserva en mostrador",
+      "trip": "Viaje",
+      "seats": "{{seats}} lugares",
+      "mode": "Forma",
+      "withPayment": "Reservar y cobrar en efectivo",
+      "holdOnly": "Apartar sin pago",
+      "amount": "Monto recibido",
+      "amountHint": "Si cubre el anticipo, la reserva queda confirmada; si no, queda apartada.",
+      "create": "Reservar",
+      "created": "Reserva {{code}} creada.",
+      "noTrips": "No hay viajes publicados.",
+      "confirmTitle": "Confirmar la reserva",
+      "confirmWithPayment": "Reservar {{trip}} para {{name}} y registrar {{amount}} en efectivo.",
+      "confirmHold": "Apartar {{trip}} para {{name}} sin pago. El apartado vence según el viaje."
+    }
+  },
+  "priceChange": {
+    "title": "Actualizar reservas al precio vigente",
+    "explanation": "Editar el precio sólo afecta reservas nuevas. Aquí llevas el precio vigente a las reservas apartadas y confirmadas que tienen otro precio. Lo pagado de más se vuelve saldo a favor.",
+    "preview": "Ver qué cambia",
+    "noChange": "Todas las reservas vivas ya tienen el precio vigente.",
+    "price": "Precio vigente: {{price}}",
+    "columns": {
+      "code": "Reserva",
+      "customer": "Cliente",
+      "previous": "Antes",
+      "new": "Ahora",
+      "paid": "Pagado",
+      "balance": "Saldo nuevo",
+      "credit": "Saldo a favor"
+    },
+    "noticeEs": "Aviso para los clientes (español)",
+    "noticeEn": "Aviso en inglés (opcional)",
+    "noticeRequired": "El aviso en español es obligatorio.",
+    "noticeHint": "Lo recibe cada cliente afectado junto con sus nuevos números.",
+    "apply": "Aplicar a {{count}} reservas",
+    "confirmTitle": "Actualizar {{count}} reservas",
+    "confirmMessage": "Las reservas toman el precio de {{price}} y cada cliente recibe el aviso. No se puede deshacer.",
+    "applied": "Precio actualizado en {{count}} reservas."
+  },
+  "backfill": {
+    "title": "Captura histórica",
+    "explanation": "Carga una reserva y sus pagos tal como ocurrieron antes de usar el sistema. Cuenta para el cupo del viaje.",
+    "trip": "Viaje",
+    "createdAt": "Fecha de la reserva",
+    "total": "Precio pactado (si fue otro)",
+    "payments": "Pagos",
+    "addPayment": "Agregar pago",
+    "amount": "Monto",
+    "paidAt": "Fecha del pago",
+    "method": "Método",
+    "methods": {
+      "LEGACY": "Pago registrado",
+      "CASH": "Efectivo"
+    },
+    "notes": "Nota",
+    "remove": "Quitar pago",
+    "sendReceipts": "Enviar los recibos por correo",
+    "sendReceiptsHint": "Desmarcado por omisión: los pagos antiguos no avisan al cliente. El folio existe igual.",
+    "save": "Capturar",
+    "saved": "Reserva {{code}} capturada.",
+    "required": "Este dato es obligatorio.",
+    "futureDate": "La fecha no puede ser futura."
+  },
+  "adminImports": {
+    "title": "Importaciones",
+    "explanation": "Carga clientes o pagos desde una hoja de cálculo. Primero se valida fila por fila sin guardar nada; después confirmas.",
+    "templates": "Plantillas",
+    "customersTemplate": "Plantilla de clientes",
+    "paymentsTemplate": "Plantilla de pagos",
+    "type": "Qué vas a importar",
+    "types": {
+      "CUSTOMERS": "Clientes",
+      "PAYMENTS": "Pagos"
+    },
+    "file": "Archivo CSV",
+    "chooseFile": "Elegir archivo",
+    "noFile": "Ningún archivo elegido",
+    "sendEmails": "Enviar correos (invitaciones a clientes nuevos o recibos de pagos)",
+    "sendEmailsHint": "Desmarcado por omisión.",
+    "validate": "Validar",
+    "history": "Lotes anteriores",
+    "empty": "Aún no hay importaciones.",
+    "columns": {
+      "date": "Fecha",
+      "file": "Archivo",
+      "type": "Tipo",
+      "status": "Estado",
+      "rows": "Filas"
+    },
+    "statuses": {
+      "VALIDATED": "Por confirmar",
+      "APPLYING": "Aplicando…",
+      "APPLIED": "Aplicado",
+      "FAILED": "Archivo inválido"
+    },
+    "summary": "{{ok}} filas listas y {{failed}} con errores, de {{total}}.",
+    "row": "Fila",
+    "rowStatus": {
+      "VALID": "Lista",
+      "INVALID": "Con errores",
+      "EXISTS": "Ya existe"
+    },
+    "outcome": {
+      "CREATED": "Importada",
+      "EXISTS": "Ya existía",
+      "FAILED": "Falló"
+    },
+    "apply": "Confirmar e importar",
+    "applyTitle": "Importar {{count}} filas",
+    "applyMessage": "Las filas con errores se omiten. Las demás se importan y no se puede deshacer.",
+    "applying": "Aplicando… esta pantalla se actualiza sola.",
+    "applied": "Importación aplicada.",
+    "back": "Importaciones",
+    "fileErrors": {
+      "EMPTY_FILE": "El archivo está vacío.",
+      "MISSING_COLUMN": "Falta la columna «{{column}}».",
+      "NO_ROWS": "El archivo no tiene filas de datos."
+    },
+    "codes": {
+      "REQUIRED": "Falta el dato",
+      "INVALID_EMAIL": "Correo inválido",
+      "INVALID_DATE": "Fecha inválida o futura (usa AAAA-MM-DD)",
+      "INVALID_AMOUNT": "Monto inválido",
+      "INVALID_PHONE": "Teléfono inválido",
+      "INVALID_LOCALE": "Idioma inválido (es o en)",
+      "EMAIL_TAKEN": "El correo es de un administrador",
+      "UNKNOWN_CUSTOMER": "No hay cliente con ese correo",
+      "UNKNOWN_TRIP": "No hay viaje con ese identificador",
+      "TRIP_NOT_ALLOWED": "Viaje en borrador o cancelado",
+      "UNKNOWN_METHOD": "Método de pago desconocido",
+      "DUPLICATE_IN_FILE": "Repetido en el archivo"
+    }
+  },
+  "adminSettings": {
+    "title": "Datos de la agencia",
+    "explanation": "Así aparecen en los recibos. Los recibos ya emitidos conservan los datos con que se emitieron.",
+    "name": "Nombre",
+    "address": "Dirección",
+    "phone": "Teléfonos",
+    "website": "Sitio o red social",
+    "save": "Guardar",
+    "saved": "Datos guardados.",
+    "required": "El nombre es obligatorio."
   }
 }

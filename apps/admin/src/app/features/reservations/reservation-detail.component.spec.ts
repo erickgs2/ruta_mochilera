@@ -13,6 +13,10 @@ import { ReservationDetailComponent } from './reservation-detail.component';
 
 const URL = '/api/v1/admin/reservations/res-1';
 
+// jsdom has no object URLs; the receipt download needs one.
+const URL_CREATE = jest.fn();
+Object.assign(globalThis.URL, { createObjectURL: URL_CREATE, revokeObjectURL: jest.fn() });
+
 function detail(overrides: Record<string, unknown> = {}) {
   return {
     id: 'res-1',
@@ -270,6 +274,73 @@ describe('ReservationDetailComponent', () => {
       fixture.componentInstance.decline();
 
       httpMock.expectNone(`${URL}/decline-cancellation`);
+    });
+  });
+
+  describe('counter actions (Phase 2B)', () => {
+    const receiptPayment = { ...payments[0], method: 'CASH', receiptNumber: 'RM-2027-000001' };
+
+    it('hides cash, credit and receipts without their permissions', () => {
+      const { fixture, httpMock } = configure(['reservation.view']);
+      httpMock.expectOne(URL).flush(detail());
+      fixture.detectChanges();
+
+      expect(fixture.nativeElement.querySelector('.reservation-cash')).toBeNull();
+      expect(fixture.nativeElement.querySelector('.reservation-credit')).toBeNull();
+      httpMock.expectNone('/api/v1/admin/customers/cust-1/credit');
+    });
+
+    it('takes cash up to the balance, after confirming', () => {
+      const { fixture, httpMock, dialogOpen } = configure(['reservation.view', 'payment.register']);
+      httpMock.expectOne(URL).flush(detail());
+      fixture.detectChanges();
+      const component = fixture.componentInstance;
+
+      component.cashAmount.setValue(350_001);
+      component.registerCash();
+      expect(dialogOpen).not.toHaveBeenCalled();
+      httpMock.expectNone(`${URL}/payments`);
+
+      component.cashAmount.setValue(100_000);
+      component.registerCash();
+      const request = httpMock.expectOne((req) => req.method === 'POST' && req.url === `${URL}/payments`);
+      expect(request.request.body).toEqual({ amountCents: 100_000 });
+      request.flush(receiptPayment);
+      httpMock.expectOne(URL).flush(detail({ paidCents: 250_000, balanceCents: 250_000 }));
+    });
+
+    it('applies credit no larger than what the customer has', () => {
+      const { fixture, httpMock } = configure(['reservation.view', 'payment.view', 'payment.credit.apply']);
+      httpMock.expectOne(URL).flush(detail());
+      httpMock.expectOne(`${URL}/payments`).flush(payments);
+      httpMock.expectOne('/api/v1/admin/customers/cust-1/credit').flush({ balanceCents: 50_000, entries: [] });
+      fixture.detectChanges();
+      const component = fixture.componentInstance;
+
+      component.creditAmount.setValue(60_000);
+      component.applyCredit();
+      httpMock.expectNone(`${URL}/apply-credit`);
+
+      component.creditAmount.setValue(50_000);
+      component.applyCredit();
+      expect(httpMock.expectOne(`${URL}/apply-credit`).request.body).toEqual({ amountCents: 50_000 });
+    });
+
+    it('downloads and resends a receipt from the payment history', () => {
+      const { fixture, httpMock } = configure(['reservation.view', 'payment.view']);
+      httpMock.expectOne(URL).flush(detail());
+      httpMock.expectOne(`${URL}/payments`).flush([receiptPayment]);
+      fixture.detectChanges();
+      URL_CREATE.mockReturnValue('blob:receipt');
+
+      (fixture.nativeElement.querySelector('.reservation-receipt-download') as HTMLButtonElement).click();
+      const download = httpMock.expectOne('/api/v1/admin/payments/pay-1/receipt');
+      expect(download.request.responseType).toBe('blob');
+      download.flush(new Blob(['%PDF-'], { type: 'application/pdf' }));
+      expect(URL_CREATE).toHaveBeenCalled();
+
+      (fixture.nativeElement.querySelector('.reservation-receipt-resend') as HTMLButtonElement).click();
+      httpMock.expectOne('/api/v1/admin/payments/pay-1/receipt/resend').flush(null);
     });
   });
 });

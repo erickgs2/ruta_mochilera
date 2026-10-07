@@ -23,6 +23,11 @@ export const appRoutes: Routes = [
         loadChildren: () => import('./features/reservations/reservations.routes').then((m) => m.reservationsRoutes),
       },
       {
+        path: 'customers',
+        canActivate: [permissionGuard('customer.view')],
+        loadChildren: () => import('./features/customers/customers.routes').then((m) => m.customersRoutes),
+      },
+      {
         path: 'staff',
         canActivate: [permissionGuard('staff.view')],
         loadChildren: () => import('./features/staff/staff.routes').then((m) => m.staffRoutes),
