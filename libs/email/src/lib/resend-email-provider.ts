@@ -42,6 +42,16 @@ export class ResendEmailProvider implements EmailProvider {
           subject: message.subject,
           html: message.html,
           text: message.text,
+          // Resend takes attachments inline as base64 in the JSON body.
+          ...(message.attachments?.length
+            ? {
+                attachments: message.attachments.map((attachment) => ({
+                  filename: attachment.filename,
+                  content_type: attachment.contentType,
+                  content: Buffer.from(attachment.content).toString('base64'),
+                })),
+              }
+            : {}),
         }),
       });
 

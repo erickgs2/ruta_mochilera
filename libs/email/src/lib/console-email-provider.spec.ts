@@ -25,6 +25,26 @@ describe('ConsoleEmailProvider', () => {
     logSpy.mockRestore();
   });
 
+  it('accepts attachments and logs only their name and size', async () => {
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    const provider = new ConsoleEmailProvider();
+
+    const result = await provider.send({
+      to: 'traveler@example.com',
+      subject: 'Tu recibo',
+      html: '<p>Recibo</p>',
+      text: 'Recibo',
+      attachments: [{ filename: 'RM-2027-000001.pdf', contentType: 'application/pdf', content: new Uint8Array(1234) }],
+    });
+
+    expect(result.ok).toBe(true);
+    const loggedOutput = logSpy.mock.calls.map((call) => call.join(' ')).join('\n');
+    expect(loggedOutput).toContain('RM-2027-000001.pdf');
+    expect(loggedOutput).toContain('1234 bytes');
+
+    logSpy.mockRestore();
+  });
+
   it('prints the html and text bodies only when verbose is explicitly enabled', async () => {
     const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
     const provider = new ConsoleEmailProvider({ verbose: true });

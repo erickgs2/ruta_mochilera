@@ -27,6 +27,7 @@
       "@rm/storage/testing": ["./libs/storage/src/testing/index.ts"],
       "@rm/email": ["./libs/email/src/index.ts"],
       "@rm/email/testing": ["./libs/email/src/testing/index.ts"],
+      "@rm/receipts": ["./libs/receipts/src/index.ts"],
       "@rm/payments-stripe": ["./libs/payments-stripe/src/index.ts"],
       "@rm/payments-stripe/testing": ["./libs/payments-stripe/src/testing/index.ts"],
       "@rm/api-client": ["./libs/api-client/src/index.ts"],

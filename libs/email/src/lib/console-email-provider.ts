@@ -35,6 +35,10 @@ export class ConsoleEmailProvider implements EmailProvider {
     }
 
     console.log(`[email] to=${message.to} subject=${JSON.stringify(message.subject)}`);
+    for (const attachment of message.attachments ?? []) {
+      // Name and size only: a PDF in the log would be noise.
+      console.log(`[email] attachment=${attachment.filename} (${attachment.contentType}, ${attachment.content.byteLength} bytes)`);
+    }
     if (this.options.verbose) {
       console.log(`[email] html=${message.html}`);
       console.log(`[email] text=${message.text}`);

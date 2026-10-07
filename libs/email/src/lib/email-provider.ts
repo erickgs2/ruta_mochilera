@@ -1,10 +1,18 @@
 import type { Result } from '@rm/shared-utils';
 
+export interface EmailAttachment {
+  filename: string;
+  contentType: string;
+  content: Uint8Array;
+}
+
 export interface EmailMessage {
   to: string;
   subject: string;
   html: string;
   text: string;
+  /** Files sent with the message -- a payment receipt PDF (Phase 2B). */
+  attachments?: EmailAttachment[];
 }
 
 export interface EmailProvider {
