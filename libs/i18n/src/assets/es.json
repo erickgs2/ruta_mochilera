@@ -209,7 +209,8 @@
       "OXXO": "OXXO",
       "SPEI": "Transferencia SPEI",
       "CASH": "Efectivo",
-      "LEGACY": "Pago registrado"
+      "LEGACY": "Pago registrado",
+      "CREDIT": "Saldo a favor"
     },
     "status": {
       "PENDING": "Pendiente",

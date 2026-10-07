@@ -207,7 +207,6 @@ describe('reservation service', () => {
       expect(created.value.totalPriceCents).toBe(500_000);
       expect(created.value.minimumDepositCents).toBe(100_000);
       expect(created.value.paidCents).toBe(0);
-      expect(created.value.creditCents).toBe(0);
       expect(created.value.balanceCents).toBe(500_000);
       expect(created.value.cancellationRequestedAt).toBeNull();
       expect(created.value.code).toMatch(/^RM-/);

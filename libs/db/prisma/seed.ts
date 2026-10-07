@@ -32,6 +32,16 @@ const DEFAULT_SETTINGS: Record<string, Prisma.InputJsonValue> = {
   // rather than silently hardcoded. See `password-reset.ts`'s
   // `DEFAULT_PASSWORD_RESET_TTL_MINUTES`.
   'password_reset.ttl_minutes': 60,
+  // Phase 2B: what a receipt prints. Taken from the agency's route posters;
+  // staff edit them from the admin panel (`settings.manage`).
+  'organization.name': 'La Ruta Mochilera',
+  'organization.address':
+    'Casa Mochilera, Mariano Jiménez no. 551 B, Col. Jardines del Carmen, La Piedad, Mich.',
+  'organization.phone': '352 100 80 79 / 352 144 23 28',
+  'organization.website': 'www.fb.com/larutamochilera',
+  // A counter customer's invitation link outlives a password reset: they may
+  // not open their email the same day.
+  'invitation.ttl_days': 7,
 };
 
 async function main() {

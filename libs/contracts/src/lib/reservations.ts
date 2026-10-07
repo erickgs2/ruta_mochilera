@@ -28,7 +28,6 @@ export const reservationSchema = z.object({
   totalPriceCents: z.number().int(),
   minimumDepositCents: z.number().int(),
   paidCents: z.number().int(),
-  creditCents: z.number().int(),
   balanceCents: z.number().int(),
   paymentDeadline: z.iso.datetime(),
   cancellationRequestedAt: z.iso.datetime().nullable(),

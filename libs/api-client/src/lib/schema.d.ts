@@ -3561,7 +3561,6 @@ export interface components {
             totalPriceCents: number;
             minimumDepositCents: number;
             paidCents: number;
-            creditCents: number;
             balanceCents: number;
             /** Format: date-time */
             paymentDeadline: string;
@@ -3590,7 +3589,6 @@ export interface components {
             totalPriceCents: number;
             minimumDepositCents: number;
             paidCents: number;
-            creditCents: number;
             balanceCents: number;
             /** Format: date-time */
             paymentDeadline: string;
@@ -3660,7 +3658,6 @@ export interface components {
             totalPriceCents: number;
             minimumDepositCents: number;
             paidCents: number;
-            creditCents: number;
             balanceCents: number;
             /** Format: date-time */
             paymentDeadline: string;
@@ -3691,7 +3688,7 @@ export interface components {
             reservationId: string;
             amountCents: number;
             /** @enum {string} */
-            method: "CARD" | "OXXO" | "SPEI" | "CASH" | "LEGACY";
+            method: "CARD" | "OXXO" | "SPEI" | "CASH" | "LEGACY" | "CREDIT";
             /** @enum {string} */
             status: "PENDING" | "SUCCEEDED" | "FAILED" | "EXPIRED" | "REFUNDED";
             /** @enum {string} */

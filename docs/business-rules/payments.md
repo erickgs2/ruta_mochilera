@@ -21,8 +21,11 @@ abajo) compara la suma de los pagos `SUCCEEDED` contra `paid_cents` y avisa si
 se desvían. Un pago registrado sin mover `paid_cents`, o al revés, es
 desviación permanente.
 
-`credit_cents` (saldo a favor) se declara desde la Fase 2A pero sólo nace de
-una bajada de precio, que es Fase 2B. Aquí siempre vale 0.
+El saldo a favor **no** vive en la reserva: la Fase 2B eliminó
+`reservations.credit_cents` (que siempre valió 0) y lo llevó a un libro de
+movimientos por cliente, `customer_credit_entries` (ver «Saldo a favor» más
+abajo). Aplicar saldo a una reserva es un `Payment` más, con método `CREDIT`,
+así que `paid_cents` sigue siendo exactamente la suma de pagos `SUCCEEDED`.
 
 ## Un pago pendiente no reduce el saldo
 
@@ -496,6 +499,24 @@ cambio de regla.
 
 El sistema jamás rechaza un abono por ser menor que la mensualidad sugerida.
 Es motivacional: se muestra en la app y se usa en los recordatorios.
+
+## Saldo a favor: el modelo (Fase 2B, Tarea 1)
+
+`customer_credit_entries` guarda movimientos con signo: `CANCELLATION`,
+`PRICE_DECREASE` y `ADJUSTMENT` positivo suman; `APPLIED`, `REFUND` y
+`ADJUSTMENT` negativo restan. **El saldo de un cliente es la suma de sus
+movimientos**, nunca una columna editable. La base rechaza un movimiento de
+monto cero (CHECK `customer_credit_entries_amount_not_zero`): no mueve dinero
+y sólo ensucia el historial. Las reglas que lo escriben llegan en la Tarea 3.
+
+## Folio de recibo: el modelo (Fase 2B, Tarea 1)
+
+`payments.receipt_number` es **único** (`payments_receipt_number_key`): dos
+pagos nunca comparten folio. Es nulo mientras el pago no está `SUCCEEDED`, y
+PostgreSQL deja los nulos distintos en un índice único, así que las fichas
+pendientes no chocan entre sí. El contador vive en `receipt_counters`, una
+fila por año con el año como llave primaria; cómo se asigna el número llega en
+la Tarea 2.
 
 ## Errores
 

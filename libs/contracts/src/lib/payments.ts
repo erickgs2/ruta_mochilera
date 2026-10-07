@@ -3,7 +3,7 @@ import { uuidSchema } from './common';
 
 export const paymentIntentKindSchema = z.enum(['FULL', 'DEPOSIT']);
 export const paymentIntentMethodSchema = z.enum(['CARD', 'OXXO', 'SPEI']);
-export const paymentMethodSchema = z.enum(['CARD', 'OXXO', 'SPEI', 'CASH', 'LEGACY']);
+export const paymentMethodSchema = z.enum(['CARD', 'OXXO', 'SPEI', 'CASH', 'LEGACY', 'CREDIT']);
 export const paymentStatusSchema = z.enum(['PENDING', 'SUCCEEDED', 'FAILED', 'EXPIRED', 'REFUNDED']);
 export const paymentProviderSchema = z.enum(['STRIPE', 'MANUAL']);
 

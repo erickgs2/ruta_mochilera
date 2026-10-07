@@ -209,7 +209,8 @@
       "OXXO": "OXXO",
       "SPEI": "SPEI transfer",
       "CASH": "Cash",
-      "LEGACY": "Recorded payment"
+      "LEGACY": "Recorded payment",
+      "CREDIT": "Account credit"
     },
     "status": {
       "PENDING": "Pending",

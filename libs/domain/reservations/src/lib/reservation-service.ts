@@ -27,7 +27,6 @@ export interface ReservationDto {
   totalPriceCents: number;
   minimumDepositCents: number;
   paidCents: number;
-  creditCents: number;
   /** Derived, never stored: `total_price_cents - paid_cents`, floored at zero. */
   balanceCents: number;
   paymentDeadline: Date;
@@ -37,7 +36,7 @@ export interface ReservationDto {
 
 /**
  * What a list row needs. Drops the detail-only fields (`minimumDepositCents`,
- * `creditCents`, `cancellationRequestedAt`) and carries just enough of the
+ * `cancellationRequestedAt`) and carries just enough of the
  * trip to name the row (Task 18, "Mis reservas"): the client cannot resolve
  * a `tripId` on its own -- the public list is keyed by slug and only shows
  * published trips, while a customer's history includes trips that have since
@@ -186,7 +185,6 @@ function toDto(reservation: Reservation): ReservationDto {
     totalPriceCents: reservation.totalPriceCents,
     minimumDepositCents: reservation.minimumDepositCents,
     paidCents: reservation.paidCents,
-    creditCents: reservation.creditCents,
     balanceCents: balanceOf(reservation),
     paymentDeadline: reservation.paymentDeadline,
     cancellationRequestedAt: reservation.cancellationRequestedAt,

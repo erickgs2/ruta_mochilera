@@ -76,7 +76,6 @@ describe('reservations schema', () => {
     expect(reservation.totalPriceCents).toBe(500000);
     expect(reservation.minimumDepositCents).toBe(100000);
     expect(reservation.paidCents).toBe(0);
-    expect(reservation.creditCents).toBe(0);
   });
 
   it('rejects two live reservations of the same customer on the same trip', async () => {

@@ -188,8 +188,14 @@ registros `Payment`. Un job nocturno de conciliación (Fase 2A, §6 de la spec,
 pagos y avisa si divergen; ver la sección dedicada en `payments.md` y la
 frontera transaccional del aviso en `notifications.md`.
 
-`credit_cents` se declara desde ahora en el esquema pero sólo lo llena la
-Fase 2B (saldo a favor por pagos retroactivos).
+La reserva no tiene saldo a favor propio: la Fase 2B eliminó
+`credit_cents` (siempre valió 0) y el saldo a favor vive por cliente en
+`customer_credit_entries` (ver `payments.md`). Una reserva cancelada conserva
+su `paid_cents` y sus pagos; lo pagado se vuelve saldo a favor del cliente.
+
+Cada cambio de precio explícito que se lleva a una reserva existente queda en
+`reservation_price_changes` (total anterior, total nuevo, aviso y quién lo
+hizo); la regla llega en la Tarea 8 de la Fase 2B.
 
 ## Los jobs de fondo: `expireHolds` y `warnExpiringHolds` (Tarea 8)
 

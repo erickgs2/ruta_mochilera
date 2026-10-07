@@ -24,7 +24,6 @@ function detail(overrides: Record<string, unknown> = {}) {
     totalPriceCents: 500_000,
     minimumDepositCents: 100_000,
     paidCents: 150_000,
-    creditCents: 0,
     balanceCents: 350_000,
     paymentDeadline: '2027-11-01T00:00:00.000Z',
     cancellationRequestedAt: '2027-01-02T10:00:00.000Z',

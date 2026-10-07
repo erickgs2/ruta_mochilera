@@ -16,7 +16,6 @@ export function reservation(overrides: Partial<ReservationDetail> = {}): Reserva
     totalPriceCents: 500_000,
     minimumDepositCents: 100_000,
     paidCents: 0,
-    creditCents: 0,
     balanceCents: 500_000,
     paymentDeadline: '2028-02-01T00:00:00.000Z',
     cancellationRequestedAt: null,

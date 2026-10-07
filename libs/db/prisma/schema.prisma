@@ -76,6 +76,10 @@ enum PaymentMethod {
   SPEI
   CASH
   LEGACY
+  /// Customer credit applied to a reservation: a MANUAL, SUCCEEDED payment
+  /// written together with the matching `APPLIED` credit entry, so
+  /// `paid_cents` stays exactly the sum of SUCCEEDED payments.
+  CREDIT
 }
 
 enum PaymentStatus {
@@ -89,6 +93,30 @@ enum PaymentStatus {
 enum PaymentProvider {
   STRIPE
   MANUAL
+}
+
+enum CreditEntryKind {
+  CANCELLATION
+  PRICE_DECREASE
+  APPLIED
+  REFUND
+  ADJUSTMENT
+}
+
+enum PasswordResetPurpose {
+  RESET
+  INVITATION
+}
+
+enum ImportType {
+  CUSTOMERS
+  PAYMENTS
+}
+
+enum ImportStatus {
+  VALIDATED
+  APPLIED
+  FAILED
 }
 
 enum NotificationChannel {
@@ -119,12 +147,15 @@ model User {
   authIdentities               AuthIdentity[]
   refreshTokens                RefreshToken[]
   roles                        UserRole[]
-  createdTrips                 Trip[]                 @relation("TripCreatedBy")
-  createdReservations          Reservation[]          @relation("ReservationCreatedBy")
-  cancelledReservations        Reservation[]          @relation("ReservationCancelledBy")
-  declinedCancellationRequests Reservation[]          @relation("ReservationCancellationDeclinedBy")
-  recordedPayments             Payment[]              @relation("PaymentRecordedBy")
+  createdTrips                 Trip[]                   @relation("TripCreatedBy")
+  createdReservations          Reservation[]            @relation("ReservationCreatedBy")
+  cancelledReservations        Reservation[]            @relation("ReservationCancelledBy")
+  declinedCancellationRequests Reservation[]            @relation("ReservationCancellationDeclinedBy")
+  recordedPayments             Payment[]                @relation("PaymentRecordedBy")
   notificationDeliveries       NotificationDelivery[]
+  createdCreditEntries         CustomerCreditEntry[]    @relation("CreditEntryCreatedBy")
+  priceChanges                 ReservationPriceChange[] @relation("PriceChangeChangedBy")
+  importBatches                ImportBatch[]            @relation("ImportBatchCreatedBy")
 
   @@map("users")
 }
@@ -152,8 +183,9 @@ model CustomerProfile {
   // screen, and a historical acceptance date cannot be invented for them.
   acceptedTermsAt DateTime?      @map("accepted_terms_at") @db.Timestamptz
 
-  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  reservations Reservation[]
+  user          User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  reservations  Reservation[]
+  creditEntries CustomerCreditEntry[]
 
   @@index([phone])
   @@map("customer_profiles")
@@ -204,12 +236,15 @@ model EmailVerification {
 }
 
 model PasswordReset {
-  id         String    @id @default(uuid()) @db.Uuid
-  userId     String    @map("user_id") @db.Uuid
-  tokenHash  String    @unique @map("token_hash")
-  expiresAt  DateTime  @map("expires_at") @db.Timestamptz
-  consumedAt DateTime? @map("consumed_at") @db.Timestamptz
-  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  id         String               @id @default(uuid()) @db.Uuid
+  userId     String               @map("user_id") @db.Uuid
+  tokenHash  String               @unique @map("token_hash")
+  /// INVITATION tokens are issued to customers registered at the counter and
+  /// live longer (`invitation.ttl_days`) than a RESET token (60 minutes).
+  purpose    PasswordResetPurpose @default(RESET)
+  expiresAt  DateTime             @map("expires_at") @db.Timestamptz
+  consumedAt DateTime?            @map("consumed_at") @db.Timestamptz
+  createdAt  DateTime             @default(now()) @map("created_at") @db.Timestamptz
 
   @@index([userId])
   @@map("password_resets")
@@ -408,8 +443,6 @@ model Reservation {
   // nightly reconciliation job compares this column against them and alerts
   // on drift (see `NotificationDelivery`).
   paidCents                 Int               @default(0) @map("paid_cents")
-  // Declared now, filled starting Phase 2B.
-  creditCents               Int               @default(0) @map("credit_cents")
   paymentDeadline           DateTime          @map("payment_deadline") @db.Date
   source                    ReservationSource
   createdById               String?           @map("created_by") @db.Uuid
@@ -427,13 +460,15 @@ model Reservation {
   createdAt                 DateTime          @default(now()) @map("created_at") @db.Timestamptz
   updatedAt                 DateTime          @updatedAt @map("updated_at") @db.Timestamptz
 
-  trip                   Trip                   @relation(fields: [tripId], references: [id])
-  customer               CustomerProfile        @relation(fields: [customerId], references: [userId])
-  createdBy              User?                  @relation("ReservationCreatedBy", fields: [createdById], references: [id])
-  cancelledBy            User?                  @relation("ReservationCancelledBy", fields: [cancelledById], references: [id])
-  cancellationDeclinedBy User?                  @relation("ReservationCancellationDeclinedBy", fields: [cancellationDeclinedById], references: [id])
+  trip                   Trip                     @relation(fields: [tripId], references: [id])
+  customer               CustomerProfile          @relation(fields: [customerId], references: [userId])
+  createdBy              User?                    @relation("ReservationCreatedBy", fields: [createdById], references: [id])
+  cancelledBy            User?                    @relation("ReservationCancelledBy", fields: [cancelledById], references: [id])
+  cancellationDeclinedBy User?                    @relation("ReservationCancellationDeclinedBy", fields: [cancellationDeclinedById], references: [id])
   payments               Payment[]
   notificationDeliveries NotificationDelivery[]
+  creditEntries          CustomerCreditEntry[]
+  priceChanges           ReservationPriceChange[]
 
   @@index([tripId])
   @@index([customerId])
@@ -462,9 +497,10 @@ model Payment {
   // seat that has already been released.
   providerVoucherUrl String?         @map("provider_voucher_url")
   voucherExpiresAt   DateTime?       @map("voucher_expires_at") @db.Timestamptz
-  // Receipt fields: declared now, filled starting Phase 2B. Included here so
-  // the table is not migrated twice.
-  receiptNumber      String?         @map("receipt_number")
+  /// `{receipt.prefix}-{year}-{000001}`, assigned in the transaction that
+  /// leaves the payment SUCCEEDED (see `ReceiptCounter`). The key and sent
+  /// timestamp are filled by the worker's send-receipt job.
+  receiptNumber      String?         @unique @map("receipt_number")
   receiptKey         String?         @map("receipt_key")
   receiptSentAt      DateTime?       @map("receipt_sent_at") @db.Timestamptz
   recordedById       String?         @map("recorded_by") @db.Uuid
@@ -473,11 +509,97 @@ model Payment {
   createdAt          DateTime        @default(now()) @map("created_at") @db.Timestamptz
   updatedAt          DateTime        @updatedAt @map("updated_at") @db.Timestamptz
 
-  reservation Reservation @relation(fields: [reservationId], references: [id], onDelete: Cascade)
-  recordedBy  User?       @relation("PaymentRecordedBy", fields: [recordedById], references: [id])
+  reservation   Reservation           @relation(fields: [reservationId], references: [id], onDelete: Cascade)
+  recordedBy    User?                 @relation("PaymentRecordedBy", fields: [recordedById], references: [id])
+  creditEntries CustomerCreditEntry[]
 
   @@index([reservationId])
   @@map("payments")
+}
+
+/**
+ * One row per calendar year (in the organization's timezone). Locked with
+ * `SELECT ... FOR UPDATE` by the transaction that leaves a payment SUCCEEDED,
+ * so receipt numbers have no gaps and no duplicates -- a PostgreSQL sequence
+ * would leave gaps on rollback.
+ */
+model ReceiptCounter {
+  year       Int      @id
+  lastNumber Int      @default(0) @map("last_number")
+  updatedAt  DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  @@map("receipt_counters")
+}
+
+/**
+ * The customer credit ledger. A customer's balance is the sum of their
+ * entries, never an editable column; it is computed under a lock on the
+ * customer's profile row when an entry is written, and an entry that would
+ * take it below zero is refused. `amount_cents` is signed and never zero
+ * (CHECK `customer_credit_entries_amount_not_zero`, raw SQL in the
+ * `phase_2b_counter` migration).
+ */
+model CustomerCreditEntry {
+  id            String          @id @default(uuid()) @db.Uuid
+  customerId    String          @map("customer_id") @db.Uuid
+  amountCents   Int             @map("amount_cents")
+  kind          CreditEntryKind
+  reservationId String?         @map("reservation_id") @db.Uuid
+  paymentId     String?         @map("payment_id") @db.Uuid
+  reason        String?
+  createdById   String?         @map("created_by") @db.Uuid
+  createdAt     DateTime        @default(now()) @map("created_at") @db.Timestamptz
+
+  customer    CustomerProfile @relation(fields: [customerId], references: [userId], onDelete: Cascade)
+  reservation Reservation?    @relation(fields: [reservationId], references: [id], onDelete: SetNull)
+  payment     Payment?        @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+  createdBy   User?           @relation("CreditEntryCreatedBy", fields: [createdById], references: [id])
+
+  @@index([customerId, createdAt])
+  @@index([reservationId])
+  @@map("customer_credit_entries")
+}
+
+/// History of explicit price changes brought to an existing reservation.
+model ReservationPriceChange {
+  id                 String   @id @default(uuid()) @db.Uuid
+  reservationId      String   @map("reservation_id") @db.Uuid
+  previousTotalCents Int      @map("previous_total_cents")
+  newTotalCents      Int      @map("new_total_cents")
+  noticeEs           String   @map("notice_es")
+  noticeEn           String?  @map("notice_en")
+  changedById        String   @map("changed_by") @db.Uuid
+  changedAt          DateTime @default(now()) @map("changed_at") @db.Timestamptz
+
+  reservation Reservation @relation(fields: [reservationId], references: [id], onDelete: Cascade)
+  changedBy   User        @relation("PriceChangeChangedBy", fields: [changedById], references: [id])
+
+  @@index([reservationId])
+  @@map("reservation_price_changes")
+}
+
+/**
+ * A CSV upload. Validation stores the per-row report; applying is a second,
+ * explicit step and happens at most once per batch.
+ */
+model ImportBatch {
+  id          String       @id @default(uuid()) @db.Uuid
+  type        ImportType
+  fileName    String       @map("file_name")
+  status      ImportStatus
+  rowsTotal   Int          @map("rows_total")
+  rowsOk      Int          @map("rows_ok")
+  rowsFailed  Int          @map("rows_failed")
+  report      Json
+  sendEmails  Boolean      @default(false) @map("send_emails")
+  createdById String       @map("created_by") @db.Uuid
+  createdAt   DateTime     @default(now()) @map("created_at") @db.Timestamptz
+  appliedAt   DateTime?    @map("applied_at") @db.Timestamptz
+
+  createdBy User @relation("ImportBatchCreatedBy", fields: [createdById], references: [id])
+
+  @@index([createdAt])
+  @@map("import_batches")
 }
 
 /**
