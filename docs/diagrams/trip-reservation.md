@@ -185,7 +185,8 @@ stateDiagram-v2
     HELD --> EXPIRED: "job expireHolds, con hold_expires_at vencido"
     HELD --> CANCELLED: "cancelReservation (personal con reservation.cancel)"
     ACTIVE --> CANCELLED: "cancelReservation (personal con reservation.cancel)"
-    EXPIRED --> [*]
+    EXPIRED --> HELD: "revive el mostrador (efectivo o saldo) si queda lugar y el viaje sigue publicado, con apartado nuevo"
+    HELD --> HELD: "revive el mostrador si su apartado ya venció, con apartado nuevo"
     CANCELLED --> [*]
 ```
 
@@ -194,6 +195,9 @@ minutos) dispara `HELD → EXPIRED`, pasa lo ya pagado al saldo del cliente
 (`EXPIRATION`, en la misma transacción) y cancela los Payment Intents pendientes;
 `warnExpiringHolds` (cada hora) no cambia el estado, sólo avisa
 `HOLD_EXPIRING` cuando queda menos de un cuarto del plazo del apartado.
+Revivir `EXPIRED` o un `HELD` vencido (decisión 13) lo hace sólo una persona en
+el mostrador, bajo el candado del viaje; `CANCELLED` no revive. Si el cobro
+cubre el anticipo, la reserva pasa enseguida a `ACTIVE`.
 `HELD → ACTIVE` no lo dispara ningún job: llega con el webhook de Stripe (o,
 en la Fase 2B, con un pago en efectivo o con saldo a favor registrado por el
 personal), nunca con la respuesta de la app. Un cambio de precio no mueve el

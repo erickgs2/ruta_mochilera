@@ -6,8 +6,10 @@
 `HELD` (un apartado cuyo `hold_expires_at` pasó sin que se cubriera el depósito
 mínimo, lo dispara el job `expireHolds`). `CANCELLED` se alcanza desde `HELD` o
 desde `ACTIVE`, y sólo por decisión de una persona con `reservation.cancel`
-desde el panel (Tarea 19, ver «Cancelar una reserva»). `CANCELLED` y `EXPIRED`
-son terminales. El diagrama de estados completo está en
+desde el panel (Tarea 19, ver «Cancelar una reserva»). `CANCELLED` es
+terminal. **`EXPIRED` ya no lo es del todo** (Fase 2B, decisión 13): el
+mostrador puede revivir una reserva vencida si queda lugar (ver «Revivir una
+reserva vencida»); sólo `CANCELLED` no revive. El diagrama de estados completo está en
 `docs/diagrams/trip-reservation.md`.
 
 Implementado en el modelo `Reservation` (`libs/db/prisma/schema.prisma`).
@@ -280,6 +282,42 @@ saldo a favor junto a ellos.
   inyectado desde `@rm/domain-payments` (ver `payments.md`, «Pagos
   históricos»). Todo o nada.
 - Se audita `reservation.backfilled` con el actor.
+
+## Revivir una reserva vencida (Fase 2B, decisión 13)
+
+Un cobro en efectivo, o saldo a favor aplicado, en el mostrador sobre una
+reserva con el apartado vencido —un `HELD` pasado de su hora o un `EXPIRED`—
+**ya no responde `HOLD_EXPIRED`**: la reserva revive si queda lugar.
+`reviveReservationSeat` (`libs/domain/reservations/src/lib/revival.ts`) es la
+mitad del lugar; la del dinero vive en `@rm/domain-payments` (`payments.md`) y
+recibe esta función **inyectada**: los dos dominios no se importan.
+
+- `ACTIVE`, o `HELD` con su apartado vigente → no hay nada que revivir; no
+  escribe.
+- `CANCELLED` **no revive** → `INVALID_STATUS_TRANSITION`.
+- `EXPIRED` o `HELD` vencido, bajo el candado del viaje y en este orden de
+  comprobaciones, todas **antes** de escribir: viaje `PUBLISHED`
+  (`TRIP_NOT_PUBLISHED`; el plazo de pago **no** se exige), el cliente sin otra
+  reserva viva en ese viaje (`DUPLICATE_RESERVATION`: el índice parcial
+  permite una sola) y un lugar libre (`TRIP_SOLD_OUT`, sin escribir nada).
+- La reserva queda `HELD` con un apartado nuevo de `hold_ttl_hours` del viaje
+  desde ahora, y se audita `reservation.revived`. El pago que sigue la pasa a
+  `ACTIVE` si cubre el anticipo; si no, el apartado nuevo es lo que el
+  cliente tiene.
+- Los pagos por webhook **no** reviven nada: un pago tardío sobre una `EXPIRED`
+  sigue registrándose sin mover el estado (§5.3).
+
+**Orden de bloqueo: viaje, reserva, cliente**, el mismo de `createReservation`
+y `applyPriceChange`. Por eso el cobro del mostrador toma el candado del viaje
+antes que el de la reserva (el id del viaje no cambia, así que se lee sin
+bloqueo para saber cuál tomar). Dos reservas vencidas que se disputan el último
+lugar, o una revivida contra una reserva nueva, se serializan en ese candado:
+gana una (`revival.spec.ts`, 30 repeticiones cada una).
+
+**Quien llama deshace la revivida.** `reviveReservationSeat` no escribe hasta
+haber pasado todas sus comprobaciones, pero el pago que sigue puede fallar
+(saldo ya gastado, monto mayor al pendiente): el llamador lanza para que la
+transacción entera, revivida incluida, se revierta.
 
 ## Los jobs de fondo: `expireHolds` y `warnExpiringHolds` (Tarea 8)
 
