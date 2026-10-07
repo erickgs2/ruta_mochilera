@@ -1,14 +1,10 @@
 import { execFileSync } from 'node:child_process';
-import { existsSync, readdirSync, statSync } from 'node:fs';
+import { readdirSync, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '../generated/prisma/client';
-import {
-  assertSchemaIdentifier,
-  createPrismaClient,
-  searchPathStartupOption,
-  type Db,
-} from '../lib/client';
+import { createPrismaClient, searchPathStartupOption, type Db } from '../lib/client';
+import { composeSchemaName, findWorkspaceRoot } from './schema-name';
 
 const DEFAULT_TEST_DATABASE_URL = 'postgresql://rm:rm@localhost:5432/rm_test';
 
@@ -45,11 +41,23 @@ let cachedRoot: string | undefined;
  * tested in the same `nx run-many` batch would otherwise both land on worker 0.
  * Prefixing with the project makes the name unique across processes too.
  *
+ * Neither half tells two *checkouts* apart: the main working tree and every git
+ * worktree share the one `rm_test`, and each would otherwise name its API
+ * project's first worker `test_api_w0` -- the same schema, truncated by
+ * whichever suite starts a test first. So the name also carries a short
+ * fingerprint of the workspace root (`test_<fingerprint>_<project>_w<id>`),
+ * stable for a checkout and different between checkouts. `TEST_SCHEMA_PREFIX`
+ * replaces the fingerprint for a caller that wants a name it can predict.
+ *
  * The key is deliberately stable rather than random: a worker reuses the schema
  * it already migrated on a previous run, which is what keeps `prepareTestDb()`
  * down to two queries after the first run.
  */
-export const TEST_SCHEMA = composeSchemaName(projectKey(), process.env['VITEST_WORKER_ID'] ?? '0');
+export const TEST_SCHEMA = composeSchemaName({
+  project: projectKey(),
+  workerId: process.env['VITEST_WORKER_ID'] ?? '0',
+  workspaceRoot: workspaceRoot(),
+});
 
 let client: Db | undefined;
 let prepared: Promise<void> | undefined;
@@ -195,32 +203,6 @@ function projectKey(): string {
   return relative === '' ? 'root' : relative;
 }
 
-/**
- * Builds a schema name that is a safe SQL identifier: lowercased, every
- * character outside `[a-z0-9_]` folded to `_`, and truncated with a hash
- * suffix so it can never exceed PostgreSQL's 63-byte identifier limit. The
- * validation applies to the fully composed name because a project name may
- * legally contain characters an identifier may not, and it is the same
- * `assertSchemaIdentifier` the connection builder applies, so a name this
- * function accepts can never be one `search_path` rejects.
- */
-function composeSchemaName(project: string, workerId: string): string {
-  const slug = `test_${project}_w${workerId}`
-    .toLowerCase()
-    .replace(/[^a-z0-9_]+/g, '_')
-    .replace(/_+/g, '_');
-  const name = slug.length <= 63 ? slug : `${slug.slice(0, 54)}_${fingerprint(slug)}`;
-  assertSchemaIdentifier(name);
-  return name;
-}
-
-/** Short deterministic digest (djb2), used only to keep long schema names unique. */
-function fingerprint(value: string): string {
-  let hash = 5381;
-  for (let i = 0; i < value.length; i++) hash = ((hash * 33) ^ value.charCodeAt(i)) >>> 0;
-  return hash.toString(36).padStart(7, '0');
-}
-
 function migrationNames(): string[] {
   const dir = join(workspaceRoot(), 'libs', 'db', 'prisma', 'migrations');
   return readdirSync(dir)
@@ -242,21 +224,8 @@ async function appliedMigrationNames(db: Db): Promise<Set<string>> {
   return new Set(rows.map((row) => row.migration_name));
 }
 
-/**
- * Walks up from the current working directory until it finds the directory
- * holding `prisma.config.ts`. Vitest runs with the project directory as cwd, so
- * this resolves the workspace root from any library's suite.
- */
+/** The workspace root, found once from the current working directory. */
 function workspaceRoot(): string {
-  if (cachedRoot) return cachedRoot;
-  let dir = resolve(process.cwd());
-  for (;;) {
-    if (existsSync(join(dir, 'prisma.config.ts'))) {
-      cachedRoot = dir;
-      return dir;
-    }
-    const parent = resolve(dir, '..');
-    if (parent === dir) throw new Error('Could not locate the workspace root (no prisma.config.ts found)');
-    dir = parent;
-  }
+  cachedRoot ??= findWorkspaceRoot(process.cwd());
+  return cachedRoot;
 }
