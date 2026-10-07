@@ -96,7 +96,10 @@ e idioma opcional.
   la invitación), aceptarla es `TOKEN_INVALID`. La escritura es condicional a
   «sin contraseña» dentro de la transacción, así que también cubre un
   restablecimiento simultáneo. A su vez, restablecer la contraseña consume las
-  invitaciones pendientes de esa cuenta.
+  invitaciones pendientes de esa cuenta. La garantía «una invitación viva
+  nunca pisa la contraseña de una cuenta que ya tiene una» está cubierta por
+  prueba (`customer-service.spec.ts`), incluso con la invitación vigente y sin
+  consumir.
 - Un token de restablecimiento se consume con una escritura condicional: dos
   usos simultáneos del mismo token no ganan ambos.
 - **Aceptar la invitación y restablecer la contraseña a la vez no falla.** Las
