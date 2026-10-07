@@ -515,8 +515,30 @@ y sólo ensucia el historial. Las reglas que lo escriben llegan en la Tarea 3.
 pagos nunca comparten folio. Es nulo mientras el pago no está `SUCCEEDED`, y
 PostgreSQL deja los nulos distintos en un índice único, así que las fichas
 pendientes no chocan entre sí. El contador vive en `receipt_counters`, una
-fila por año con el año como llave primaria; cómo se asigna el número llega en
-la Tarea 2.
+fila por año con el año como llave primaria.
+
+### Cómo se asigna (Tarea 2)
+
+- Formato `{receipt.prefix}-{año}-{000001}`; `receipt.prefix` es configurable
+  (por omisión `RM`).
+- **El año es el de `paid_at` en la zona de la organización**: un pago a las
+  23:30 del 31 de diciembre en Ciudad de México es del año que termina,
+  aunque en UTC ya sea 1 de enero.
+- Lo asigna `assignReceiptNumber` **dentro de la transacción que deja el pago
+  en `SUCCEEDED`**: `recordPayment` cuando el pago nace exitoso (efectivo,
+  saldo a favor, histórico) y `confirmPaymentWithin` en la transición
+  `PENDING → SUCCEEDED` del webhook. Un pago `PENDING`, `FAILED` o `EXPIRED`
+  no tiene folio.
+- **Sin huecos y sin duplicados.** `UPDATE receipt_counters ... RETURNING`
+  bloquea la fila del año hasta el `COMMIT`: el segundo pago espera en vez de
+  leer el mismo número, y una transacción que se revierte se lleva su
+  incremento con ella. Por eso no es una secuencia de PostgreSQL, que deja un
+  hueco en cada reversión.
+- En la confirmación por webhook el folio se pide **después** del `updateMany`
+  condicional: la entrega que pierde la carrera no toma un número que no va a
+  usar.
+- Costo aceptado: todos los cobros exitosos del año se serializan en esa fila
+  durante el resto de su transacción, que es corta (sin llamadas de red).
 
 ## Errores
 

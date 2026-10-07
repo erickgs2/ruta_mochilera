@@ -71,6 +71,7 @@ export function payment(overrides: Partial<Payment> = {}): Payment {
     recordedAt: '2026-10-01T15:00:00.000Z',
     providerVoucherUrl: null,
     voucherExpiresAt: null,
+    receiptNumber: null,
     ...overrides,
   };
 }

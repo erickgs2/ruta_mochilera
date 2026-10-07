@@ -3700,6 +3700,7 @@ export interface components {
             providerVoucherUrl: string | null;
             /** Format: date-time */
             voucherExpiresAt: string | null;
+            receiptNumber: string | null;
         };
         CancelReservationRequest: {
             reason: string;

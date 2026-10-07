@@ -41,10 +41,36 @@ sequenceDiagram
     W->>DB: "BEGIN"
     W->>DB: "INSERT stripe_events (PRIMERO: es el candado)"
     W->>DB: "Payment PENDING → SUCCEEDED, paid_cents += monto"
+    W->>DB: "folio: receipt_counters del año FOR UPDATE, last_number + 1"
     W->>DB: "HELD → ACTIVE si se alcanzó el anticipo"
     W->>DB: "aviso PAYMENT_CONFIRMED (misma transacción)"
     W->>DB: "COMMIT"
     W-->>S: "200"
+```
+
+## El folio del recibo (Fase 2B)
+
+Todo pago que queda en `SUCCEEDED` recibe su folio **en la misma transacción**
+que lo confirma, sin importar el método (efectivo, tarjeta, OXXO, saldo a
+favor o histórico). El contador es una fila por año que se bloquea hasta el
+`COMMIT`: si la transacción se revierte, el número vuelve con ella.
+
+```mermaid
+sequenceDiagram
+    participant T1 as "Transacción A"
+    participant T2 as "Transacción B"
+    participant RC as "receipt_counters (2027)"
+
+    T1->>RC: "INSERT ... ON CONFLICT DO NOTHING"
+    T1->>RC: "UPDATE last_number + 1 RETURNING → 41"
+    T2->>RC: "UPDATE last_number + 1 (espera el candado)"
+    alt "A hace COMMIT"
+        T1-->>RC: "COMMIT: RM-2027-000041 existe"
+        RC-->>T2: "→ 42"
+    else "A se revierte"
+        T1-->>RC: "ROLLBACK: el 41 nunca existió"
+        RC-->>T2: "→ 41, sin hueco"
+    end
 ```
 
 ## Tres métodos, tres tiempos (Tarea 20)

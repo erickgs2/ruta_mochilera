@@ -12,6 +12,7 @@ import { recordAudit } from '@rm/domain-audit';
 import { organizationTimeZone } from '@rm/domain-settings';
 import { endOfCalendarDay, fail, monthStartsBetween, ok, type Result } from '@rm/shared-utils';
 import { suggestedMonthly } from './instalment';
+import { assignReceiptNumber } from './receipt-number';
 
 export interface RecordPaymentInput {
   reservationId: string;
@@ -74,8 +75,9 @@ export interface ConfirmPaymentInput {
  * Carries the voucher fields because the customer app needs them to show an
  * OXXO slip and its deadline, and leaves out everything that is nobody's
  * business outside the backend: `providerIntentId`, `recordedById`,
- * `isBackfilled`, `notes` and the Phase 2B receipt columns. A caller that
- * confirms a payment already knows the intent id -- it passed it in.
+ * `isBackfilled`, `notes` and the storage key of the receipt PDF. A caller
+ * that confirms a payment already knows the intent id -- it passed it in.
+ * `receiptNumber` is null until the payment is SUCCEEDED.
  */
 export interface PaymentDto {
   id: string;
@@ -88,6 +90,7 @@ export interface PaymentDto {
   recordedAt: Date;
   providerVoucherUrl: string | null;
   voucherExpiresAt: Date | null;
+  receiptNumber: string | null;
 }
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -109,6 +112,7 @@ function toDto(payment: Payment): PaymentDto {
     recordedAt: payment.recordedAt,
     providerVoucherUrl: payment.providerVoucherUrl,
     voucherExpiresAt: payment.voucherExpiresAt,
+    receiptNumber: payment.receiptNumber,
   };
 }
 
@@ -256,6 +260,10 @@ export async function recordPayment(
     return fail('PAYMENT_EXCEEDS_BALANCE', { amountCents: input.amountCents, balanceCents });
   }
 
+  // Money already in hand always carries the moment it arrived; anything
+  // else has not been paid yet and must not pretend otherwise.
+  const paidAt = input.paidAt ?? (input.status === 'SUCCEEDED' ? new Date() : null);
+
   let payment: Payment;
   try {
     payment = await tx.payment.create({
@@ -266,9 +274,12 @@ export async function recordPayment(
         status: input.status,
         provider: input.provider,
         providerIntentId: input.providerIntentId ?? null,
-        // Money already in hand always carries the moment it arrived; anything
-        // else has not been paid yet and must not pretend otherwise.
-        paidAt: input.paidAt ?? (input.status === 'SUCCEEDED' ? new Date() : null),
+        paidAt,
+        // Only money that arrived gets a receipt number, and it gets it in
+        // this transaction (see `assignReceiptNumber`). Taken last among the
+        // checks above, so no early return can leave a number unused.
+        receiptNumber:
+          input.status === 'SUCCEEDED' && paidAt ? await assignReceiptNumber(tx, paidAt) : null,
         providerVoucherUrl: input.providerVoucherUrl ?? null,
         voucherExpiresAt: input.voucherExpiresAt ?? null,
       },
@@ -404,6 +415,12 @@ export async function confirmPaymentWithin(
     return ok(toDto(await tx.payment.findUniqueOrThrow({ where: { id: payment.id } })));
   }
 
+  // After the conditional update, never before: a confirmation that lost the
+  // race above must not take a number it will not use, or the year's
+  // sequence would have a gap.
+  const receiptNumber = await assignReceiptNumber(tx, input.paidAt);
+  await tx.payment.update({ where: { id: payment.id }, data: { receiptNumber } });
+
   await applyConfirmedPayment(tx, payment.reservationId, payment.amountCents);
 
   await recordAudit(tx, {
@@ -416,7 +433,7 @@ export async function confirmPaymentWithin(
     after: { status: 'SUCCEEDED', paidAt: input.paidAt.toISOString() },
   });
 
-  return ok(toDto({ ...payment, status: 'SUCCEEDED', paidAt: input.paidAt }));
+  return ok(toDto({ ...payment, status: 'SUCCEEDED', paidAt: input.paidAt, receiptNumber }));
 }
 
 /**

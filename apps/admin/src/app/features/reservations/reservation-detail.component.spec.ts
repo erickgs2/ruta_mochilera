@@ -56,6 +56,7 @@ const payments = [
     recordedAt: '2027-01-01T11:00:00.000Z',
     providerVoucherUrl: null,
     voucherExpiresAt: null,
+    receiptNumber: null,
   },
 ];
 

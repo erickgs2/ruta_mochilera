@@ -34,6 +34,7 @@ export const paymentSchema = z.object({
   recordedAt: z.iso.datetime(),
   providerVoucherUrl: z.string().nullable(),
   voucherExpiresAt: z.iso.datetime().nullable(),
+  receiptNumber: z.string().nullable(),
 });
 
 /** Response shape for a freshly created Payment Intent, matching `CreatedPaymentIntentDto`. */
