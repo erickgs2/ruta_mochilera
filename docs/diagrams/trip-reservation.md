@@ -181,8 +181,8 @@ El ciclo completo a la fecha de la Fase 2B. El esquema no tiene un estado
 stateDiagram-v2
     [*] --> HELD: "createReservation (la app) o createBranchReservation (mostrador, sin pago o con pago menor al anticipo)"
     [*] --> ACTIVE: "mostrador con pago inicial que cubre el anticipo, o captura histórica"
-    HELD --> ACTIVE: "pago que cubre el anticipo (paid_cents ≥ anticipo mínimo): webhook, efectivo en mostrador o saldo a favor"
-    HELD --> EXPIRED: "job expireHolds: hold_expires_at vencido"
+    HELD --> ACTIVE: "pago que cubre el anticipo (paid_cents ≥ anticipo mínimo), por webhook, efectivo en mostrador o saldo a favor"
+    HELD --> EXPIRED: "job expireHolds, con hold_expires_at vencido"
     HELD --> CANCELLED: "cancelReservation (personal con reservation.cancel)"
     ACTIVE --> CANCELLED: "cancelReservation (personal con reservation.cancel)"
     EXPIRED --> [*]
