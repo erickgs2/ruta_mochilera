@@ -7,6 +7,7 @@ import { closeTestQueue, resetTestQueue, withTestQueue } from '@rm/jobs/testing'
 import { availableSeats, countCommittedSeats } from './capacity';
 import {
   cancelReservation,
+  createBranchReservation,
   createReservation,
   declineCancellationRequest,
   getReservationForCustomer,
@@ -15,6 +16,7 @@ import {
   listReservationsForStaff,
   requestCancellation,
   type CreditFromCancellation,
+  type RecordInitialPayment,
 } from './reservation-service';
 
 const db = withTestDb();
@@ -428,6 +430,118 @@ describe('reservation service', () => {
         where: { tripId: trip.id, status: { in: ['HELD', 'ACTIVE'] } },
       });
       expect(live).toBe(1);
+    });
+  });
+
+  describe('createBranchReservation (Phase 2B)', () => {
+    /** Writes the payment the way `@rm/domain-payments` would, without importing it. */
+    const cashHook =
+      (options: { fail?: boolean } = {}): RecordInitialPayment =>
+      async (tx, input) => {
+        if (options.fail) return { ok: false, error: { code: 'PAYMENT_EXCEEDS_BALANCE' } };
+        await tx.payment.create({
+          data: { reservationId: input.reservationId, amountCents: input.amountCents, method: 'CASH', status: 'SUCCEEDED', provider: 'MANUAL', recordedById: input.actorId },
+        });
+        const reservation = await tx.reservation.update({
+          where: { id: input.reservationId },
+          data: { paidCents: { increment: input.amountCents } },
+        });
+        if (reservation.paidCents >= reservation.minimumDepositCents) {
+          await tx.reservation.update({ where: { id: input.reservationId }, data: { status: 'ACTIVE', holdExpiresAt: null } });
+        }
+        return { ok: true, value: null };
+      };
+
+    it('holds a seat with source BRANCH and the staff member as creator', async () => {
+      const trip = await seedTrip(db);
+      const customerId = await seedCustomer(db);
+
+      const created = await createBranchReservation(db, { tripId: trip.id, customerId, actorId: staffId });
+
+      expect(created.ok).toBe(true);
+      if (!created.ok) return;
+      expect(created.value.status).toBe('HELD');
+      expect(created.value.holdExpiresAt).not.toBeNull();
+      const stored = await db.reservation.findUniqueOrThrow({ where: { id: created.value.id } });
+      expect(stored).toMatchObject({ source: 'BRANCH', createdById: staffId });
+      const audit = await db.auditLog.findFirst({ where: { action: 'reservation.created', entityId: stored.id } });
+      expect(audit?.actorUserId).toBe(staffId);
+    });
+
+    it('records the initial payment in the same transaction and answers the state it leaves', async () => {
+      const trip = await seedTrip(db, { minimumDepositCents: 100_000 });
+      const customerId = await seedCustomer(db);
+      const calls: { amountCents: number; actorId: string }[] = [];
+      const hook = cashHook();
+
+      const created = await createBranchReservation(db, {
+        tripId: trip.id,
+        customerId,
+        actorId: staffId,
+        initialPayment: {
+          amountCents: 150_000,
+          record: async (tx, input) => {
+            calls.push({ amountCents: input.amountCents, actorId: input.actorId });
+            return hook(tx, input);
+          },
+        },
+      });
+
+      expect(created.ok && created.value).toMatchObject({ status: 'ACTIVE', holdExpiresAt: null, paidCents: 150_000 });
+      expect(calls).toEqual([{ amountCents: 150_000, actorId: staffId }]);
+    });
+
+    it('leaves neither reservation nor payment when the payment is refused', async () => {
+      const trip = await seedTrip(db);
+      const customerId = await seedCustomer(db);
+
+      const created = await createBranchReservation(db, {
+        tripId: trip.id,
+        customerId,
+        actorId: staffId,
+        initialPayment: { amountCents: 900_000, record: cashHook({ fail: true }) },
+      });
+
+      expect(created).toMatchObject({ ok: false, error: { code: 'PAYMENT_EXCEEDS_BALANCE' } });
+      expect(await db.reservation.count()).toBe(0);
+      expect(await db.payment.count()).toBe(0);
+    });
+
+    it('never takes the payment when the reservation itself is refused', async () => {
+      const trip = await seedTrip(db, { totalCapacity: 1 });
+      await createReservation(db, { tripId: trip.id, customerId: await seedCustomer(db) });
+      const customerId = await seedCustomer(db);
+      let called = false;
+
+      const created = await createBranchReservation(db, {
+        tripId: trip.id,
+        customerId,
+        actorId: staffId,
+        initialPayment: {
+          amountCents: 100_000,
+          record: async () => {
+            called = true;
+            return { ok: true, value: null };
+          },
+        },
+      });
+
+      expect(created).toMatchObject({ ok: false, error: { code: 'TRIP_SOLD_OUT' } });
+      expect(called).toBe(false);
+    });
+
+    it('refuses a non-positive initial payment', async () => {
+      const trip = await seedTrip(db);
+      const customerId = await seedCustomer(db);
+
+      const created = await createBranchReservation(db, {
+        tripId: trip.id,
+        customerId,
+        actorId: staffId,
+        initialPayment: { amountCents: 0, record: cashHook() },
+      });
+
+      expect(created).toMatchObject({ ok: false, error: { code: 'VALIDATION_FAILED' } });
     });
   });
 

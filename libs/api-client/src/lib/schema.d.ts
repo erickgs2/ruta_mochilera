@@ -2720,7 +2720,76 @@ export interface paths {
             };
         };
         put?: never;
-        post?: never;
+        /** @description A reservation taken at the counter (Phase 2B, spec §5.2), with the same rules as the app: trip locked, published, deadline not passed, one live reservation per customer and trip, a free seat. source = BRANCH. With initialPaymentCents the first cash payment is recorded in the same transaction (numbered, receipt queued): covering the deposit makes it ACTIVE, less leaves it HELD. Requires reservation.create, plus payment.register when there is a payment. */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["CreateBranchReservationRequest"];
+                };
+            };
+            responses: {
+                /** @description Reservation created */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Reservation"];
+                    };
+                };
+                /** @description Missing or invalid access token */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description PERMISSION_DENIED -- requires reservation.create (and payment.register with a payment) */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description NOT_FOUND -- unknown trip or customer */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description TRIP_SOLD_OUT, TRIP_NOT_PUBLISHED, PAYMENT_DEADLINE_PASSED or DUPLICATE_RESERVATION */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description VALIDATION_FAILED, or PAYMENT_EXCEEDS_BALANCE -- a payment above the price */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+            };
+        };
         delete?: never;
         options?: never;
         head?: never;
@@ -2850,7 +2919,78 @@ export interface paths {
             };
         };
         put?: never;
-        post?: never;
+        /** @description Cash at the counter (Phase 2B, spec §5.3): a CASH payment, SUCCEEDED on the spot, numbered, with its receipt queued. Only on a live reservation; a HELD one that reaches its deposit becomes ACTIVE. Requires payment.register. */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    reservationId: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["RegisterCashPaymentRequest"];
+                };
+            };
+            responses: {
+                /** @description The payment */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Payment"];
+                    };
+                };
+                /** @description Missing or invalid access token */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description PERMISSION_DENIED -- requires payment.register */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description NOT_FOUND */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description INVALID_STATUS_TRANSITION -- not live, or HOLD_EXPIRED */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description VALIDATION_FAILED, or PAYMENT_EXCEEDS_BALANCE */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+            };
+        };
         delete?: never;
         options?: never;
         head?: never;
@@ -4549,6 +4689,13 @@ export interface components {
             /** Format: date-time */
             createdAt: string;
         };
+        CreateBranchReservationRequest: {
+            /** Format: uuid */
+            tripId: string;
+            /** Format: uuid */
+            customerId: string;
+            initialPaymentCents?: number;
+        };
         StaffReservationDetail: {
             /** Format: uuid */
             id: string;
@@ -4607,6 +4754,9 @@ export interface components {
             /** Format: date-time */
             voucherExpiresAt: string | null;
             receiptNumber: string | null;
+        };
+        RegisterCashPaymentRequest: {
+            amountCents: number;
         };
         CancelReservationRequest: {
             reason: string;

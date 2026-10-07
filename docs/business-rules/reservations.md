@@ -197,6 +197,29 @@ Cada cambio de precio explícito que se lleva a una reserva existente queda en
 `reservation_price_changes` (total anterior, total nuevo, aviso y quién lo
 hizo); la regla llega en la Tarea 8 de la Fase 2B.
 
+## Reserva en mostrador (Fase 2B, §5.2)
+
+`createBranchReservation(db, { tripId, customerId, actorId, initialPayment? })`
+(`POST /admin/reservations`, permiso `reservation.create`).
+
+- **Las mismas reglas que la reserva de la app**, por el mismo código: fila
+  del viaje bloqueada, viaje publicado, fecha límite vigente, una reserva viva
+  por cliente y viaje, cupo disponible y montos congelados. Cambian sólo
+  `source = BRANCH` y `created_by` = el trabajador (también actor de la
+  auditoría).
+- **Con pago inicial** (modo por omisión en el panel; exige además
+  `payment.register`): la reserva y el primer pago en efectivo en **una sola
+  transacción**. El pago lo escribe un gancho inyectado
+  (`RecordInitialPayment`, implementado por `@rm/domain-payments`): este
+  dominio no importa el de pagos. Si el pago cubre el anticipo, la reserva
+  nace `ACTIVE` sin apartado; si no, `HELD` con el apartado normal del viaje.
+  El monto debe ser `> 0`.
+- **Todo o nada**: si el pago se rechaza (por ejemplo, más que el precio), la
+  reserva también se revierte; si la reserva se rechaza (sin cupo, fuera de
+  fecha, duplicada), el pago nunca se intenta.
+- **Sin pago**: nace `HELD` con el apartado normal y se cobra después
+  (`payments.md`, «Cobro en efectivo»).
+
 ## Los jobs de fondo: `expireHolds` y `warnExpiringHolds` (Tarea 8)
 
 Implementados en `apps/worker/src/jobs/`, no en `libs/domain/reservations`:

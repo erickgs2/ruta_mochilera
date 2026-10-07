@@ -17,6 +17,42 @@ export interface CreateReservationInput {
   customerId: string;
 }
 
+/**
+ * Records the first payment of a reservation taken at the counter, **inside
+ * the reservation's own transaction** (Phase 2B, §5.2): the reservation and
+ * its money are one fact. Implemented by `@rm/domain-payments`'
+ * `createInitialCashPayment` and typed here structurally, for the same
+ * reason as `CancelPendingPaymentIntents`. A failed `Result` rolls the
+ * reservation back.
+ */
+export type RecordInitialPayment = (
+  tx: DbTransactionClient,
+  input: { reservationId: string; amountCents: number; actorId: string }
+) => Promise<Result<unknown>>;
+
+export interface CreateBranchReservationInput {
+  tripId: string;
+  customerId: string;
+  /** The staff member at the counter: `created_by` and the audit actor. */
+  actorId: string;
+  /** Cash taken together with the reservation. Omitted: the reservation is only held. */
+  initialPayment?: { amountCents: number; record: RecordInitialPayment };
+}
+
+/** Where a reservation is being created from, and by whom. */
+interface CreationContext {
+  source: 'APP' | 'BRANCH';
+  actorId: string;
+  initialPayment?: CreateBranchReservationInput['initialPayment'];
+}
+
+/** Carries a failed `Result` out of a transaction so the transaction rolls back. */
+class RollbackWith extends Error {
+  constructor(readonly result: Result<never>) {
+    super('rolled back');
+  }
+}
+
 export interface ReservationDto {
   id: string;
   code: string;
@@ -268,7 +304,8 @@ async function uniqueReservationCode(tx: DbTransactionClient): Promise<string> {
 async function insertReservation(
   db: Db,
   input: CreateReservationInput,
-  timeZone: string
+  timeZone: string,
+  context: CreationContext
 ): Promise<Result<ReservationDto>> {
   return db.$transaction(async (tx: DbTransactionClient) => {
     await lockTripForCapacity(tx, input.tripId);
@@ -332,13 +369,13 @@ async function insertReservation(
         totalPriceCents: trip.pricePerSeatCents,
         minimumDepositCents: trip.minimumDepositCents,
         paymentDeadline: trip.paymentDeadline,
-        source: 'APP',
-        createdById: input.customerId,
+        source: context.source,
+        createdById: context.actorId,
       },
     });
 
     await recordAudit(tx, {
-      actorUserId: input.customerId,
+      actorUserId: context.actorId,
       action: 'reservation.created',
       entityType: 'Reservation',
       entityId: reservation.id,
@@ -349,10 +386,21 @@ async function insertReservation(
         holdExpiresAt: holdExpiresAt.toISOString(),
         totalPriceCents: reservation.totalPriceCents,
         minimumDepositCents: reservation.minimumDepositCents,
+        source: context.source,
       },
     });
 
-    return ok(toDto(reservation));
+    if (!context.initialPayment) return ok(toDto(reservation));
+
+    // The payment moves `paid_cents` and, when it covers the deposit, turns
+    // the row ACTIVE and clears the hold -- so the answer is read back after.
+    const paid = await context.initialPayment.record(tx, {
+      reservationId: reservation.id,
+      amountCents: context.initialPayment.amountCents,
+      actorId: context.actorId,
+    });
+    if (!paid.ok) throw new RollbackWith(paid);
+    return ok(toDto(await tx.reservation.findUniqueOrThrow({ where: { id: reservation.id } })));
   });
 }
 
@@ -370,12 +418,47 @@ export async function createReservation(
   db: Db,
   input: CreateReservationInput
 ): Promise<Result<ReservationDto>> {
+  return createWithRetry(db, input, { source: 'APP', actorId: input.customerId });
+}
+
+/**
+ * A reservation taken at the counter (Phase 2B, §5.2): the same rules as the
+ * app's -- trip row locked, published, payment deadline not passed, one live
+ * reservation per customer and trip, a free seat, amounts frozen -- with
+ * `source = BRANCH` and `created_by` = the staff member.
+ *
+ * With `initialPayment`, the first cash payment is recorded by the injected
+ * hook **in the same transaction**: a payment that covers the deposit makes
+ * the reservation ACTIVE with no hold; a smaller one leaves it HELD with the
+ * trip's normal hold. Anything that fails -- seat, deadline, the payment
+ * itself -- leaves neither a reservation nor a payment.
+ */
+export async function createBranchReservation(
+  db: Db,
+  input: CreateBranchReservationInput
+): Promise<Result<ReservationDto>> {
+  if (input.initialPayment && (!Number.isInteger(input.initialPayment.amountCents) || input.initialPayment.amountCents <= 0)) {
+    return fail('VALIDATION_FAILED', { field: 'initialPaymentCents' });
+  }
+  return createWithRetry(
+    db,
+    { tripId: input.tripId, customerId: input.customerId },
+    { source: 'BRANCH', actorId: input.actorId, initialPayment: input.initialPayment }
+  );
+}
+
+async function createWithRetry(
+  db: Db,
+  input: CreateReservationInput,
+  context: CreationContext
+): Promise<Result<ReservationDto>> {
   const timeZone = await organizationTimeZone(db);
 
   for (let attempt = 1; attempt <= CODE_INSERT_ATTEMPTS; attempt++) {
     try {
-      return await insertReservation(db, input, timeZone);
+      return await insertReservation(db, input, timeZone, context);
     } catch (error) {
+      if (error instanceof RollbackWith) return error.result;
       const index = uniqueViolationIndex(error);
       if (index === LIVE_RESERVATION_INDEX) return fail('DUPLICATE_RESERVATION');
       if (index !== RESERVATION_CODE_INDEX) throw error;

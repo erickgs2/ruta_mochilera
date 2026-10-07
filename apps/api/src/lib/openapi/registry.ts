@@ -8,6 +8,8 @@ import {
   cancelReservationRequestSchema as cancelReservationRequestSchemaImport,
   declineCancellationRequestSchema as declineCancellationRequestSchemaImport,
   adjustCreditRequestSchema as adjustCreditRequestSchemaImport,
+  createBranchReservationRequestSchema as createBranchReservationRequestSchemaImport,
+  registerCashPaymentRequestSchema as registerCashPaymentRequestSchemaImport,
   acceptInvitationRequestSchema as acceptInvitationRequestSchemaImport,
   acceptedInvitationSchema as acceptedInvitationSchemaImport,
   createBranchCustomerRequestSchema as createBranchCustomerRequestSchemaImport,
@@ -110,6 +112,12 @@ const requestCancellationRequestSchema = requestCancellationRequestSchemaImport.
   id: 'RequestCancellationRequest',
 });
 const reservationSchema = reservationSchemaImport.meta({ id: 'Reservation' });
+const createBranchReservationRequestSchema = createBranchReservationRequestSchemaImport.meta({
+  id: 'CreateBranchReservationRequest',
+});
+const registerCashPaymentRequestSchema = registerCashPaymentRequestSchemaImport.meta({
+  id: 'RegisterCashPaymentRequest',
+});
 const reservationDetailSchema = reservationDetailSchemaImport.meta({ id: 'ReservationDetail' });
 const reservationSummarySchema = reservationSummarySchemaImport.meta({ id: 'ReservationSummary' });
 const cancelReservationRequestSchema = cancelReservationRequestSchemaImport.meta({ id: 'CancelReservationRequest' });
@@ -1126,6 +1134,28 @@ export function buildOpenApiDocument() {
   });
 
   registry.registerPath({
+    method: 'post',
+    path: '/api/v1/admin/reservations',
+    tags: ['reservations', 'admin'],
+    security: [{ bearerAuth: [] }],
+    description:
+      'A reservation taken at the counter (Phase 2B, spec §5.2), with the same rules as the app: trip locked, ' +
+      'published, deadline not passed, one live reservation per customer and trip, a free seat. source = BRANCH. ' +
+      'With initialPaymentCents the first cash payment is recorded in the same transaction (numbered, receipt ' +
+      'queued): covering the deposit makes it ACTIVE, less leaves it HELD. Requires reservation.create, plus ' +
+      'payment.register when there is a payment.',
+    request: { body: requestBody(createBranchReservationRequestSchema) },
+    responses: {
+      201: { description: 'Reservation created', ...json(reservationSchema) },
+      401: problem('Missing or invalid access token'),
+      403: problem('PERMISSION_DENIED -- requires reservation.create (and payment.register with a payment)'),
+      404: problem('NOT_FOUND -- unknown trip or customer'),
+      409: problem('TRIP_SOLD_OUT, TRIP_NOT_PUBLISHED, PAYMENT_DEADLINE_PASSED or DUPLICATE_RESERVATION'),
+      422: problem('VALIDATION_FAILED, or PAYMENT_EXCEEDS_BALANCE -- a payment above the price'),
+    },
+  });
+
+  registry.registerPath({
     method: 'get',
     path: '/api/v1/admin/reservations/{reservationId}',
     tags: ['reservations', 'admin'],
@@ -1156,6 +1186,26 @@ export function buildOpenApiDocument() {
       401: problem('Missing or invalid access token'),
       403: problem('PERMISSION_DENIED -- requires payment.view'),
       404: problem('NOT_FOUND'),
+    },
+  });
+
+  registry.registerPath({
+    method: 'post',
+    path: '/api/v1/admin/reservations/{reservationId}/payments',
+    tags: ['reservations', 'payments', 'admin'],
+    security: [{ bearerAuth: [] }],
+    description:
+      'Cash at the counter (Phase 2B, spec §5.3): a CASH payment, SUCCEEDED on the spot, numbered, with its ' +
+      'receipt queued. Only on a live reservation; a HELD one that reaches its deposit becomes ACTIVE. ' +
+      'Requires payment.register.',
+    request: { params: uuidParam('reservationId'), body: requestBody(registerCashPaymentRequestSchema) },
+    responses: {
+      201: { description: 'The payment', ...json(paymentSchema) },
+      401: problem('Missing or invalid access token'),
+      403: problem('PERMISSION_DENIED -- requires payment.register'),
+      404: problem('NOT_FOUND'),
+      409: problem('INVALID_STATUS_TRANSITION -- not live, or HOLD_EXPIRED'),
+      422: problem('VALIDATION_FAILED, or PAYMENT_EXCEEDS_BALANCE'),
     },
   });
 

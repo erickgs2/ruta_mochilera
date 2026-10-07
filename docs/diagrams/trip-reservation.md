@@ -101,9 +101,15 @@ flowchart TD
     H --> I{"¿Queda al menos un lugar?"}
     I -- No --> R5["TRIP_SOLD_OUT"]
     I -- Sí --> J["Folio RM-XXXX-XXXX único"]
-    J --> K["INSERT en HELD:<br/>precio congelado,<br/>hold_expires_at = ahora + hold_ttl_hours"]
+    J --> K["INSERT en HELD:<br/>precio congelado,<br/>hold_expires_at = ahora + hold_ttl_hours,<br/>source APP o BRANCH, created_by"]
     K --> L["recordAudit: reservation.created"]
-    L --> M[("COMMIT")]
+    L --> P{"¿Mostrador con pago inicial?"}
+    P -- No --> M[("COMMIT")]
+    P -- Sí --> Q["recordInitialPayment (inyectado):<br/>CASH con folio, paid_cents,<br/>HELD → ACTIVE si cubre el anticipo"]
+    Q --> Q2{"¿Pago aceptado?"}
+    Q2 -- Sí --> M
+    Q2 -- No --> R6["Su error (p. ej. PAYMENT_EXCEEDS_BALANCE)"]
+    R6 --> X
     R1 --> X[("ROLLBACK")]
     R2 --> X
     R3 --> X
@@ -117,6 +123,11 @@ violación de ese índice reintenta la transacción completa una vez; una
 violación de `reservations_live_trip_customer_key` se traduce a
 `DUPLICATE_RESERVATION`, que es la carrera que la comprobación previa no
 puede cerrar sola.
+
+La reserva en mostrador (Fase 2B, `createBranchReservation`) recorre **el
+mismo camino**, con `source = BRANCH` y `created_by` = el trabajador. Si trae
+pago inicial, el pago se escribe con el gancho inyectado antes del `COMMIT`:
+un pago rechazado revierte también la reserva. Ver `counter-sale.md`.
 
 La «zona de la organización» del nodo E se lee con `organizationTimeZone`
 (`@rm/domain-settings`) — antes copiada aquí, en `trips` y en `payments`; sin

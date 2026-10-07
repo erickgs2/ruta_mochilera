@@ -25,6 +25,41 @@ flowchart TD
     M --> C
 ```
 
+## Reservar y cobrar en el mostrador
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor T as "Trabajador"
+    participant API as "API"
+    participant R as "reservations"
+    participant P as "payments (gancho)"
+    participant DB as PostgreSQL
+
+    T->>API: "POST /admin/reservations { tripId, customerId, initialPaymentCents? }"
+    Note over API: "reservation.create, y payment.register si trae pago"
+    API->>R: "createBranchReservation(..., record = createInitialCashPayment(queue))"
+    R->>DB: "BEGIN + candado del viaje"
+    R->>DB: "¿publicado, en fecha, sin duplicado, con cupo?"
+    alt "algo falla"
+        R-->>API: "TRIP_SOLD_OUT, ... (ROLLBACK, sin pago)"
+    else "todo bien"
+        R->>DB: "INSERT reserva HELD, source BRANCH"
+        opt "con pago inicial"
+            R->>P: "record(tx, { reservationId, amountCents, actorId })"
+            P->>DB: "Payment CASH + folio, paid_cents, ¿ACTIVE?"
+            P->>DB: "encola SEND_RECEIPT"
+            P-->>R: "ok o error (un error revierte todo)"
+        end
+        R->>DB: "COMMIT"
+        R-->>API: "201 la reserva (ACTIVE o HELD)"
+    end
+
+    T->>API: "después: POST /admin/reservations/{id}/payments { amountCents }"
+    Note over API: "payment.register, sólo reservas vivas"
+    API->>DB: "misma escritura: CASH + folio + recibo"
+```
+
 ## Activar la cuenta desde la invitación
 
 ```mermaid

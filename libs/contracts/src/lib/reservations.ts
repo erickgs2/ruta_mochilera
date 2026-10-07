@@ -8,6 +8,20 @@ export const createReservationRequestSchema = z.object({
 });
 
 /**
+ * The body of `POST /api/v1/admin/reservations` (Phase 2B): a reservation
+ * taken at the counter for a customer. With `initialPaymentCents`, the first
+ * cash payment is recorded with it (and `payment.register` is required too);
+ * without it, the reservation is only held.
+ */
+export const createBranchReservationRequestSchema = z.object({
+  tripId: uuidSchema,
+  customerId: uuidSchema,
+  initialPaymentCents: z.number().int().positive().optional(),
+});
+
+export type CreateBranchReservationRequest = z.infer<typeof createBranchReservationRequestSchema>;
+
+/**
  * No field here ever changes `status` -- see
  * `docs/business-rules/reservations.md`, "Solicitar la cancelación": asking
  * only seals `cancellation_requested_at` and notifies staff, who decide from

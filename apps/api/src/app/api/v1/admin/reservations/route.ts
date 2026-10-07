@@ -1,8 +1,15 @@
-import { listStaffReservationsQuerySchema } from '@rm/contracts';
-import { listReservationsForStaff } from '@rm/domain-reservations';
+import {
+  createBranchReservationRequestSchema,
+  listStaffReservationsQuerySchema,
+  type CreateBranchReservationRequest,
+} from '@rm/contracts';
+import { createInitialCashPayment } from '@rm/domain-payments';
+import { requirePermission } from '@rm/domain-rbac';
+import { createBranchReservation, listReservationsForStaff } from '@rm/domain-reservations';
 import { fail } from '@rm/shared-utils';
 import { db } from '../../../../../lib/db';
 import { route } from '../../../../../lib/http/route';
+import { queue } from '../../../../../lib/queue';
 
 /**
  * The panel's reservation list (Task 19): every customer's reservations,
@@ -33,5 +40,33 @@ export const GET = route({
       });
     }
     return listReservationsForStaff(db(), parsed.data);
+  },
+});
+
+/**
+ * A reservation taken at the counter (Phase 2B, §5.2). `reservation.create`
+ * to reserve; with an initial payment, `payment.register` as well -- checked
+ * here because only the body says which of the two modes this is. The
+ * payment is recorded by `@rm/domain-payments` through the injected hook, in
+ * the reservation's own transaction.
+ */
+export const POST = route<CreateBranchReservationRequest, unknown>({
+  permission: 'reservation.create',
+  body: createBranchReservationRequestSchema,
+  successStatus: 201,
+  handler: async ({ actor, body }) => {
+    if (body.initialPaymentCents !== undefined) {
+      const allowed = requirePermission(actor, 'payment.register');
+      if (!allowed.ok) return allowed;
+    }
+    return createBranchReservation(db(), {
+      tripId: body.tripId,
+      customerId: body.customerId,
+      actorId: actor.userId,
+      initialPayment:
+        body.initialPaymentCents === undefined
+          ? undefined
+          : { amountCents: body.initialPaymentCents, record: createInitialCashPayment(await queue()) },
+    });
   },
 });

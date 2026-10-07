@@ -22,6 +22,13 @@ export const createPaymentIntentRequestSchema = z.object({
   method: paymentIntentMethodSchema,
 });
 
+/** The body of `POST /api/v1/admin/reservations/{reservationId}/payments`: cash at the counter (Phase 2B). */
+export const registerCashPaymentRequestSchema = z.object({
+  amountCents: z.number().int().positive(),
+});
+
+export type RegisterCashPaymentRequest = z.infer<typeof registerCashPaymentRequestSchema>;
+
 /** Response shape for one payment, matching `@rm/domain-payments`' `PaymentDto`. */
 export const paymentSchema = z.object({
   id: uuidSchema,

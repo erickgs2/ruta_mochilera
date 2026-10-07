@@ -6,3 +6,4 @@ export * from './lib/payment-service';
 export * from './lib/receipt-number';
 export * from './lib/webhook-handler';
 export * from './lib/receipt-service';
+export * from './lib/counter-payment';

@@ -500,6 +500,26 @@ cambio de regla.
 El sistema jamás rechaza un abono por ser menor que la mensualidad sugerida.
 Es motivacional: se muestra en la app y se usa en los recordatorios.
 
+## Cobro en efectivo (Fase 2B, Tarea 7, §5.3)
+
+`registerCashPayment` (`POST /admin/reservations/{id}/payments`, permiso
+`payment.register`): un pago `CASH`, `provider = MANUAL`, `SUCCEEDED` al
+instante, `recorded_by` = el trabajador, `paid_at` = ahora, con folio y job
+de recibo en la misma transacción.
+
+- Monto `> 0` y `≤` saldo pendiente (`PAYMENT_EXCEEDS_BALANCE`).
+- **Sólo sobre reservas vivas.** Sobre una `CANCELLED` o `EXPIRED` →
+  `INVALID_STATUS_TRANSITION`: el dinero de un cliente sin reserva viva se
+  registra como saldo a favor (`ADJUSTMENT`), no como pago de una reserva
+  muerta. Una `HELD` cuyo apartado ya venció → `HOLD_EXPIRED`: su lugar ya no
+  está garantizado.
+- Una `HELD` que con este pago cubre el anticipo pasa a `ACTIVE` con el mismo
+  `updateMany` condicionado del webhook.
+- No genera aviso `PAYMENT_CONFIRMED`: el cliente está frente al mostrador y
+  recibe el recibo por correo; un segundo correo sería ruido.
+- El primer pago de una reserva hecha en mostrador usa el mismo camino
+  (`createInitialCashPayment`), inyectado en la transacción de la reserva.
+
 ## Saldo a favor: el modelo (Fase 2B, Tarea 1)
 
 `customer_credit_entries` guarda movimientos con signo: `CANCELLATION`,
