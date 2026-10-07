@@ -10,9 +10,13 @@ import {
   applyCreditToReservation,
   creditBalance,
   creditFromCancellation,
+  creditFromExpiration,
   listCreditEntries,
+  reclaimCreditForRevival,
   refundCredit,
 } from './credit-service';
+import { fail, ok } from '@rm/shared-utils';
+import type { ReviveReservation } from './revival';
 import { seedCustomer, seedReservation, seedStaff } from './test-fixtures';
 
 const db = withTestDb();
@@ -308,5 +312,204 @@ describe('addCreditEntry', () => {
     );
 
     expect(result).toMatchObject({ ok: false, error: { code: 'VALIDATION_FAILED' } });
+  });
+});
+
+describe('creditFromExpiration', () => {
+  const expire = (reservation: { customerId: string; id: string }, paidCents: number) =>
+    db.$transaction((tx: DbTransactionClient) =>
+      creditFromExpiration(tx, { customerId: reservation.customerId, reservationId: reservation.id, paidCents })
+    );
+
+  it('turns what an expired hold had received into credit, leaving paid_cents alone', async () => {
+    const reservation = await seedReservation(db, staffId, { status: 'EXPIRED', paidCents: 40_000 });
+
+    await expire(reservation, 40_000);
+
+    const credit = await listCreditEntries(db, reservation.customerId);
+    expect(credit.ok && credit.value.balanceCents).toBe(40_000);
+    expect(credit.ok && credit.value.entries).toMatchObject([
+      { kind: 'EXPIRATION', amountCents: 40_000, reservationId: reservation.id },
+    ]);
+    expect((await db.reservation.findUniqueOrThrow({ where: { id: reservation.id } })).paidCents).toBe(40_000);
+  });
+
+  it('writes nothing when nothing was paid', async () => {
+    const reservation = await seedReservation(db, staffId, { status: 'EXPIRED' });
+
+    await expire(reservation, 0);
+
+    expect(await db.customerCreditEntry.count()).toBe(0);
+  });
+
+  it('credits the same expiry once, however many times it is asked', async () => {
+    const reservation = await seedReservation(db, staffId, { status: 'EXPIRED', paidCents: 40_000 });
+
+    await expire(reservation, 40_000);
+    await expire(reservation, 40_000);
+
+    expect(await creditBalance(db, reservation.customerId)).toBe(40_000);
+    expect(await db.customerCreditEntry.count({ where: { kind: 'EXPIRATION' } })).toBe(1);
+  });
+
+  it('credits the full paid_cents again when a revived reservation expires a second time', async () => {
+    const reservation = await seedReservation(db, staffId, { status: 'EXPIRED', paidCents: 40_000 });
+    await expire(reservation, 40_000);
+    const revival = await db.$transaction((tx: DbTransactionClient) =>
+      reclaimCreditForRevival(tx, { customerId: reservation.customerId, reservationId: reservation.id, actorId: staffId })
+    );
+    expect(revival).toMatchObject({ ok: true, value: { reclaimedCents: 40_000 } });
+    expect(await creditBalance(db, reservation.customerId)).toBe(0);
+
+    await expire(reservation, 40_000);
+
+    expect(await creditBalance(db, reservation.customerId)).toBe(40_000);
+  });
+});
+
+describe('reclaimCreditForRevival', () => {
+  const reclaim = (reservation: { customerId: string; id: string }) =>
+    db.$transaction((tx: DbTransactionClient) =>
+      reclaimCreditForRevival(tx, { customerId: reservation.customerId, reservationId: reservation.id, actorId: staffId })
+    );
+
+  async function expiredWithCredit(paidCents: number) {
+    const reservation = await seedReservation(db, staffId, { status: 'EXPIRED', paidCents });
+    await db.$transaction((tx: DbTransactionClient) =>
+      creditFromExpiration(tx, { customerId: reservation.customerId, reservationId: reservation.id, paidCents })
+    );
+    return reservation;
+  }
+
+  it('takes back exactly what the expiry credited, as a REVIVAL entry', async () => {
+    const reservation = await expiredWithCredit(40_000);
+    await giveCredit(reservation.customerId, 10_000);
+
+    const result = await reclaim(reservation);
+
+    expect(result).toMatchObject({ ok: true, value: { reclaimedCents: 40_000 } });
+    expect(await creditBalance(db, reservation.customerId)).toBe(10_000);
+    expect(await db.customerCreditEntry.findFirstOrThrow({ where: { kind: 'REVIVAL' } })).toMatchObject({
+      amountCents: -40_000,
+      reservationId: reservation.id,
+      createdById: staffId,
+    });
+  });
+
+  it('takes nothing back twice', async () => {
+    const reservation = await expiredWithCredit(40_000);
+
+    await reclaim(reservation);
+    const again = await reclaim(reservation);
+
+    expect(again).toMatchObject({ ok: true, value: { reclaimedCents: 0 } });
+    expect(await db.customerCreditEntry.count({ where: { kind: 'REVIVAL' } })).toBe(1);
+  });
+
+  it('takes nothing back from a reservation that never expired with payments', async () => {
+    const reservation = await seedReservation(db, staffId, { status: 'EXPIRED' });
+
+    expect(await reclaim(reservation)).toMatchObject({ ok: true, value: { reclaimedCents: 0 } });
+    expect(await db.customerCreditEntry.count()).toBe(0);
+  });
+
+  it('is CREDIT_INSUFFICIENT when the customer already spent or was refunded that credit, and writes nothing', async () => {
+    const reservation = await expiredWithCredit(40_000);
+    const refund = await refundCredit(db, {
+      customerId: reservation.customerId,
+      amountCents: 30_000,
+      reason: 'Returned in cash',
+      actorId: staffId,
+    });
+    expect(refund.ok).toBe(true);
+
+    const result = await reclaim(reservation);
+
+    expect(result).toMatchObject({ ok: false, error: { code: 'CREDIT_INSUFFICIENT' } });
+    expect(await creditBalance(db, reservation.customerId)).toBe(10_000);
+    expect(await db.customerCreditEntry.count({ where: { kind: 'REVIVAL' } })).toBe(0);
+  });
+});
+
+describe('applyCreditToReservation reviving a reservation whose hold ran out (decision 13)', () => {
+  /** Stand-in for `reviveReservationSeat`: see `counter-payment.spec.ts`. */
+  const reviveStub: ReviveReservation = async (tx, { reservationId }) => {
+    const reservation = await tx.reservation.findUniqueOrThrow({ where: { id: reservationId } });
+    if (reservation.status === 'ACTIVE') return ok({ outcome: 'LIVE' as const });
+    if (reservation.status === 'CANCELLED') return fail('INVALID_STATUS_TRANSITION');
+    await tx.reservation.update({
+      where: { id: reservationId },
+      data: { status: 'HELD', holdExpiresAt: new Date(Date.now() + 60 * 60 * 1000) },
+    });
+    return ok({ outcome: 'REVIVED' as const, previousStatus: 'EXPIRED' as const });
+  };
+
+  async function expiredWithPayments(paidCents: number) {
+    const reservation = await seedReservation(db, staffId, { status: 'EXPIRED', paidCents });
+    await db.payment.create({
+      data: {
+        reservationId: reservation.id,
+        amountCents: paidCents,
+        method: 'CASH',
+        status: 'SUCCEEDED',
+        provider: 'MANUAL',
+        paidAt: new Date(),
+      },
+    });
+    await db.$transaction((tx: DbTransactionClient) =>
+      creditFromExpiration(tx, { customerId: reservation.customerId, reservationId: reservation.id, paidCents })
+    );
+    return reservation;
+  }
+
+  it('takes the expiry credit back first, then spends the rest of the customer\'s credit on the revived reservation', async () => {
+    const reservation = await expiredWithPayments(40_000);
+    await giveCredit(reservation.customerId, 100_000);
+
+    const applied = await applyCreditToReservation(
+      db,
+      queue,
+      { reservationId: reservation.id, amountCents: 60_000, actorId: staffId },
+      reviveStub
+    );
+
+    expect(applied.ok).toBe(true);
+    expect(await db.reservation.findUniqueOrThrow({ where: { id: reservation.id } })).toMatchObject({
+      status: 'ACTIVE',
+      paidCents: 100_000,
+    });
+    // 40,000 expiry + 100,000 given − 40,000 taken back − 60,000 applied.
+    expect(await creditBalance(db, reservation.customerId)).toBe(40_000);
+  });
+
+  it('is CREDIT_INSUFFICIENT and undoes the revival when the credit left cannot pay the amount after the reclaim', async () => {
+    const reservation = await expiredWithPayments(40_000);
+
+    const applied = await applyCreditToReservation(
+      db,
+      queue,
+      { reservationId: reservation.id, amountCents: 20_000, actorId: staffId },
+      reviveStub
+    );
+
+    expect(applied).toMatchObject({ ok: false, error: { code: 'CREDIT_INSUFFICIENT' } });
+    expect((await db.reservation.findUniqueOrThrow({ where: { id: reservation.id } })).status).toBe('EXPIRED');
+    expect(await creditBalance(db, reservation.customerId)).toBe(40_000);
+    expect(await db.customerCreditEntry.count({ where: { kind: 'REVIVAL' } })).toBe(0);
+  });
+
+  it('refuses a stranger\'s reservation before reviving anything', async () => {
+    const reservation = await expiredWithPayments(40_000);
+    const stranger = await seedCustomer(db);
+
+    const applied = await applyCreditToReservation(
+      db,
+      queue,
+      { customerId: stranger, reservationId: reservation.id, amountCents: 1_000, actorId: staffId },
+      reviveStub
+    );
+
+    expect(applied).toMatchObject({ ok: false, error: { code: 'RESERVATION_NOT_OWNED' } });
+    expect((await db.reservation.findUniqueOrThrow({ where: { id: reservation.id } })).status).toBe('EXPIRED');
   });
 });

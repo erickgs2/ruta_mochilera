@@ -11,6 +11,7 @@ flowchart LR
     subgraph Entradas["Suman (+)"]
         C["CANCELLATION<br/>reserva cancelada con paid_cents > 0,<br/>o pago que llega tras cancelar"]
         P["PRICE_DECREASE<br/>bajada de precio bajo lo pagado:<br/>la diferencia sale de paid_cents"]
+        E["EXPIRATION<br/>apartado vencido con paid_cents > 0:<br/>la reserva conserva paid_cents"]
         AP["ADJUSTMENT +<br/>corrección o cortesía, con motivo"]
     end
     subgraph Saldo["Saldo del cliente"]
@@ -20,20 +21,24 @@ flowchart LR
         A["APPLIED<br/>pago CREDIT a una reserva viva"]
         R["REFUND<br/>devuelto fuera del sistema, con motivo"]
         AN["ADJUSTMENT −<br/>corrección, con motivo"]
+        RV["REVIVAL<br/>se revive una reserva vencida:<br/>el dinero vuelve a contar en la reserva"]
     end
     C --> S
     P --> S
+    E --> S
     AP --> S
     S --> A
     S --> R
     S --> AN
+    S --> RV
 ```
 
-Las dos entradas automáticas (`CANCELLATION` y `PRICE_DECREASE`) las escriben
-funciones de `@rm/domain-payments` que las operaciones de reservas reciben
-**inyectadas**, dentro de su propia transacción: los dos dominios no se
-importan entre sí. `REFUND`, `ADJUSTMENT` y `APPLIED` los dispara siempre una
-persona con `payment.credit.apply`.
+Las entradas automáticas (`CANCELLATION`, `PRICE_DECREASE` y `EXPIRATION`) y la
+salida automática `REVIVAL` las escriben funciones de `@rm/domain-payments` que
+las operaciones de reservas y el worker reciben **inyectadas**, dentro de su
+propia transacción: los dominios no se importan entre sí. `REFUND`,
+`ADJUSTMENT` y `APPLIED` los dispara siempre una persona con
+`payment.credit.apply`.
 
 ## Cómo nace el saldo
 
@@ -59,6 +64,20 @@ sequenceDiagram
     end
 
     rect rgb(240, 240, 240)
+        Note over Op,DB: "Vence un apartado con pagos (expireHolds)"
+        Op->>DB: "UPDATE condicional HELD vencido → EXPIRED (sólo una llamada gana)"
+        Op->>DB: "faltante = paid_cents − neto(EXPIRATION + REVIVAL de la reserva)"
+        Op->>DB: "faltante > 0 ? EXPIRATION (+faltante)"
+        Note over DB: "la reserva conserva paid_cents, y repetir la expiración no duplica"
+    end
+
+    rect rgb(240, 240, 240)
+        Note over Op,DB: "Revivir una reserva vencida en el mostrador"
+        Op->>DB: "neto(EXPIRATION + REVIVAL) > 0 ? REVIVAL (−neto)"
+        Note over DB: "si el saldo ya no alcanza: CREDIT_INSUFFICIENT y no se escribe nada"
+    end
+
+    rect rgb(240, 240, 240)
         Note over Op,DB: "Bajar el precio de una reserva pagada de más"
         Op->>DB: "paid_cents -= diferencia, total = precio vigente"
         Op->>DB: "PRICE_DECREASE (+diferencia)"
@@ -77,18 +96,25 @@ sequenceDiagram
 
     P->>API: "POST /admin/reservations/{id}/apply-credit { amountCents }"
     API->>DB: "BEGIN"
+    opt "apartado vencido (HELD pasada de hora o EXPIRED)"
+        API->>DB: "SELECT trips ... FOR UPDATE, luego la reserva FOR UPDATE"
+        alt "sin lugar, viaje sin publicar, otra reserva viva del cliente o CANCELLED"
+            API-->>P: "409 TRIP_SOLD_OUT, TRIP_NOT_PUBLISHED, DUPLICATE_RESERVATION o INVALID_STATUS_TRANSITION (ROLLBACK)"
+        else "queda lugar"
+            API->>DB: "reserva → HELD con apartado nuevo"
+            API->>DB: "EXPIRED: REVIVAL (−lo que el vencimiento acreditó)"
+        end
+    end
     API->>DB: "SELECT reservations ... FOR UPDATE"
-    alt "reserva CANCELLED o EXPIRED"
-        API-->>P: "409 INVALID_STATUS_TRANSITION"
-    else "HELD con el apartado vencido"
-        API-->>P: "409 HOLD_EXPIRED"
+    alt "reserva CANCELLED"
+        API-->>P: "409 INVALID_STATUS_TRANSITION (ROLLBACK si se había revivido)"
     else "reserva viva"
         API->>DB: "SELECT customer_profiles (el dueño de la reserva) ... FOR UPDATE"
         API->>DB: "SUM(amount_cents) del cliente"
-        alt "monto > saldo"
-            API-->>P: "409 CREDIT_INSUFFICIENT"
+        alt "monto > saldo (ya sin lo recuperado)"
+            API-->>P: "409 CREDIT_INSUFFICIENT (ROLLBACK si se había revivido)"
         else "monto > saldo pendiente de la reserva"
-            API-->>P: "422 PAYMENT_EXCEEDS_BALANCE"
+            API-->>P: "422 PAYMENT_EXCEEDS_BALANCE (ROLLBACK si se había revivido)"
         else "cabe"
             API->>DB: "INSERT Payment CREDIT SUCCEEDED + folio + foto del saldo"
             API->>DB: "paid_cents += monto, HELD → ACTIVE si cubre el anticipo"

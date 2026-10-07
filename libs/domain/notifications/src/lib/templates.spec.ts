@@ -72,8 +72,22 @@ describe('renderTemplate', () => {
     // an expired OXXO voucher and a payment that landed after its hold had
     // already expired; and Task 19's payment that landed after staff had
     // cancelled the reservation; and the customer's notice that staff
-    // declined their cancellation request; and Phase 2B's price change.
-    expect(DELIVERY_EVENT_TYPES).toHaveLength(13);
+    // declined their cancellation request; and Phase 2B's price change and
+    // the expired-hold notice that says the money became credit.
+    expect(DELIVERY_EVENT_TYPES).toHaveLength(14);
+  });
+
+  it('says in both languages that the money of an expired hold became credit', () => {
+    const params = { tripName: 'Oaxaca', amount: '$400.00 MXN' };
+
+    const es = renderTemplate('HOLD_EXPIRED_CREDIT', 'es', params);
+    const en = renderTemplate('HOLD_EXPIRED_CREDIT', 'en', params);
+
+    expect(es.body).toContain('$400.00 MXN');
+    expect(es.body).toContain('saldo a favor');
+    expect(en.body).toContain('$400.00 MXN');
+    expect(en.body).toContain('credit');
+    expect(`${es.subject}${es.body}${en.subject}${en.body}`).not.toContain('{{');
   });
 
   it('puts the staff notice first and mentions credit only when the change created some (Phase 2B)', () => {

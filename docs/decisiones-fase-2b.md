@@ -220,7 +220,36 @@ los históricos. Ver `docs/diagrams/payment-flow.md`, «Pagos históricos».
 
 ---
 
-## Decididas por el dueño, en implementación
+## Decididas por el dueño, implementadas
+
+### 13. Un cobro en el mostrador revive un apartado vencido si queda lugar
+
+Antes el cobro en efectivo o la aplicación de saldo sobre una reserva con el
+apartado vencido respondía `HOLD_EXPIRED`. **El dueño decidió que ya no
+bloquea**: el personal puede cobrar en efectivo o aplicar saldo a una reserva
+vencida, sea una `HELD` pasada de su hora o una `EXPIRED`, **si queda un lugar
+bajo el candado del viaje**.
+
+- Si el pago cubre el anticipo, la reserva **revive como `ACTIVE`**.
+- Si no lo cubre, revive como `HELD` con un apartado nuevo (`hold_ttl_hours`
+  del viaje desde ahora).
+- Si ya no queda lugar, `TRIP_SOLD_OUT` y no se escribe nada.
+- Una reserva `CANCELLED` **no revive**: sigue siendo `INVALID_STATUS_TRANSITION`,
+  y el dinero de un cliente sin reserva viva se registra como saldo a favor.
+- El viaje debe seguir `PUBLISHED` (`TRIP_NOT_PUBLISHED`); el plazo de pago
+  **no** se exige. Si el cliente ya reservó de nuevo ese viaje,
+  `DUPLICATE_RESERVATION`.
+- Los pagos por webhook **no** reviven nada: un pago tardío sobre una `EXPIRED`
+  se registra como siempre (fuera de alcance).
+- No hay aviso extra de reactivación: el cliente recibe el recibo del cobro.
+
+**Implementación.** `reviveReservationSeat` (`@rm/domain-reservations`) decide
+el lugar y `registerCashPayment`/`applyCreditToReservation` (`@rm/domain-payments`)
+lo reciben inyectado y registran el dinero, todo en una transacción que se
+revierte completa si falla cualquier paso. **Orden de bloqueo en toda
+operación: viaje, reserva, cliente.** Reglas en `reservations.md` («Revivir una
+reserva vencida») y `payments.md` («Revivir con un cobro»); diagramas en
+`trip-reservation.md`, `payment-flow.md` y `customer-credit.md`.
 
 ### 16. Un apartado que vence con pagos devuelve lo pagado como saldo a favor
 
@@ -229,31 +258,31 @@ Cuando una reserva `HELD` que ya recibió un pago (menor al anticipo) vence y
 cliente**, igual que al cancelar (decisión 6). Antes el dinero se quedaba en una
 reserva muerta, sin movimiento que lo hiciera disponible.
 
-**Estado: en implementación.** Esta decisión la tomó el dueño y se está
-construyendo; las reglas y los diagramas (`reservations.md`, `payments.md`,
-`customer-credit.md`) se actualizan en el mismo commit que el código, y este
-registro se completa con el detalle cuando llegue.
+- La reserva `EXPIRED` **conserva** `paid_cents` y sus pagos (como una
+  cancelada); el saldo se escribe como `EXPIRATION`, en la transacción de
+  `expireHolds`, y es idempotente.
+- Un saldo que se había aplicado a esa reserva (método `CREDIT`) también
+  vuelve como `EXPIRATION`: el dinero da la vuelta completa.
+- El aviso es `HOLD_EXPIRED_CREDIT`, una variante de `HOLD_EXPIRED` que dice
+  dónde quedó el dinero; no es un aviso adicional.
+- **Revivir toma el saldo de vuelta** (`REVIVAL`), para no devolver el mismo
+  dinero dos veces; si el cliente ya lo gastó o se le devolvió →
+  `CREDIT_INSUFFICIENT` y el personal ajusta con un `ADJUSTMENT`.
+- Un pago tardío por webhook sobre una `EXPIRED` queda como estaba: sin saldo
+  automático (fuera de alcance). **Cuidado operativo:** si se va a revivir la reserva, no se ajusta el
+  saldo (el dinero contaría doble); se cobra o se revive sobre ella. Si no se
+  va a revivir y hay que devolver el dinero, la secuencia es un `ADJUSTMENT`
+  positivo por el monto del pago tardío y luego un `REFUND` por el mismo monto
+  (un `REFUND` directo da `CREDIT_INSUFFICIENT` porque ese pago nunca llegó al
+  saldo), y la reserva ya no se revive. Ver la advertencia en `payments.md`,
+  «Caso límite: pago confirmado de una reserva ya expirada».
 
-### 13. Un cobro en el mostrador revive un apartado vencido si queda lugar
+La invariante que comprueban las pruebas: para cada reserva, el saldo que dejó
+en el cliente más su `paid_cents` si está viva es exactamente lo pagado.
+Reglas en `payments.md` («Lo pagado de un apartado vencido») y
+`reservations.md`; diagramas en `customer-credit.md` y `payment-flow.md`.
 
-Antes (y todavía en el código al momento de escribir esto) el cobro en efectivo
-o la aplicación de saldo sobre una reserva con el apartado vencido respondía
-`HOLD_EXPIRED`. **El dueño decidió que ya no bloquea**: el personal puede cobrar
-en efectivo o aplicar saldo a una reserva vencida, sea una `HELD` pasada de su
-hora o una `EXPIRED`, **si queda un lugar bajo el candado del viaje**.
-
-- Si el pago cubre el anticipo, la reserva **revive como `ACTIVE`**.
-- Si no lo cubre, revive como `HELD` con un apartado nuevo.
-- Si ya no queda lugar, `TRIP_SOLD_OUT` y no se escribe nada.
-- Una reserva `CANCELLED` **no revive**: sigue siendo `INVALID_STATUS_TRANSITION`,
-  y el dinero de un cliente sin reserva viva se registra como saldo a favor.
-
-**Estado: en implementación.** Las reglas y los diagramas (`payments.md`,
-`reservations.md`, `payment-flow.md`, `trip-reservation.md`, `customer-credit.md`)
-se actualizan en el mismo commit que el código; hasta entonces describen el
-comportamiento anterior (`HOLD_EXPIRED`). Se registra aquí primero para que la
-decisión no se pierda. Sustituye a la observación original sobre `HOLD_EXPIRED`
-(la spec §5.3 sólo exigía `HELD` o `ACTIVE`).
+---
 
 ## Casos inertes conocidos
 

@@ -148,10 +148,11 @@ validación del saldo, mismo folio, misma activación.
 flowchart TD
     A["Efectivo: POST /admin/reservations/{id}/payments<br/>(payment.register)"] --> L
     A2["Saldo: POST /admin/reservations/{id}/apply-credit<br/>(payment.credit.apply)"] --> L
-    L[("BEGIN + SELECT reservations ... FOR UPDATE")] --> S{"¿HELD o ACTIVE?"}
+    L[("BEGIN + viaje y reserva FOR UPDATE")] --> S{"¿HELD o ACTIVE?"}
     S -- No --> E1["INVALID_STATUS_TRANSITION"]
-    S -- Sí --> H{"¿HELD con el apartado vencido?"}
-    H -- Sí --> E2["HOLD_EXPIRED"]
+    S -- Sí --> H{"¿HELD con el apartado vencido o EXPIRED?"}
+    H -- Sí --> E2["Se revive si queda lugar (decisión 13),<br/>si no TRIP_SOLD_OUT"]
+    E2 --> K
     H -- No --> K{"¿Es saldo a favor?"}
     K -- Sí --> K2["Candado del cliente + SUM del saldo:<br/>monto > saldo → CREDIT_INSUFFICIENT"]
     K -- No --> B
@@ -343,3 +344,35 @@ El aviso al personal va **enlazado a la reserva** siempre que se sabe cuál es
 (un segundo pago que excede el saldo, un pago que llegó sobre uno ya dado por
 perdido): es justo cuando alguien tiene que actuar a mano. Antes el aviso
 salía sin enlace aunque el intento la nombrara.
+
+## Cobro en el mostrador sobre un apartado vencido (decisión 13)
+
+```mermaid
+flowchart TD
+    A["Cobro en efectivo o saldo<br/>sobre una reserva"] --> B{"Estado"}
+    B -- "ACTIVE o HELD vigente" --> P["recordPayment (como siempre)"]
+    B -- "CANCELLED" --> X["INVALID_STATUS_TRANSITION"]
+    B -- "HELD vencida o EXPIRED" --> C["Candado del viaje, luego de la reserva"]
+    C --> D{"¿Viaje publicado, sin otra reserva viva del cliente<br/>y con lugar?"}
+    D -- No --> Y["TRIP_NOT_PUBLISHED, DUPLICATE_RESERVATION o TRIP_SOLD_OUT<br/>(no se escribe nada)"]
+    D -- Sí --> E["Reserva → HELD con apartado nuevo"]
+    E --> F{"¿Era EXPIRED?"}
+    F -- Sí --> G["REVIVAL: el saldo que dejó el vencimiento<br/>vuelve a la reserva (CREDIT_INSUFFICIENT si ya se gastó)"]
+    F -- No --> P
+    G --> P
+    P --> H{"¿Cubre el anticipo?"}
+    H -- Sí --> I["ACTIVE"]
+    H -- No --> J["HELD con el apartado nuevo"]
+```
+
+Si cualquier paso falla después de revivir, la transacción entera se revierte.
+
+## El dinero de un apartado que vence (decisión 16)
+
+```mermaid
+flowchart LR
+    A["expireHolds:<br/>HELD vencido → EXPIRED<br/>(UPDATE condicional)"] --> B{"¿paid_cents > 0?"}
+    B -- No --> C["Sólo el aviso HOLD_EXPIRED"]
+    B -- Sí --> D["EXPIRATION al saldo del cliente<br/>por lo que aún no está acreditado<br/>(misma transacción)"]
+    D --> E["La reserva conserva paid_cents y sus pagos;<br/>revivirla en el mostrador toma el saldo de vuelta<br/>con un REVIVAL (ver customer-credit.md)"]
+```

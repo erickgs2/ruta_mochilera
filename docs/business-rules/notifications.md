@@ -141,6 +141,16 @@ saldo a favor sólo aparece cuando el cambio lo creó: una línea de «$0.00 a
 favor» se leería como error. Es la primera plantilla que se arma con una
 función propia en lugar de `template()`, por esa frase condicional.
 
+## `HOLD_EXPIRED_CREDIT` (Fase 2B, decisión 16)
+
+Variante de `HOLD_EXPIRED` para un apartado que **ya había recibido dinero**:
+dice lo mismo —el apartado expiró y el lugar se liberó— y añade que lo pagado
+(`{{amount}}`) quedó como saldo a favor en su cuenta, que la agencia puede
+aplicar a una nueva reservación o devolver. `expireHolds` la envía en lugar de
+`HOLD_EXPIRED` sólo cuando acreditó algo; un apartado sin pagos sigue
+recibiendo `HOLD_EXPIRED`. No es un aviso adicional: es uno u otro, dentro de
+la misma transacción.
+
 ## Un fallo de envío no debe perder la copia de bandeja
 
 Si `EmailProvider.send` falla (dirección mal formada, proveedor caído), la
