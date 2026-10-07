@@ -561,8 +561,8 @@ de recibo en la misma transacción.
 ## Saldo a favor: el modelo (Fase 2B, Tarea 1)
 
 `customer_credit_entries` guarda movimientos con signo: `CANCELLATION`,
-`PRICE_DECREASE` y `ADJUSTMENT` positivo suman; `APPLIED`, `REFUND` y
-`ADJUSTMENT` negativo restan. **El saldo de un cliente es la suma de sus
+`PRICE_DECREASE`, `EXPIRATION` y `ADJUSTMENT` positivo suman; `APPLIED`,
+`REFUND`, `REVIVAL` y `ADJUSTMENT` negativo restan. **El saldo de un cliente es la suma de sus
 movimientos**, nunca una columna editable. La base rechaza un movimiento de
 monto cero (CHECK `customer_credit_entries_amount_not_zero`): no mueve dinero
 y sólo ensucia el historial.
@@ -580,6 +580,8 @@ y sólo ensucia el historial.
 |---|---|---|---|
 | `CANCELLATION` | + | Automático | Al cancelar una reserva con `paid_cents > 0`, y cuando llega dinero para una reserva ya cancelada |
 | `PRICE_DECREASE` | + | Automático | Al bajar el precio por debajo de lo pagado; ese monto **sale** de `paid_cents` de la reserva (ver `reservations.md`) |
+| `EXPIRATION` | + | Automático | Al vencer un apartado `HELD` con `paid_cents > 0`; la reserva `EXPIRED` conserva `paid_cents` y sus pagos |
+| `REVIVAL` | − | Automático | Al revivir una reserva `EXPIRED` en el mostrador: devuelve a la reserva lo que `EXPIRATION` había pasado al saldo |
 | `APPLIED` | − | Personal | Aplicar saldo a una reserva viva del mismo cliente |
 | `REFUND` | − | Personal | Se devolvió el dinero **fuera del sistema**; motivo obligatorio |
 | `ADJUSTMENT` | ± | Personal | Corrección o cortesía; motivo obligatorio |
@@ -619,6 +621,34 @@ Como es un pago más, `paid_cents` sigue siendo la suma de pagos `SUCCEEDED`
 y la conciliación nocturna no necesita caso especial. Para la Fase 3: un pago
 `CREDIT` es un **traslado**, no un ingreso; los reportes de ingresos deben
 excluirlo para no contar dos veces el mismo dinero.
+
+### Lo pagado de un apartado vencido (decisión 16)
+
+Un apartado `HELD` que ya recibió pagos (menos que el anticipo) y vence deja
+su dinero en el saldo del cliente, igual que al cancelar (decisión 6).
+`creditFromExpiration` lo escribe dentro de la transacción de `expireHolds`,
+en la llamada que de verdad expiró la reserva, y le llega **inyectado** al
+job —el worker y los dominios no se importan—. Como la reserva conserva
+`paid_cents`, lo que se acredita es **lo que aún no está acreditado**:
+`paid_cents` menos el neto de sus movimientos `EXPIRATION` y `REVIVAL`. Por eso
+repetir la expiración no duplica nada, y una reserva revivida que vuelve a
+vencer se acredita completa otra vez (el `REVIVAL` ya había devuelto el primer
+crédito). El saldo `CREDIT` que se había aplicado a esa reserva también
+vuelve como `EXPIRATION`: el dinero da la vuelta completa y queda donde
+empezó.
+
+`reclaimCreditForRevival` es la mitad contraria: al revivir una reserva
+`EXPIRED`, escribe un `REVIVAL` negativo por ese neto, porque el dinero vuelve a
+contar en la reserva (`paid_cents` nunca dejó de contarlo). Si el cliente ya
+gastó o se le devolvió ese saldo →
+`CREDIT_INSUFFICIENT` y no se escribe nada: revivir contaría el mismo dinero
+dos veces; el personal lo arregla antes con un `ADJUSTMENT`.
+
+**Invariante** (la que verifican las pruebas): para cada reserva, el saldo
+que ella dejó en el cliente más su `paid_cents` si está `HELD`/`ACTIVE` (o 0 si
+no lo está) es la suma de sus pagos `SUCCEEDED`. El mismo dinero nunca está
+a la vez en el saldo y en una reserva viva. `reconcilePaidCents` no cambia:
+ninguno de los dos movimientos toca `paid_cents`.
 
 ### Dinero que llega después de cancelar
 

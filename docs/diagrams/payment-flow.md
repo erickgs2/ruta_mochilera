@@ -343,3 +343,13 @@ El aviso al personal va **enlazado a la reserva** siempre que se sabe cuál es
 (un segundo pago que excede el saldo, un pago que llegó sobre uno ya dado por
 perdido): es justo cuando alguien tiene que actuar a mano. Antes el aviso
 salía sin enlace aunque el intento la nombrara.
+
+## El dinero de un apartado que vence (decisión 16)
+
+```mermaid
+flowchart LR
+    A["expireHolds:<br/>HELD vencido → EXPIRED<br/>(UPDATE condicional)"] --> B{"¿paid_cents > 0?"}
+    B -- No --> C["Sólo el aviso HOLD_EXPIRED"]
+    B -- Sí --> D["EXPIRATION al saldo del cliente<br/>por lo que aún no está acreditado<br/>(misma transacción)"]
+    D --> E["La reserva conserva paid_cents y sus pagos;<br/>revivirla en el mostrador toma el saldo de vuelta<br/>con un REVIVAL (ver customer-credit.md)"]
+```

@@ -11,6 +11,7 @@ flowchart LR
     subgraph Entradas["Suman (+)"]
         C["CANCELLATION<br/>reserva cancelada con paid_cents > 0,<br/>o pago que llega tras cancelar"]
         P["PRICE_DECREASE<br/>bajada de precio bajo lo pagado:<br/>la diferencia sale de paid_cents"]
+        E["EXPIRATION<br/>apartado vencido con paid_cents > 0:<br/>la reserva conserva paid_cents"]
         AP["ADJUSTMENT +<br/>corrección o cortesía, con motivo"]
     end
     subgraph Saldo["Saldo del cliente"]
@@ -20,20 +21,24 @@ flowchart LR
         A["APPLIED<br/>pago CREDIT a una reserva viva"]
         R["REFUND<br/>devuelto fuera del sistema, con motivo"]
         AN["ADJUSTMENT −<br/>corrección, con motivo"]
+        RV["REVIVAL<br/>se revive una reserva vencida:<br/>el dinero vuelve a contar en la reserva"]
     end
     C --> S
     P --> S
+    E --> S
     AP --> S
     S --> A
     S --> R
     S --> AN
+    S --> RV
 ```
 
-Las dos entradas automáticas (`CANCELLATION` y `PRICE_DECREASE`) las escriben
-funciones de `@rm/domain-payments` que las operaciones de reservas reciben
-**inyectadas**, dentro de su propia transacción: los dos dominios no se
-importan entre sí. `REFUND`, `ADJUSTMENT` y `APPLIED` los dispara siempre una
-persona con `payment.credit.apply`.
+Las entradas automáticas (`CANCELLATION`, `PRICE_DECREASE` y `EXPIRATION`) y la
+salida automática `REVIVAL` las escriben funciones de `@rm/domain-payments` que
+las operaciones de reservas y el worker reciben **inyectadas**, dentro de su
+propia transacción: los dominios no se importan entre sí. `REFUND`,
+`ADJUSTMENT` y `APPLIED` los dispara siempre una persona con
+`payment.credit.apply`.
 
 ## Cómo nace el saldo
 
@@ -56,6 +61,20 @@ sequenceDiagram
         Note over Op,DB: "Llega dinero para una reserva ya cancelada (webhook)"
         Op->>DB: "¿ya hay CANCELLATION de ese payment_id? Si sí, no hace nada"
         Op->>DB: "CANCELLATION (+monto, payment_id)"
+    end
+
+    rect rgb(240, 240, 240)
+        Note over Op,DB: "Vence un apartado con pagos (expireHolds)"
+        Op->>DB: "UPDATE condicional HELD vencido → EXPIRED (sólo una llamada gana)"
+        Op->>DB: "faltante = paid_cents − neto(EXPIRATION + REVIVAL de la reserva)"
+        Op->>DB: "faltante > 0 ? EXPIRATION (+faltante)"
+        Note over DB: "la reserva conserva paid_cents, y repetir la expiración no duplica"
+    end
+
+    rect rgb(240, 240, 240)
+        Note over Op,DB: "Revivir una reserva vencida en el mostrador"
+        Op->>DB: "neto(EXPIRATION + REVIVAL) > 0 ? REVIVAL (−neto)"
+        Note over DB: "si el saldo ya no alcanza: CREDIT_INSUFFICIENT y no se escribe nada"
     end
 
     rect rgb(240, 240, 240)

@@ -332,6 +332,91 @@ export async function creditFromCancellation(
 }
 
 /**
+ * The credit a reservation's earlier expiry left with the customer and a
+ * revival has not taken back yet: the sum of its `EXPIRATION` and `REVIVAL`
+ * entries. Read after the customer lock is held, like every ledger sum.
+ */
+async function outstandingExpirationCredit(tx: DbTransactionClient, reservationId: string): Promise<number> {
+  const sum = await tx.customerCreditEntry.aggregate({
+    where: { reservationId, kind: { in: ['EXPIRATION', 'REVIVAL'] } },
+    _sum: { amountCents: true },
+  });
+  return sum._sum.amountCents ?? 0;
+}
+
+/**
+ * The money an expired hold had received becomes the customer's credit
+ * (`EXPIRATION`, business rule 5.3), written in `expireHolds`' own
+ * transaction, on the call that actually expired the reservation -- the same
+ * shape as `creditFromCancellation`, injected into the worker the same way.
+ *
+ * `paid_cents` stays where it is (the reservation keeps its payments, like a
+ * cancelled one), so what is credited is the part of it **not yet credited**:
+ * `paid_cents` minus the outstanding `EXPIRATION`/`REVIVAL` balance of that
+ * reservation. A second call for the same expiry therefore writes nothing,
+ * and a reservation revived and expired again is credited its full
+ * `paid_cents` again, because the revival took the first credit back.
+ *
+ * The caller holds the reservation lock (its conditional update); this takes
+ * the customer's: reservation first, customer second.
+ */
+export async function creditFromExpiration(
+  tx: DbTransactionClient,
+  input: { customerId: string; reservationId: string; paidCents: number; actorId?: string }
+): Promise<void> {
+  if (input.paidCents <= 0) return;
+  if (!(await lockCustomer(tx, input.customerId))) return;
+
+  const missing = input.paidCents - (await outstandingExpirationCredit(tx, input.reservationId));
+  if (missing <= 0) return;
+
+  const entry = await addCreditEntry(tx, {
+    customerId: input.customerId,
+    amountCents: missing,
+    kind: 'EXPIRATION',
+    reservationId: input.reservationId,
+    actorId: input.actorId,
+  });
+  // A positive entry is only refused for a customer that does not exist,
+  // which a reservation pointing at them rules out.
+  if (!entry.ok) throw new Error(`Expiration credit refused: ${entry.error.code}`);
+}
+
+/**
+ * Takes back, from the customer's credit, what an expired reservation's
+ * expiry credited -- the first half of reviving it (the money goes back onto
+ * the reservation, where `paid_cents` never stopped counting it). Writes one
+ * negative `REVIVAL` entry for the outstanding amount; nothing to take back
+ * (the reservation never expired with payments, or was already revived)
+ * writes nothing.
+ *
+ * `CREDIT_INSUFFICIENT` when the customer has already spent or been
+ * refunded that credit: reviving would count the same money twice, so staff
+ * settle it first with an `ADJUSTMENT`. Like every ledger write it runs under
+ * the customer lock; the caller already holds the trip's and the
+ * reservation's.
+ */
+export async function reclaimCreditForRevival(
+  tx: DbTransactionClient,
+  input: { customerId: string; reservationId: string; actorId: string }
+): Promise<Result<{ reclaimedCents: number }>> {
+  if (!(await lockCustomer(tx, input.customerId))) return fail('NOT_FOUND');
+
+  const outstanding = await outstandingExpirationCredit(tx, input.reservationId);
+  if (outstanding <= 0) return ok({ reclaimedCents: 0 });
+
+  const entry = await addCreditEntry(tx, {
+    customerId: input.customerId,
+    amountCents: -outstanding,
+    kind: 'REVIVAL',
+    reservationId: input.reservationId,
+    actorId: input.actorId,
+  });
+  if (!entry.ok) return entry;
+  return ok({ reclaimedCents: outstanding });
+}
+
+/**
  * The hook `applyPriceChange` (`@rm/domain-reservations`) receives: what a
  * reservation had paid above its new, lower total becomes the customer's
  * credit (`PRICE_DECREASE`), in the price change's own transaction. The
