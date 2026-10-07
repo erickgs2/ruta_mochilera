@@ -129,6 +129,23 @@ campañas siguen siendo de la Fase 3.
 
 ---
 
+## Pendientes
+
+Limitaciones conocidas que se documentan tal como son hoy
+(`docs/business-rules/imports.md`, «Limitaciones conocidas») hasta que se
+diseñe la solución.
+
+- **Pendiente: un lote de importación caído no tiene salida.** Si el worker se
+  cae a medias, el lote queda `APPLYING` y no hay forma de reanudarlo ni de
+  cancelarlo desde el panel ni la API (`IMPORT_ALREADY_APPLIED`). Relacionada con
+  la decisión 2: el reintento automático se descartó a propósito, pero no se
+  construyó la acción manual que la reemplaza.
+- **Pendiente: el job `APPLY_IMPORT` vence a la hora** (`expireInSeconds: 3600`).
+  Un lote muy grande puede quedar `APPLYING` por esa causa y caer en el mismo
+  problema.
+
+---
+
 ## Observadas en el código; por confirmar
 
 El plan dice «donde este plan y el código difieran, manda el código». Estas
