@@ -47,6 +47,9 @@
             {{ 'trips.manageCosting' | translate }}
           </a>
         </div>
+        <div class="trips-card-actions" *rmHasPermission="'trip.change_price'">
+          <a mat-button [routerLink]="[row.id, 'price-change']">{{ 'priceChange.title' | translate }}</a>
+        </div>
       </div>
     }
   </div>
@@ -102,6 +105,14 @@
             [attr.aria-label]="'trips.manageCosting' | translate"
           >
             <mat-icon>payments</mat-icon>
+          </a>
+          <a
+            mat-icon-button
+            *rmHasPermission="'trip.change_price'"
+            [routerLink]="[row.id, 'price-change']"
+            [attr.aria-label]="'priceChange.title' | translate"
+          >
+            <mat-icon>price_change</mat-icon>
           </a>
         </td>
       </ng-container>

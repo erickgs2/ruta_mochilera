@@ -1,0 +1,58 @@
+.batch-back {
+  margin-bottom: 0.5rem;
+}
+
+.batch-meta,
+.batch-applying {
+  color: var(--rm-ink-soft);
+}
+
+.batch-summary {
+  font-weight: 600;
+}
+
+.batch-apply {
+  margin: 0.5rem 0 1rem;
+}
+
+.batch-filter {
+  display: block;
+  margin-bottom: 0.5rem;
+}
+
+.batch-file-errors,
+.batch-error {
+  color: var(--mat-sys-error);
+}
+
+.batch-table-container {
+  overflow-x: auto;
+}
+
+.batch-table {
+  width: 100%;
+}
+
+.batch-values {
+  overflow-wrap: anywhere;
+}
+
+.batch-problem {
+  color: var(--rm-danger);
+  font-weight: 600;
+}
+
+.batch-detail {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  padding-block: 0.25rem;
+}
+
+.batch-error-chip {
+  padding: 0.125rem 0.5rem;
+  border-radius: var(--rm-radius-pill);
+  background: var(--rm-danger-soft);
+  color: var(--rm-danger);
+  font-size: 0.8rem;
+}

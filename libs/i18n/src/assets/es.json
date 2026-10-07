@@ -272,7 +272,7 @@
     "roles": "Roles",
     "customers": "Clientes",
     "imports": "Importaciones",
-    "settings": "Datos de la agencia"
+    "settings": "Agencia"
   },
   "forbidden": {
     "title": "Acceso restringido",
@@ -783,10 +783,10 @@
     "noticeEn": "Aviso en inglés (opcional)",
     "noticeRequired": "El aviso en español es obligatorio.",
     "noticeHint": "Lo recibe cada cliente afectado junto con sus nuevos números.",
-    "apply": "Aplicar a {{count}} reservas",
-    "confirmTitle": "Actualizar {{count}} reservas",
+    "apply": "Aplicar a las reservas ({{count}})",
+    "confirmTitle": "Actualizar las reservas ({{count}})",
     "confirmMessage": "Las reservas toman el precio de {{price}} y cada cliente recibe el aviso. No se puede deshacer.",
-    "applied": "Precio actualizado en {{count}} reservas."
+    "applied": "Precio actualizado. Reservas: {{count}}."
   },
   "backfill": {
     "title": "Captura histórica",
@@ -844,7 +844,7 @@
       "APPLIED": "Aplicado",
       "FAILED": "Archivo inválido"
     },
-    "summary": "{{ok}} filas listas y {{failed}} con errores, de {{total}}.",
+    "summary": "Listas: {{ok}} · Con errores: {{failed}} · Total: {{total}}",
     "row": "Fila",
     "rowStatus": {
       "VALID": "Lista",
@@ -857,7 +857,7 @@
       "FAILED": "Falló"
     },
     "apply": "Confirmar e importar",
-    "applyTitle": "Importar {{count}} filas",
+    "applyTitle": "Importar filas ({{count}})",
     "applyMessage": "Las filas con errores se omiten. Las demás se importan y no se puede deshacer.",
     "applying": "Aplicando… esta pantalla se actualiza sola.",
     "applied": "Importación aplicada.",

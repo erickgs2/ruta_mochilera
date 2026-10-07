@@ -1,0 +1,72 @@
+<a mat-button routerLink="../.." class="price-back">
+  <mat-icon>arrow_back</mat-icon>
+  {{ 'nav.trips' | translate }}
+</a>
+
+<rm-page-header [title]="'priceChange.title' | translate"></rm-page-header>
+<p class="price-explanation">{{ 'priceChange.explanation' | translate }}</p>
+
+@if (loadError(); as error) {
+  <p class="price-error" role="alert">{{ error | rmErrorCode }}</p>
+} @else if (nothingToDo()) {
+  <p class="price-nothing" role="status">{{ 'priceChange.noChange' | translate }}</p>
+} @else if (preview(); as preview) {
+  <p class="price-current">{{ 'priceChange.price' | translate: { price: (preview.priceCents | rmMoney) } }}</p>
+
+  <div class="price-table-container">
+    <table mat-table [dataSource]="preview.reservations" class="price-table">
+      <ng-container matColumnDef="code">
+        <th mat-header-cell *matHeaderCellDef>{{ 'priceChange.columns.code' | translate }}</th>
+        <td mat-cell *matCellDef="let row"><a [routerLink]="['/reservations', row.reservationId]">{{ row.code }}</a></td>
+      </ng-container>
+      <ng-container matColumnDef="customer">
+        <th mat-header-cell *matHeaderCellDef>{{ 'priceChange.columns.customer' | translate }}</th>
+        <td mat-cell *matCellDef="let row">{{ row.customerName }}</td>
+      </ng-container>
+      <ng-container matColumnDef="previous">
+        <th mat-header-cell *matHeaderCellDef>{{ 'priceChange.columns.previous' | translate }}</th>
+        <td mat-cell *matCellDef="let row">{{ row.previousTotalCents | rmMoney }}</td>
+      </ng-container>
+      <ng-container matColumnDef="new">
+        <th mat-header-cell *matHeaderCellDef>{{ 'priceChange.columns.new' | translate }}</th>
+        <td mat-cell *matCellDef="let row">{{ row.newTotalCents | rmMoney }}</td>
+      </ng-container>
+      <ng-container matColumnDef="paid">
+        <th mat-header-cell *matHeaderCellDef>{{ 'priceChange.columns.paid' | translate }}</th>
+        <td mat-cell *matCellDef="let row">{{ row.paidCents | rmMoney }}</td>
+      </ng-container>
+      <ng-container matColumnDef="balance">
+        <th mat-header-cell *matHeaderCellDef>{{ 'priceChange.columns.balance' | translate }}</th>
+        <td mat-cell *matCellDef="let row">{{ row.newBalanceCents | rmMoney }}</td>
+      </ng-container>
+      <ng-container matColumnDef="credit">
+        <th mat-header-cell *matHeaderCellDef>{{ 'priceChange.columns.credit' | translate }}</th>
+        <td mat-cell *matCellDef="let row" [class.price-credit]="row.creditCents > 0">
+          {{ row.creditCents > 0 ? (row.creditCents | rmMoney) : '—' }}
+        </td>
+      </ng-container>
+      <tr mat-header-row *matHeaderRowDef="columns"></tr>
+      <tr mat-row *matRowDef="let row; columns: columns"></tr>
+    </table>
+  </div>
+
+  <form [formGroup]="form" (ngSubmit)="apply()" class="price-form" novalidate>
+    <mat-form-field appearance="outline" subscriptSizing="dynamic">
+      <mat-label>{{ 'priceChange.noticeEs' | translate }}</mat-label>
+      <textarea matInput formControlName="noticeEs" rows="4" [maxlength]="noticeMaxLength"></textarea>
+      <mat-hint>{{ 'priceChange.noticeHint' | translate }}</mat-hint>
+      @if (form.controls.noticeEs.touched && form.controls.noticeEs.invalid) {
+        <mat-error>{{ 'priceChange.noticeRequired' | translate }}</mat-error>
+      }
+    </mat-form-field>
+    <mat-form-field appearance="outline">
+      <mat-label>{{ 'priceChange.noticeEn' | translate }}</mat-label>
+      <textarea matInput formControlName="noticeEn" rows="3" [maxlength]="noticeMaxLength"></textarea>
+    </mat-form-field>
+    <div class="price-actions">
+      <button mat-flat-button type="submit" class="price-apply" [disabled]="applying()">
+        {{ 'priceChange.apply' | translate: { count: preview.reservations.length } }}
+      </button>
+    </div>
+  </form>
+}

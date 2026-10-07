@@ -54,6 +54,12 @@
           <span matListItemTitle>{{ 'nav.customers' | translate }}</span>
         </a>
       </ng-container>
+      <ng-container *rmHasPermission="'import.manage'">
+        <a mat-list-item routerLink="/imports" routerLinkActive="active-link">
+          <mat-icon matListItemIcon>upload_file</mat-icon>
+          <span matListItemTitle>{{ 'nav.imports' | translate }}</span>
+        </a>
+      </ng-container>
       <ng-container *rmHasPermission="'staff.view'">
         <a mat-list-item routerLink="/staff" routerLinkActive="active-link">
           <mat-icon matListItemIcon>badge</mat-icon>
@@ -64,6 +70,12 @@
         <a mat-list-item routerLink="/roles" routerLinkActive="active-link">
           <mat-icon matListItemIcon>admin_panel_settings</mat-icon>
           <span matListItemTitle>{{ 'nav.roles' | translate }}</span>
+        </a>
+      </ng-container>
+      <ng-container *rmHasPermission="'settings.manage'">
+        <a mat-list-item routerLink="/settings/organization" routerLinkActive="active-link">
+          <mat-icon matListItemIcon>storefront</mat-icon>
+          <span matListItemTitle>{{ 'nav.settings' | translate }}</span>
         </a>
       </ng-container>
     </mat-nav-list>

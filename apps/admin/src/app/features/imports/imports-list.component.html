@@ -1,0 +1,81 @@
+<rm-page-header [title]="'adminImports.title' | translate"></rm-page-header>
+<p class="imports-explanation">{{ 'adminImports.explanation' | translate }}</p>
+
+<section class="imports-section">
+  <h2>{{ 'adminImports.templates' | translate }}</h2>
+  <div class="imports-templates">
+    <button mat-stroked-button type="button" class="imports-template-customers" (click)="downloadTemplate('customers')">
+      <mat-icon>download</mat-icon>
+      {{ 'adminImports.customersTemplate' | translate }}
+    </button>
+    <button mat-stroked-button type="button" class="imports-template-payments" (click)="downloadTemplate('payments')">
+      <mat-icon>download</mat-icon>
+      {{ 'adminImports.paymentsTemplate' | translate }}
+    </button>
+  </div>
+</section>
+
+<section class="imports-section">
+  <form [formGroup]="form" (ngSubmit)="upload()" class="imports-form" novalidate>
+    <span class="imports-label">{{ 'adminImports.type' | translate }}</span>
+    <mat-button-toggle-group formControlName="type" [attr.aria-label]="'adminImports.type' | translate">
+      <mat-button-toggle value="CUSTOMERS">{{ 'adminImports.types.CUSTOMERS' | translate }}</mat-button-toggle>
+      <mat-button-toggle value="PAYMENTS">{{ 'adminImports.types.PAYMENTS' | translate }}</mat-button-toggle>
+    </mat-button-toggle-group>
+
+    <span class="imports-label">{{ 'adminImports.file' | translate }}</span>
+    <div class="imports-file">
+      <input #fileInput type="file" accept=".csv,text/csv" class="imports-file-input" (change)="choose($event)" />
+      <button mat-stroked-button type="button" (click)="fileInput.click()">
+        <mat-icon>upload_file</mat-icon>
+        {{ 'adminImports.chooseFile' | translate }}
+      </button>
+      <span class="imports-file-name">{{ file()?.name ?? ('adminImports.noFile' | translate) }}</span>
+    </div>
+
+    <div>
+      <mat-checkbox formControlName="sendEmails">{{ 'adminImports.sendEmails' | translate }}</mat-checkbox>
+      <p class="imports-hint">{{ 'adminImports.sendEmailsHint' | translate }}</p>
+    </div>
+
+    <div class="imports-actions">
+      <button mat-flat-button type="submit" class="imports-validate" [disabled]="!file() || uploading()">
+        {{ 'adminImports.validate' | translate }}
+      </button>
+    </div>
+  </form>
+</section>
+
+<section class="imports-section">
+  <h2>{{ 'adminImports.history' | translate }}</h2>
+  @if (batches().length === 0) {
+    <p>{{ 'adminImports.empty' | translate }}</p>
+  } @else {
+    <div class="imports-table-container">
+      <table mat-table [dataSource]="batches()" class="imports-table">
+        <ng-container matColumnDef="date">
+          <th mat-header-cell *matHeaderCellDef>{{ 'adminImports.columns.date' | translate }}</th>
+          <td mat-cell *matCellDef="let batch">{{ batch.createdAt | rmDateTime: 'short' }}</td>
+        </ng-container>
+        <ng-container matColumnDef="file">
+          <th mat-header-cell *matHeaderCellDef>{{ 'adminImports.columns.file' | translate }}</th>
+          <td mat-cell *matCellDef="let batch"><a [routerLink]="[batch.id]">{{ batch.fileName }}</a></td>
+        </ng-container>
+        <ng-container matColumnDef="type">
+          <th mat-header-cell *matHeaderCellDef>{{ 'adminImports.columns.type' | translate }}</th>
+          <td mat-cell *matCellDef="let batch">{{ 'adminImports.types.' + batch.type | translate }}</td>
+        </ng-container>
+        <ng-container matColumnDef="status">
+          <th mat-header-cell *matHeaderCellDef>{{ 'adminImports.columns.status' | translate }}</th>
+          <td mat-cell *matCellDef="let batch">{{ 'adminImports.statuses.' + batch.status | translate }}</td>
+        </ng-container>
+        <ng-container matColumnDef="rows">
+          <th mat-header-cell *matHeaderCellDef>{{ 'adminImports.columns.rows' | translate }}</th>
+          <td mat-cell *matCellDef="let batch">{{ batch.rowsOk }} / {{ batch.rowsTotal }}</td>
+        </ng-container>
+        <tr mat-header-row *matHeaderRowDef="columns"></tr>
+        <tr mat-row *matRowDef="let batch; columns: columns"></tr>
+      </table>
+    </div>
+  }
+</section>

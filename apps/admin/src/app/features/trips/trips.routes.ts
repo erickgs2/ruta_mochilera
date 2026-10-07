@@ -30,6 +30,11 @@ export const tripsRoutes: Routes = [
     loadComponent: () => import('./trip-images.component').then((m) => m.TripImagesComponent),
   },
   {
+    path: ':tripId/price-change',
+    canActivate: [permissionGuard('trip.change_price')],
+    loadComponent: () => import('./trip-price-change.component').then((m) => m.TripPriceChangeComponent),
+  },
+  {
     path: ':tripId/costing',
     canActivate: [permissionGuard('trip.budget.view')],
     loadComponent: () => import('./trip-costing.component').then((m) => m.TripCostingComponent),

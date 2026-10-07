@@ -272,7 +272,7 @@
     "roles": "Roles",
     "customers": "Customers",
     "imports": "Imports",
-    "settings": "Agency details"
+    "settings": "Agency"
   },
   "forbidden": {
     "title": "Access restricted",
@@ -783,10 +783,10 @@
     "noticeEn": "Notice in English (optional)",
     "noticeRequired": "The Spanish notice is required.",
     "noticeHint": "Every affected customer receives it with their new numbers.",
-    "apply": "Apply to {{count}} reservations",
-    "confirmTitle": "Update {{count}} reservations",
+    "apply": "Apply to the reservations ({{count}})",
+    "confirmTitle": "Update the reservations ({{count}})",
     "confirmMessage": "The reservations take the price of {{price}} and every customer receives the notice. This cannot be undone.",
-    "applied": "Price updated on {{count}} reservations."
+    "applied": "Price updated. Reservations: {{count}}."
   },
   "backfill": {
     "title": "Historical capture",
@@ -844,7 +844,7 @@
       "APPLIED": "Applied",
       "FAILED": "Invalid file"
     },
-    "summary": "{{ok}} rows ready and {{failed}} with errors, out of {{total}}.",
+    "summary": "Ready: {{ok}} · With errors: {{failed}} · Total: {{total}}",
     "row": "Row",
     "rowStatus": {
       "VALID": "Ready",
@@ -857,7 +857,7 @@
       "FAILED": "Failed"
     },
     "apply": "Confirm and import",
-    "applyTitle": "Import {{count}} rows",
+    "applyTitle": "Import rows ({{count}})",
     "applyMessage": "Rows with errors are skipped. The rest are imported, and this cannot be undone.",
     "applying": "Applying… this screen refreshes on its own.",
     "applied": "Import applied.",

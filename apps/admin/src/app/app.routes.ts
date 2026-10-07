@@ -28,6 +28,17 @@ export const appRoutes: Routes = [
         loadChildren: () => import('./features/customers/customers.routes').then((m) => m.customersRoutes),
       },
       {
+        path: 'imports',
+        canActivate: [permissionGuard('import.manage')],
+        loadChildren: () => import('./features/imports/imports.routes').then((m) => m.importsRoutes),
+      },
+      {
+        path: 'settings/organization',
+        canActivate: [permissionGuard('settings.manage')],
+        loadComponent: () =>
+          import('./features/settings/organization-settings.component').then((m) => m.OrganizationSettingsComponent),
+      },
+      {
         path: 'staff',
         canActivate: [permissionGuard('staff.view')],
         loadChildren: () => import('./features/staff/staff.routes').then((m) => m.staffRoutes),

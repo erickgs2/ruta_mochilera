@@ -1,0 +1,67 @@
+<h2>{{ 'backfill.title' | translate }}</h2>
+<p class="backfill-explanation">{{ 'backfill.explanation' | translate }}</p>
+
+<form [formGroup]="form" (ngSubmit)="submit()" class="backfill-form" novalidate>
+  <mat-form-field appearance="outline">
+    <mat-label>{{ 'backfill.trip' | translate }}</mat-label>
+    <mat-select formControlName="tripId">
+      @for (trip of trips(); track trip.id) {
+        <mat-option [value]="trip.id">{{ trip.name }} · {{ trip.departureDate | rmCalendarDate }}</mat-option>
+      }
+    </mat-select>
+    @if (form.controls.tripId.touched && form.controls.tripId.invalid) {
+      <mat-error>{{ 'backfill.required' | translate }}</mat-error>
+    }
+  </mat-form-field>
+
+  <div class="backfill-row">
+    <mat-form-field appearance="outline">
+      <mat-label>{{ 'backfill.createdAt' | translate }}</mat-label>
+      <input matInput type="date" formControlName="createdAt" [max]="maxDate" />
+      @if (form.controls.createdAt.touched && form.controls.createdAt.invalid) {
+        <mat-error>{{ 'backfill.required' | translate }}</mat-error>
+      }
+    </mat-form-field>
+    <rm-money-input formControlName="totalPriceCents" [label]="'backfill.total' | translate" prefix="$" suffix="MXN"></rm-money-input>
+  </div>
+
+  <h3>{{ 'backfill.payments' | translate }}</h3>
+  <div formArrayName="payments" class="backfill-payments">
+    @for (payment of payments.controls; track payment; let index = $index) {
+      <div [formGroupName]="index" class="backfill-payment">
+        <rm-money-input formControlName="amountCents" [label]="'backfill.amount' | translate" prefix="$" suffix="MXN"></rm-money-input>
+        <mat-form-field appearance="outline">
+          <mat-label>{{ 'backfill.paidAt' | translate }}</mat-label>
+          <input matInput type="date" formControlName="paidAt" [max]="maxDate" />
+        </mat-form-field>
+        <mat-form-field appearance="outline">
+          <mat-label>{{ 'backfill.method' | translate }}</mat-label>
+          <mat-select formControlName="method">
+            <mat-option value="LEGACY">{{ 'backfill.methods.LEGACY' | translate }}</mat-option>
+            <mat-option value="CASH">{{ 'backfill.methods.CASH' | translate }}</mat-option>
+          </mat-select>
+        </mat-form-field>
+        <mat-form-field appearance="outline">
+          <mat-label>{{ 'backfill.notes' | translate }}</mat-label>
+          <input matInput formControlName="notes" maxlength="500" />
+        </mat-form-field>
+        <button mat-icon-button type="button" (click)="removePayment(index)" [attr.aria-label]="'backfill.remove' | translate">
+          <mat-icon>delete</mat-icon>
+        </button>
+      </div>
+    }
+  </div>
+  <button mat-stroked-button type="button" class="backfill-add" (click)="addPayment()">
+    <mat-icon>add</mat-icon>
+    {{ 'backfill.addPayment' | translate }}
+  </button>
+
+  <div class="backfill-receipts">
+    <mat-checkbox formControlName="sendReceipts">{{ 'backfill.sendReceipts' | translate }}</mat-checkbox>
+    <p class="backfill-hint">{{ 'backfill.sendReceiptsHint' | translate }}</p>
+  </div>
+
+  <div class="backfill-actions">
+    <button mat-flat-button type="submit" class="backfill-submit" [disabled]="saving()">{{ 'backfill.save' | translate }}</button>
+  </div>
+</form>

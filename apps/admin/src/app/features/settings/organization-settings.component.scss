@@ -1,0 +1,15 @@
+.settings-explanation {
+  color: var(--rm-ink-soft);
+  max-width: 40rem;
+}
+
+.settings-form {
+  display: grid;
+  gap: 0.25rem;
+  max-width: 36rem;
+}
+
+.settings-actions {
+  display: flex;
+  justify-content: flex-end;
+}

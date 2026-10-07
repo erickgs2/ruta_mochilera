@@ -1,0 +1,79 @@
+<a mat-button routerLink=".." class="batch-back">
+  <mat-icon>arrow_back</mat-icon>
+  {{ 'adminImports.back' | translate }}
+</a>
+
+@if (loadError(); as error) {
+  <p class="batch-error" role="alert">{{ error | rmErrorCode }}</p>
+} @else if (batch(); as batch) {
+  <rm-page-header [title]="batch.fileName"></rm-page-header>
+  <p class="batch-meta">
+    {{ 'adminImports.types.' + batch.type | translate }} · {{ batch.createdAt | rmDateTime: 'short' }} ·
+    <strong class="batch-status">{{ 'adminImports.statuses.' + batch.status | translate }}</strong>
+  </p>
+
+  @if (batch.report.fileErrors.length > 0) {
+    <ul class="batch-file-errors" role="alert">
+      @for (error of batch.report.fileErrors; track $index) {
+        <li>{{ 'adminImports.fileErrors.' + error.code | translate: { column: error.column } }}</li>
+      }
+    </ul>
+  } @else {
+    <p class="batch-summary">
+      {{ 'adminImports.summary' | translate: { ok: batch.rowsOk, failed: batch.rowsFailed, total: batch.rowsTotal } }}
+    </p>
+
+    @if (batch.status === 'APPLYING') {
+      <p class="batch-applying" role="status">{{ 'adminImports.applying' | translate }}</p>
+    }
+
+    @if (batch.status === 'VALIDATED' && applicableRows() > 0) {
+      <button mat-flat-button type="button" class="batch-apply" (click)="apply()" [disabled]="applying()">
+        {{ 'adminImports.apply' | translate }}
+      </button>
+    }
+
+    @if (batch.rowsFailed > 0) {
+      <mat-slide-toggle class="batch-filter" [checked]="problemsOnly()" (change)="problemsOnly.set($event.checked)">
+        {{ 'adminImports.rowStatus.INVALID' | translate }}
+      </mat-slide-toggle>
+    }
+
+    <div class="batch-table-container">
+      <table mat-table [dataSource]="rows()" class="batch-table">
+        <ng-container matColumnDef="row">
+          <th mat-header-cell *matHeaderCellDef>{{ 'adminImports.row' | translate }}</th>
+          <td mat-cell *matCellDef="let row">{{ row.row }}</td>
+        </ng-container>
+        <ng-container matColumnDef="values">
+          <th mat-header-cell *matHeaderCellDef></th>
+          <td mat-cell *matCellDef="let row" class="batch-values">{{ summary(row) }}</td>
+        </ng-container>
+        <ng-container matColumnDef="status">
+          <th mat-header-cell *matHeaderCellDef>{{ 'adminImports.columns.status' | translate }}</th>
+          <td mat-cell *matCellDef="let row" [class.batch-problem]="isProblem(row)">
+            {{ (row.outcome ? 'adminImports.outcome.' + row.outcome : 'adminImports.rowStatus.' + row.status) | translate }}
+          </td>
+        </ng-container>
+        <ng-container matColumnDef="detail">
+          <th mat-header-cell *matHeaderCellDef></th>
+          <td mat-cell *matCellDef="let row">
+            <div class="batch-detail">
+              @for (error of row.errors; track $index) {
+                <span class="batch-error-chip">{{ error.column }}: {{ 'adminImports.codes.' + error.code | translate }}</span>
+              }
+              @if (row.outcome === 'FAILED' && row.errors.length === 0 && row.outcomeCode) {
+                <span class="batch-error-chip">{{ row.outcomeCode | rmErrorCode }}</span>
+              }
+            </div>
+          </td>
+        </ng-container>
+        <tr mat-header-row *matHeaderRowDef="columns"></tr>
+        <tr mat-row *matRowDef="let row; columns: columns"></tr>
+      </table>
+    </div>
+    @if (hiddenRows() > 0) {
+      <p class="batch-more">+{{ hiddenRows() }}</p>
+    }
+  }
+}

@@ -1,0 +1,41 @@
+.price-back {
+  margin-bottom: 0.5rem;
+}
+
+.price-explanation {
+  max-width: 48rem;
+  color: var(--rm-ink-soft);
+}
+
+.price-current {
+  font-weight: 600;
+}
+
+.price-table-container {
+  overflow-x: auto;
+  margin-bottom: 1.5rem;
+}
+
+.price-table {
+  width: 100%;
+}
+
+.price-credit {
+  color: var(--rm-success);
+  font-weight: 600;
+}
+
+.price-form {
+  display: grid;
+  gap: 0.5rem;
+  max-width: 40rem;
+}
+
+.price-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.price-error {
+  color: var(--mat-sys-error);
+}

@@ -11,6 +11,7 @@ import { HasPermissionDirective } from '@rm/auth-web';
 import { CalendarDatePipe, DateTimePipe } from '@rm/i18n';
 import { ErrorCodePipe, MoneyPipe, PageHeaderComponent } from '@rm/ui';
 import { CounterReservationComponent } from './counter-reservation.component';
+import { CustomerBackfillComponent } from './customer-backfill.component';
 import { CustomerCreditComponent } from './customer-credit.component';
 
 type CustomerDetail = components['schemas']['CustomerDetail'];
@@ -37,6 +38,7 @@ type CustomerDetail = components['schemas']['CustomerDetail'];
     MoneyPipe,
     PageHeaderComponent,
     CounterReservationComponent,
+    CustomerBackfillComponent,
     CustomerCreditComponent,
   ],
   providers: [ErrorCodePipe],

@@ -77,4 +77,6 @@
     [customerId]="customer.id"
     [customerName]="customer.fullName"
   ></rm-counter-reservation>
+
+  <rm-customer-backfill *rmHasPermission="'data.backfill'" class="customer-section" [customerId]="customer.id"></rm-customer-backfill>
 }

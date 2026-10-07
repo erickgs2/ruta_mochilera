@@ -1,0 +1,59 @@
+:host {
+  display: block;
+}
+
+h2 {
+  font-size: 1rem;
+  font-weight: 600;
+  margin: 0 0 0.5rem;
+}
+
+h3 {
+  font-size: 0.95rem;
+  font-weight: 600;
+  margin: 0.5rem 0;
+}
+
+.backfill-explanation,
+.backfill-hint {
+  color: var(--rm-ink-soft);
+  font-size: 0.875rem;
+}
+
+.backfill-form {
+  display: grid;
+  gap: 0.25rem;
+  max-width: 48rem;
+}
+
+.backfill-row,
+.backfill-payment {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 0.75rem;
+  align-items: flex-start;
+}
+
+.backfill-payment {
+  padding: 0.75rem 0.75rem 0;
+  border-radius: var(--rm-radius-card);
+  background: var(--rm-ground);
+  margin-bottom: 0.5rem;
+}
+
+.backfill-payments {
+  display: grid;
+}
+
+.backfill-add {
+  justify-self: start;
+}
+
+.backfill-hint {
+  margin: 0.25rem 0 0 2.5rem;
+}
+
+.backfill-actions {
+  display: flex;
+  justify-content: flex-end;
+}

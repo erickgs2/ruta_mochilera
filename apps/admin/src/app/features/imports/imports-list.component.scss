@@ -1,0 +1,63 @@
+.imports-explanation,
+.imports-hint {
+  color: var(--rm-ink-soft);
+  max-width: 48rem;
+}
+
+.imports-hint {
+  margin: 0.25rem 0 0 2.5rem;
+  font-size: 0.875rem;
+}
+
+.imports-section {
+  margin-bottom: 1.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--rm-line);
+}
+
+h2 {
+  font-size: 1rem;
+  font-weight: 600;
+  margin: 0 0 0.5rem;
+}
+
+.imports-templates,
+.imports-file {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.imports-form {
+  display: grid;
+  gap: 0.5rem;
+  max-width: 40rem;
+}
+
+.imports-label {
+  font-weight: 600;
+  font-size: 0.875rem;
+}
+
+.imports-file-input {
+  display: none;
+}
+
+.imports-file-name {
+  overflow-wrap: anywhere;
+  color: var(--rm-ink-soft);
+}
+
+.imports-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.imports-table-container {
+  overflow-x: auto;
+}
+
+.imports-table {
+  width: 100%;
+}

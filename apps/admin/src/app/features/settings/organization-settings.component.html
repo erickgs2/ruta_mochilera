@@ -1,0 +1,27 @@
+<rm-page-header [title]="'adminSettings.title' | translate"></rm-page-header>
+<p class="settings-explanation">{{ 'adminSettings.explanation' | translate }}</p>
+
+<form [formGroup]="form" (ngSubmit)="save()" class="settings-form" novalidate>
+  <mat-form-field appearance="outline">
+    <mat-label>{{ 'adminSettings.name' | translate }}</mat-label>
+    <input matInput formControlName="name" />
+    @if (form.controls.name.touched && form.controls.name.invalid) {
+      <mat-error>{{ 'adminSettings.required' | translate }}</mat-error>
+    }
+  </mat-form-field>
+  <mat-form-field appearance="outline">
+    <mat-label>{{ 'adminSettings.address' | translate }}</mat-label>
+    <textarea matInput formControlName="address" rows="2"></textarea>
+  </mat-form-field>
+  <mat-form-field appearance="outline">
+    <mat-label>{{ 'adminSettings.phone' | translate }}</mat-label>
+    <input matInput formControlName="phone" />
+  </mat-form-field>
+  <mat-form-field appearance="outline">
+    <mat-label>{{ 'adminSettings.website' | translate }}</mat-label>
+    <input matInput formControlName="website" />
+  </mat-form-field>
+  <div class="settings-actions">
+    <button mat-flat-button type="submit" [disabled]="saving()">{{ 'adminSettings.save' | translate }}</button>
+  </div>
+</form>
