@@ -269,6 +269,9 @@ describe('invitations', () => {
     expect(await verifyPassword(user.passwordHash!, 'Attacker-Horse-9')).toBe(false);
     const customer = await getCustomerForStaff(db, created.id);
     expect(customer.ok && customer.value.activatedAt).toBeNull();
+    // The refusal still commits the consumption (documented in customers.md).
+    const row = await db.passwordReset.findFirstOrThrow({ where: { userId: created.id, purpose: 'INVITATION' } });
+    expect(row.consumedAt).not.toBeNull();
   });
 
   it('consumes the pending invitations when the customer resets the password', async () => {
