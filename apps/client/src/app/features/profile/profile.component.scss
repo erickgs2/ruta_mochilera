@@ -79,8 +79,25 @@
 
 .profile-email-row {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
+  align-items: baseline;
+  gap: 0.25rem 1rem;
   margin: 0;
+
+  // The label never shrinks; a long address takes the rest of the row and
+  // breaks anywhere rather than pushing the page wider than the screen.
+  > span:first-child {
+    flex: none;
+    color: var(--rm-ink-soft);
+  }
+}
+
+.profile-email {
+  flex: 1 1 auto;
+  min-width: 0;
+  text-align: right;
+  overflow-wrap: anywhere;
 }
 
 .profile-hint {
