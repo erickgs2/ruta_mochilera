@@ -9,6 +9,7 @@
     "db:deploy": "prisma migrate deploy",
     "db:reset": "prisma migrate reset --force",
     "db:seed": "tsx libs/db/prisma/seed.ts",
+    "db:test:clean": "tsx libs/db/scripts/clean-test-schemas.ts",
     "db:seed:demo": "tsx libs/db/prisma/seed-demo.ts",
     "api:types": "tsx tools/generate-api-client.ts"
   },

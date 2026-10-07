@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { composeSchemaName, schemaScope, workspaceFingerprint } from './schema-name';
+import { classifyTestSchema, composeSchemaName, schemaScope, workspaceFingerprint } from './schema-name';
 
 const MAIN = '/work/ruta_mochilera';
 const WORKTREE = '/work/ruta_mochilera/.worktrees/phase-2b-fixes';
@@ -60,5 +60,19 @@ describe('test schema names', () => {
     expect(schemaScope(MAIN, 'My-Run 7')).toBe('my_run_7');
     expect(schemaScope(MAIN, undefined)).toBe(workspaceFingerprint(MAIN));
     expect(composeSchemaName({ project: 'api', workerId: '0', workspaceRoot: MAIN, scope: 'My-Run 7' })).toBe('test_my_run_7_api_w0');
+  });
+
+  it('are classified by owner for the cleanup script', () => {
+    const scope = workspaceFingerprint(MAIN);
+    const other = workspaceFingerprint(WORKTREE);
+
+    expect(classifyTestSchema(composeSchemaName({ project: 'api', workerId: '0', workspaceRoot: MAIN }), scope)).toBe('own');
+    expect(classifyTestSchema(`test_${scope}_api_w0_jobs`, scope)).toBe('own');
+    expect(classifyTestSchema(composeSchemaName({ project: 'api', workerId: '0', workspaceRoot: WORKTREE }), scope)).toBe('other-scope');
+    expect(other).not.toBe(scope);
+    expect(classifyTestSchema('test_api_w0', scope)).toBe('legacy');
+    expect(classifyTestSchema('test_domain_reservations_w12_jobs', scope)).toBe('legacy');
+    expect(classifyTestSchema('test_database_backup', scope)).toBe('unrelated');
+    expect(classifyTestSchema('public', scope)).toBe('unrelated');
   });
 });

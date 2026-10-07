@@ -84,3 +84,21 @@ export function findWorkspaceRoot(startDir: string): string {
     dir = parent;
   }
 }
+
+/** Who a schema of the test database belongs to, as far as its name says. */
+export type TestSchemaOwner = 'own' | 'other-scope' | 'legacy' | 'unrelated';
+
+/**
+ * Classifies a schema name against this checkout's `scope` (see
+ * `schemaScope`): `own` carries this scope; `other-scope` carries another
+ * 6-hex fingerprint (some other checkout's, or a custom `TEST_SCHEMA_PREFIX`
+ * that happens to look like one); `legacy` is the old `test_<project>_w<id>`
+ * shape, which every checkout without the fingerprint still shares; anything
+ * else is not a test worker's schema at all.
+ */
+export function classifyTestSchema(name: string, scope: string): TestSchemaOwner {
+  if (name.startsWith(`test_${scope}_`)) return 'own';
+  if (/^test_[0-9a-f]{6}_.+_w\d+(_jobs)?$/.test(name)) return 'other-scope';
+  if (/^test_.+_w\d+(_jobs)?$/.test(name)) return 'legacy';
+  return 'unrelated';
+}
