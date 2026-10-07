@@ -277,6 +277,11 @@ saldo a favor junto a ellos.
   fecha, es `VALIDATION_FAILED` (`field: createdAt`) y no se crea nada. Es la
   misma función que las fechas de los pagos históricos
   (`resolveBackfillMoments`, ver `payments.md`); la ruta sólo valida la forma.
+  **Prioridad de errores aceptada:** la fecha del `createdAt` se refusa antes de
+  abrir la transacción, pero la de los pagos del gancho se detecta *dentro* de
+  ella, después de las comprobaciones de viaje y cupo. Una captura con un viaje
+  lleno y una fecha de pago inválida responde `TRIP_SOLD_OUT`, no
+  `VALIDATION_FAILED`; en ambos casos no se escribe nada.
 - Nace **`ACTIVE` sin apartado**: es historia, no un apartado que vence. No
   se valida anticipo, fecha límite ni verificación del correo (el cliente
   pudo llegar por importación).

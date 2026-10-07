@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { closeTestDb, prepareTestDb, resetDatabase, withTestDb } from '@rm/db/testing';
 import { closeTestQueue, resetTestQueue, withTestQueue } from '@rm/jobs/testing';
 import type { PgBoss } from 'pg-boss';
@@ -106,16 +106,31 @@ describe('recordBackfilledPayments with calendar dates (the rule lives in the do
     expect((await db.payment.findFirstOrThrow()).paidAt!.toISOString()).toBe('2025-11-02T23:00:00.000Z');
   });
 
-  it('never stamps a payment in the future: a date of today is capped at the moment of capture', async () => {
+  it('never stamps a payment in the future: a date of today, captured before noon, is capped at the moment of capture', async () => {
     const reservation = await seedReservation(db, staffId, { status: 'ACTIVE' });
-    const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Mexico_City' });
-    const before = Date.now();
+    // 09:00 on 7 October in Mexico City, fixed: the cap only shows before
+    // local noon, so the test must not depend on the hour it runs at.
+    const now = new Date('2026-10-07T15:00:00Z');
+    vi.useFakeTimers({ toFake: ['Date'], now });
+    try {
+      const result = await run(reservation.id, '2026-10-07');
 
-    const result = await run(reservation.id, today);
+      expect(result.ok).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+    expect((await db.payment.findFirstOrThrow()).paidAt!.toISOString()).toBe(now.toISOString());
+  });
 
-    expect(result.ok).toBe(true);
-    expect((await db.payment.findFirstOrThrow()).paidAt!.getTime()).toBeLessThanOrEqual(Date.now());
-    expect((await db.payment.findFirstOrThrow()).paidAt!.getTime()).toBeGreaterThan(before - 24 * 3_600_000);
+  it('stamps a date of today at noon once noon has passed', async () => {
+    const reservation = await seedReservation(db, staffId, { status: 'ACTIVE' });
+    vi.useFakeTimers({ toFake: ['Date'], now: new Date('2026-10-07T23:00:00Z') }); // 17:00 in Mexico City
+    try {
+      await run(reservation.id, '2026-10-07');
+    } finally {
+      vi.useRealTimers();
+    }
+    expect((await db.payment.findFirstOrThrow()).paidAt!.toISOString()).toBe('2026-10-07T18:00:00.000Z');
   });
 
   it('refuses a date after today, and text that is not a date, writing nothing', async () => {

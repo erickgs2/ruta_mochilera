@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DateTime } from 'luxon';
 import { closeTestDb, prepareTestDb, resetDatabase, withTestDb } from '@rm/db/testing';
 import type { Db, DbTransactionClient } from '@rm/db';
@@ -587,6 +587,26 @@ describe('reservation service', () => {
       expect(created.ok).toBe(true);
       const stored = await db.reservation.findFirstOrThrow({ where: { tripId: trip.id } });
       expect(stored.createdAt.toISOString()).toBe('2025-11-03T18:00:00.000Z');
+    });
+
+    it('caps a creation date of today, captured before local noon, at the moment of capture', async () => {
+      const trip = await seedTrip(db, { status: 'COMPLETED', paymentDeadline: new Date('2020-01-01') });
+      // 09:00 on 7 October in Mexico City, fixed: the cap only shows before
+      // local noon, so the test must not depend on the hour it runs at.
+      const now = new Date('2026-10-07T15:00:00Z');
+      vi.useFakeTimers({ toFake: ['Date'], now });
+      try {
+        const created = await createBackfilledReservation(db, {
+          tripId: trip.id,
+          customerId: await seedCustomer(db),
+          actorId: staffId,
+          createdAt: '2026-10-07',
+        });
+        expect(created.ok).toBe(true);
+      } finally {
+        vi.useRealTimers();
+      }
+      expect((await db.reservation.findFirstOrThrow({ where: { tripId: trip.id } })).createdAt.toISOString()).toBe(now.toISOString());
     });
 
     it('refuses a calendar day after today and text that is not a date, creating nothing', async () => {
