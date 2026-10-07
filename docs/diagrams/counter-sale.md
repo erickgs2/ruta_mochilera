@@ -150,9 +150,13 @@ sequenceDiagram
     else "sí"
         API->>DB: "BEGIN: bloquea la fila del usuario (FOR UPDATE)"
         API->>DB: "consume el token (condicional)"
-        alt "otro envío lo consumió antes, o conflicto de escritura (P2034)"
+        alt "otro envío lo consumió antes"
+            API-->>App: "401 TOKEN_INVALID (COMMIT: no escribió nada)"
+        else "conflicto de escritura (P2034)"
             API-->>App: "401 TOKEN_INVALID (ROLLBACK)"
-        else "lo consumió éste"
+        else "lo consumió éste, pero la cuenta ya tiene contraseña"
+            API-->>App: "401 TOKEN_INVALID (COMMIT: el token queda consumido, la contraseña no cambia)"
+        else "lo consumió éste y la cuenta no tiene contraseña"
             API->>DB: "password_hash, activated_at, accepted_terms_at"
             API->>DB: "COMMIT"
             API-->>App: "200 { email }: la app abre el inicio de sesión"
@@ -164,7 +168,9 @@ El restablecimiento de contraseña bloquea la misma fila de usuario **antes**
 de tocar los tokens, igual que la aceptación: un solo orden de bloqueos, así
 que ambas operaciones a la vez no se interbloquean. Si el cliente de mostrador
 fija su contraseña con «olvidé mi contraseña», queda activado (`activated_at`),
-sin sellar `accepted_terms_at`.
+sin sellar `accepted_terms_at`. Una invitación todavía vigente tampoco pisa
+esa contraseña: si la cuenta ya tiene una, aceptarla es `TOKEN_INVALID` y la
+contraseña queda intacta (regla en `customers.md`, cubierta por prueba).
 
 ## Importar clientes y pagos desde CSV
 

@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { closeTestDb, prepareTestDb, resetDatabase, withTestDb } from '@rm/db/testing';
-import { acceptInvitation, resetPassword, verifyPassword } from '@rm/domain-identity';
+import { acceptInvitation, hashPassword, resetPassword, verifyPassword } from '@rm/domain-identity';
 import { PROVIDER_REJECTED_TEST_ADDRESS, type EmailMessage, type EmailProvider } from '@rm/email';
 import { fail, ok } from '@rm/shared-utils';
 import { createBranchCustomer, getCustomerForStaff, searchCustomers, sendCustomerInvitation } from './customer-service';
@@ -250,6 +250,28 @@ describe('invitations', () => {
     const user = await db.user.findUniqueOrThrow({ where: { id: created.id } });
     expect(await verifyPassword(user.passwordHash!, 'Chosen-Horse-1')).toBe(true);
     expect(await verifyPassword(user.passwordHash!, 'Attacker-Horse-9')).toBe(false);
+  });
+
+  it('refuses a live invitation for an account that already has a password, and keeps that password', async () => {
+    const created = await register();
+    const invitation = tokenFrom(email.sent[0]);
+    // The password arrives some way that leaves the invitation untouched and
+    // unconsumed (unlike a reset, which consumes it): the guard on
+    // `password_hash IS NULL` is then the only thing standing in the way.
+    await db.user.update({ where: { id: created.id }, data: { passwordHash: await hashPassword('Chosen-Horse-1') } });
+    expect(await db.passwordReset.count({ where: { userId: created.id, purpose: 'INVITATION', consumedAt: null } })).toBe(1);
+
+    const refused = await acceptInvitation(db, { token: invitation, password: 'Attacker-Horse-9' });
+
+    expect(refused).toMatchObject({ ok: false, error: { code: 'TOKEN_INVALID' } });
+    const user = await db.user.findUniqueOrThrow({ where: { id: created.id } });
+    expect(await verifyPassword(user.passwordHash!, 'Chosen-Horse-1')).toBe(true);
+    expect(await verifyPassword(user.passwordHash!, 'Attacker-Horse-9')).toBe(false);
+    const customer = await getCustomerForStaff(db, created.id);
+    expect(customer.ok && customer.value.activatedAt).toBeNull();
+    // The refusal still commits the consumption (documented in customers.md).
+    const row = await db.passwordReset.findFirstOrThrow({ where: { userId: created.id, purpose: 'INVITATION' } });
+    expect(row.consumedAt).not.toBeNull();
   });
 
   it('consumes the pending invitations when the customer resets the password', async () => {
