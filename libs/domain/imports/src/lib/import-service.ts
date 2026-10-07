@@ -191,9 +191,16 @@ function isDuplicateRef(error: DomainError): boolean {
   return error.code === 'CONFLICT' && error.details?.['field'] === 'externalRef';
 }
 
-/** Noon of a calendar date in the organization's timezone: never the day before or after. */
+/**
+ * Noon of a calendar date in the organization's timezone (never the day
+ * before or after), but never later than now: a payment dated today and
+ * imported before noon is stamped at the import moment, because a backfilled
+ * payment cannot be in the future.
+ */
 function paidAtFor(date: string, timeZone: string): Date {
-  return DateTime.fromISO(date, { zone: timeZone }).set({ hour: 12 }).toJSDate();
+  const noon = DateTime.fromISO(date, { zone: timeZone }).set({ hour: 12 }).toJSDate();
+  const now = new Date();
+  return noon.getTime() > now.getTime() ? now : noon;
 }
 
 async function applyCustomerRow(db: Db, deps: ApplyImportDeps, row: ImportRowReport, sendEmails: boolean, actorId: string) {
