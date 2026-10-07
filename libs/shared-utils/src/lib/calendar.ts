@@ -1,4 +1,5 @@
 import { DateTime } from 'luxon';
+import { fail, ok, type Result } from './result';
 
 /**
  * Counts how many first-of-month days fall strictly after `from` and on or
@@ -89,4 +90,27 @@ export function isCalendarDateNotAfter(value: string, today: string): boolean {
 export function noonOrNow(date: string, timeZone: string, now: Date = new Date()): Date {
   const noon = DateTime.fromISO(date, { zone: timeZone }).set({ hour: 12 }).toJSDate();
   return noon.getTime() > now.getTime() ? now : noon;
+}
+
+/**
+ * The dates of a historical capture (`YYYY-MM-DD`, as staff pick them) turned
+ * into the instants the domain stores: noon of that day in the organization's
+ * time zone, never later than `now` (`noonOrNow`). A date that is not a real
+ * calendar date, or that is after today **in that zone**, is
+ * `VALIDATION_FAILED` naming the first offending `field` -- the browser's own
+ * time zone plays no part. The one rule behind the backfill API, which every
+ * other caller (a job, the CSV import) inherits by going through the domain.
+ */
+export function resolveBackfillMoments(
+  entries: { field: string; date: string }[],
+  timeZone: string,
+  now: Date = new Date()
+): Result<Date[]> {
+  const today = DateTime.fromJSDate(now, { zone: timeZone }).toISODate() as string;
+  const moments: Date[] = [];
+  for (const { field, date } of entries) {
+    if (!isCalendarDateNotAfter(date, today)) return fail('VALIDATION_FAILED', { field });
+    moments.push(noonOrNow(date, timeZone, now));
+  }
+  return ok(moments);
 }

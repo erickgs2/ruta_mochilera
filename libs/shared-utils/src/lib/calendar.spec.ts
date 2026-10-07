@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { endOfCalendarDay, isCalendarDateNotAfter, isPastDate, monthStartsBetween, noonOrNow } from './calendar';
+import { endOfCalendarDay, isCalendarDateNotAfter, isPastDate, monthStartsBetween, noonOrNow, resolveBackfillMoments } from './calendar';
 
 const TZ = 'America/Mexico_City';
 const at = (iso: string) => new Date(iso);
@@ -109,5 +109,56 @@ describe('noonOrNow', () => {
     // 23:30 on 31 Dec in Mexico City is already 1 Jan in UTC.
     expect(noonOrNow('2026-12-31', mexico, new Date('2027-01-05T00:00:00Z')).toISOString()).toBe('2026-12-31T18:00:00.000Z');
     expect(noonOrNow('2026-12-31', 'Pacific/Auckland', new Date('2027-01-05T00:00:00Z')).toISOString()).toBe('2026-12-30T23:00:00.000Z');
+  });
+});
+
+describe('resolveBackfillMoments', () => {
+  const mexico = 'America/Mexico_City';
+  const now = new Date('2026-10-07T15:00:00Z'); // 09:00 on 7 October in Mexico City
+
+  it('stamps each date at noon in the organization zone, capped at now', () => {
+    const result = resolveBackfillMoments(
+      [
+        { field: 'createdAt', date: '2025-11-03' },
+        { field: 'payments.0.paidAt', date: '2026-10-07' },
+      ],
+      mexico,
+      now
+    );
+
+    expect(result).toMatchObject({ ok: true });
+    expect(result.ok && result.value.map((moment) => moment.toISOString())).toEqual([
+      '2025-11-03T18:00:00.000Z',
+      now.toISOString(),
+    ]);
+  });
+
+  it('refuses a date after today in the organization zone, naming the first offending field', () => {
+    // Already 8 October in Auckland, still 7 October in Mexico City.
+    expect(resolveBackfillMoments([{ field: 'payments.1.paidAt', date: '2026-10-08' }], mexico, now)).toMatchObject({
+      ok: false,
+      error: { code: 'VALIDATION_FAILED', details: { field: 'payments.1.paidAt' } },
+    });
+    expect(resolveBackfillMoments([{ field: 'paidAt', date: '2026-10-08' }], 'Pacific/Auckland', now)).toMatchObject({ ok: true });
+    expect(
+      resolveBackfillMoments(
+        [
+          { field: 'createdAt', date: '2025-11-03' },
+          { field: 'payments.0.paidAt', date: '2030-01-01' },
+          { field: 'payments.1.paidAt', date: '2031-01-01' },
+        ],
+        mexico,
+        now
+      )
+    ).toMatchObject({ ok: false, error: { details: { field: 'payments.0.paidAt' } } });
+  });
+
+  it('refuses text that is not a real calendar date', () => {
+    for (const date of ['2026-02-31', '07/10/2026', '', '2026-10-7']) {
+      expect(resolveBackfillMoments([{ field: 'createdAt', date }], mexico, now)).toMatchObject({
+        ok: false,
+        error: { code: 'VALIDATION_FAILED', details: { field: 'createdAt' } },
+      });
+    }
   });
 });
