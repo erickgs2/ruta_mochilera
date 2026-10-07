@@ -25,7 +25,13 @@ function configure() {
 }
 
 describe('CustomerBackfillComponent', () => {
-  afterEach(() => localStorage.clear());
+  const originalTimeZone = process.env['TZ'];
+
+  afterEach(() => {
+    localStorage.clear();
+    if (originalTimeZone === undefined) delete process.env['TZ'];
+    else process.env['TZ'] = originalTimeZone;
+  });
 
   it('offers finished trips but never drafts or cancelled ones', () => {
     const { fixture } = configure();
@@ -33,7 +39,7 @@ describe('CustomerBackfillComponent', () => {
     expect(fixture.componentInstance.trips().map((trip) => trip.id)).toEqual(['t-done']);
   });
 
-  it('keeps receipts silent by default and sends dates as noon of the chosen day', () => {
+  it('keeps receipts silent by default and sends the chosen calendar dates as they are', () => {
     const { fixture, httpMock, navigate } = configure();
     const component = fixture.componentInstance;
     expect(component.form.controls.sendReceipts.value).toBe(false);
@@ -44,23 +50,40 @@ describe('CustomerBackfillComponent', () => {
     component.submit();
 
     const request = httpMock.expectOne('/api/v1/admin/backfill/reservations');
-    expect(request.request.body).toMatchObject({
+    expect(request.request.body).toEqual({
       tripId: 't-done',
       customerId: 'cust-1',
+      createdAt: '2025-01-10',
       sendReceipts: false,
-      payments: [{ amountCents: 150_000, method: 'CASH', notes: 'Libreta 3' }],
+      payments: [{ amountCents: 150_000, paidAt: '2025-01-10', method: 'CASH', notes: 'Libreta 3' }],
     });
-    expect(new Date(request.request.body.createdAt).getHours()).toBe(12);
     request.flush({ id: 'res-9', code: 'RM-9' });
     expect(navigate).toHaveBeenCalledWith(['/reservations', 'res-9']);
   });
 
-  it('refuses a date in the future', () => {
+  // The server turns the date into noon in the organization's time zone, so
+  // the browser's own zone must not shift a single day.
+  it.each(['Pacific/Auckland', 'Pacific/Honolulu', 'UTC'])('sends the same dates with the browser in %s', (timeZone) => {
+    process.env['TZ'] = timeZone;
+    const { fixture, httpMock } = configure();
+    const component = fixture.componentInstance;
+
+    component.form.patchValue({ tripId: 't-done', createdAt: '2025-12-31' });
+    component.addPayment();
+    component.payments.at(0).patchValue({ amountCents: 100_000, paidAt: '2026-01-01' });
+    component.submit();
+
+    const request = httpMock.expectOne('/api/v1/admin/backfill/reservations');
+    expect(request.request.body.createdAt).toBe('2025-12-31');
+    expect(request.request.body.payments[0].paidAt).toBe('2026-01-01');
+  });
+
+  it('leaves a date after today to the server, which reads it in the organization time zone', () => {
     const { fixture, httpMock } = configure();
     fixture.componentInstance.form.patchValue({ tripId: 't-done', createdAt: '2999-01-01' });
 
     fixture.componentInstance.submit();
 
-    httpMock.expectNone('/api/v1/admin/backfill/reservations');
+    httpMock.expectOne('/api/v1/admin/backfill/reservations').flush({ code: 'VALIDATION_FAILED' }, { status: 422, statusText: 'Unprocessable' });
   });
 });

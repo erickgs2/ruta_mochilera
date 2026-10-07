@@ -5540,13 +5540,13 @@ export interface components {
             tripId: string;
             /** Format: uuid */
             customerId: string;
-            /** Format: date-time */
+            /** Format: date */
             createdAt: string;
             totalPriceCents?: number;
             /** @default [] */
             payments: {
                 amountCents: number;
-                /** Format: date-time */
+                /** Format: date */
                 paidAt: string;
                 /**
                  * @default LEGACY
@@ -5563,7 +5563,7 @@ export interface components {
             reservationId: string;
             payments: {
                 amountCents: number;
-                /** Format: date-time */
+                /** Format: date */
                 paidAt: string;
                 /**
                  * @default LEGACY

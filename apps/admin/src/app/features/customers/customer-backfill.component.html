@@ -17,7 +17,7 @@
   <div class="backfill-row">
     <mat-form-field appearance="outline">
       <mat-label>{{ 'backfill.createdAt' | translate }}</mat-label>
-      <input matInput type="date" formControlName="createdAt" [max]="maxDate" />
+      <input matInput type="date" formControlName="createdAt" />
       @if (form.controls.createdAt.touched && form.controls.createdAt.invalid) {
         <mat-error>{{ 'backfill.required' | translate }}</mat-error>
       }
@@ -32,7 +32,7 @@
         <rm-money-input formControlName="amountCents" [label]="'backfill.amount' | translate" prefix="$" suffix="MXN"></rm-money-input>
         <mat-form-field appearance="outline">
           <mat-label>{{ 'backfill.paidAt' | translate }}</mat-label>
-          <input matInput type="date" formControlName="paidAt" [max]="maxDate" />
+          <input matInput type="date" formControlName="paidAt" />
         </mat-form-field>
         <mat-form-field appearance="outline">
           <mat-label>{{ 'backfill.method' | translate }}</mat-label>

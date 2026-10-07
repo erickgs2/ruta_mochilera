@@ -73,6 +73,24 @@ describe('files route', () => {
     expect(response.status).toBe(404);
   });
 
+  // Next decodes `%2F` before the handler runs, so `receipts%2F2027%2Fx.pdf`
+  // arrives as ONE segment that contains slashes.
+  it.each([
+    [['receipts/2027/RM-2027-000001-x.pdf']],
+    [['Receipts/2027/RM-2027-000001-x.pdf']],
+    [['RECEIPTS\\2027\\RM-2027-000001-x.pdf']],
+    [['trips\\..\\receipts\\2027\\RM-2027-000001-x.pdf']],
+    [['trips/a', 'cover.jpg']],
+    [['', 'receipts', '2027', 'RM-2027-000001-x.pdf']],
+  ])('refuses a key whose segments carry slashes or backslashes %j', async (key) => {
+    await storage().put('receipts/2027/RM-2027-000001-x.pdf', Buffer.from('%PDF-'), 'application/pdf');
+    await storage().put('trips/a/cover.jpg', Buffer.from('jpg'), 'image/jpeg');
+
+    const response = await filesRoute(new Request('http://localhost/api/v1/files/probe'), { params: Promise.resolve({ key }) });
+
+    expect(response.status).toBe(404);
+  });
+
   it('returns 404 for a key that was never stored', async () => {
     const response = await filesRoute(new Request('http://localhost/api/v1/files/trips/a/missing.jpg'), {
       params: Promise.resolve({ key: ['trips', 'a', 'missing.jpg'] }),

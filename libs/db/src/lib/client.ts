@@ -53,6 +53,8 @@ export interface CreatePrismaClientOptions {
    * isolated copy of the schema inside the same test database.
    */
   schema?: string;
+  /** Upper bound of the `pg` pool behind this client. Defaults to the driver's own (10). */
+  poolMax?: number;
 }
 
 /**
@@ -117,6 +119,7 @@ export function createPrismaClient(
     {
       connectionString: databaseUrl,
       ...(options.schema === undefined ? {} : { options: searchPathStartupOption(options.schema) }),
+      ...(options.poolMax === undefined ? {} : { max: options.poolMax }),
     },
     options.schema === undefined ? undefined : { schema: options.schema }
   );

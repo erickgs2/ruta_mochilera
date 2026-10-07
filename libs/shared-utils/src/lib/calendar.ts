@@ -78,3 +78,15 @@ export function isCalendarDateNotAfter(value: string, today: string): boolean {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
   return DateTime.fromISO(value, { zone: 'utc' }).isValid && value <= today;
 }
+
+/**
+ * The instant a historical record dated `date` (`YYYY-MM-DD`) is stamped at:
+ * noon of that calendar day in `timeZone` -- never the day before or after --
+ * but never later than `now`, because a backfilled payment or reservation
+ * cannot be in the future (a date of today, captured before noon, is stamped
+ * at the moment of capture). One rule for the CSV import and the backfill API.
+ */
+export function noonOrNow(date: string, timeZone: string, now: Date = new Date()): Date {
+  const noon = DateTime.fromISO(date, { zone: timeZone }).set({ hour: 12 }).toJSDate();
+  return noon.getTime() > now.getTime() ? now : noon;
+}

@@ -148,8 +148,9 @@ sequenceDiagram
     alt "no (desconocido, usado, vencido o de restablecimiento)"
         API-->>App: "401 TOKEN_INVALID"
     else "sí"
-        API->>DB: "BEGIN: consume el token (condicional)"
-        alt "otro envío lo consumió antes"
+        API->>DB: "BEGIN: bloquea la fila del usuario (FOR UPDATE)"
+        API->>DB: "consume el token (condicional)"
+        alt "otro envío lo consumió antes, o conflicto de escritura (P2034)"
             API-->>App: "401 TOKEN_INVALID (ROLLBACK)"
         else "lo consumió éste"
             API->>DB: "password_hash, activated_at, accepted_terms_at"
@@ -158,6 +159,12 @@ sequenceDiagram
         end
     end
 ```
+
+El restablecimiento de contraseña bloquea la misma fila de usuario **antes**
+de tocar los tokens, igual que la aceptación: un solo orden de bloqueos, así
+que ambas operaciones a la vez no se interbloquean. Si el cliente de mostrador
+fija su contraseña con «olvidé mi contraseña», queda activado (`activated_at`),
+sin sellar `accepted_terms_at`.
 
 ## Importar clientes y pagos desde CSV
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { endOfCalendarDay, isCalendarDateNotAfter, isPastDate, monthStartsBetween } from './calendar';
+import { endOfCalendarDay, isCalendarDateNotAfter, isPastDate, monthStartsBetween, noonOrNow } from './calendar';
 
 const TZ = 'America/Mexico_City';
 const at = (iso: string) => new Date(iso);
@@ -89,5 +89,25 @@ describe('isCalendarDateNotAfter', () => {
     expect(isCalendarDateNotAfter('2020-02-31', '2026-10-07')).toBe(false);
     expect(isCalendarDateNotAfter('17/05/1990', '2026-10-07')).toBe(false);
     expect(isCalendarDateNotAfter('', '2026-10-07')).toBe(false);
+  });
+});
+
+describe('noonOrNow', () => {
+  const mexico = 'America/Mexico_City';
+
+  it('is noon of the date in the zone when that moment has passed', () => {
+    expect(noonOrNow('2026-10-07', mexico, new Date('2026-10-07T21:00:00Z')).toISOString()).toBe('2026-10-07T18:00:00.000Z');
+    expect(noonOrNow('2025-11-03', mexico, new Date('2026-10-07T21:00:00Z')).toISOString()).toBe('2025-11-03T18:00:00.000Z');
+  });
+
+  it('is now when noon of the date is still ahead, so a date of today is never in the future', () => {
+    const now = new Date('2026-10-07T15:00:00Z'); // 09:00 in Mexico City
+    expect(noonOrNow('2026-10-07', mexico, now).getTime()).toBe(now.getTime());
+  });
+
+  it('keeps the calendar day in the zone, whatever the machine zone is', () => {
+    // 23:30 on 31 Dec in Mexico City is already 1 Jan in UTC.
+    expect(noonOrNow('2026-12-31', mexico, new Date('2027-01-05T00:00:00Z')).toISOString()).toBe('2026-12-31T18:00:00.000Z');
+    expect(noonOrNow('2026-12-31', 'Pacific/Auckland', new Date('2027-01-05T00:00:00Z')).toISOString()).toBe('2026-12-30T23:00:00.000Z');
   });
 });

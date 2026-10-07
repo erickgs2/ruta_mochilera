@@ -3,6 +3,7 @@ import type { Db, DbTransactionClient, Locale } from '@rm/db';
 import type { EmailMessage } from '@rm/email';
 import { fail, ok, type Result } from '@rm/shared-utils';
 import { hashPassword } from './password';
+import { isWriteConflict, lockUser } from './user-lock';
 
 /**
  * Invitations for customers registered at the counter (Phase 2B, §5.1).
@@ -113,26 +114,34 @@ export async function acceptInvitation(
   }
 
   const passwordHash = await hashPassword(input.password);
-  return db.$transaction(async (tx: DbTransactionClient): Promise<Result<{ email: string }>> => {
-    // Conditional: two submissions of the same link cannot both win.
-    const consumed = await tx.passwordReset.updateMany({
-      where: { id: row.id, consumedAt: null },
-      data: { consumedAt: new Date() },
-    });
-    if (consumed.count === 0) return fail('TOKEN_INVALID');
+  try {
+    return await db.$transaction(async (tx: DbTransactionClient): Promise<Result<{ email: string }>> => {
+      // The user row first, like `resetPassword`: one lock order, no deadlock.
+      await lockUser(tx, row.userId);
+      // Conditional: two submissions of the same link cannot both win.
+      const consumed = await tx.passwordReset.updateMany({
+        where: { id: row.id, consumedAt: null },
+        data: { consumedAt: new Date() },
+      });
+      if (consumed.count === 0) return fail('TOKEN_INVALID');
 
-    // Conditional on "no password yet": an invitation never overwrites a
-    // password the customer already chose (say, through a reset that ran
-    // after the invitation was issued, even a concurrent one).
-    const set = await tx.user.updateMany({ where: { id: row.userId, passwordHash: null }, data: { passwordHash } });
-    if (set.count === 0) return fail('TOKEN_INVALID');
+      // Conditional on "no password yet": an invitation never overwrites a
+      // password the customer already chose (say, through a reset that ran
+      // after the invitation was issued, even a concurrent one).
+      const set = await tx.user.updateMany({ where: { id: row.userId, passwordHash: null }, data: { passwordHash } });
+      if (set.count === 0) return fail('TOKEN_INVALID');
 
-    const now = new Date();
-    const user = await tx.user.findUniqueOrThrow({ where: { id: row.userId }, select: { email: true } });
-    await tx.customerProfile.update({
-      where: { userId: row.userId },
-      data: { activatedAt: now, acceptedTermsAt: now },
+      const now = new Date();
+      const user = await tx.user.findUniqueOrThrow({ where: { id: row.userId }, select: { email: true } });
+      await tx.customerProfile.update({
+        where: { userId: row.userId },
+        data: { activatedAt: now, acceptedTermsAt: now },
+      });
+      return ok({ email: user.email });
     });
-    return ok({ email: user.email });
-  });
+  } catch (error) {
+    // A residual write conflict means someone else got there first.
+    if (isWriteConflict(error)) return fail('TOKEN_INVALID');
+    throw error;
+  }
 }

@@ -14,6 +14,16 @@ const DEFAULT_TEST_DATABASE_URL = 'postgresql://rm:rm@localhost:5432/rm_test';
 
 const TEST_DATABASE_URL = process.env['TEST_DATABASE_URL'] ?? DEFAULT_TEST_DATABASE_URL;
 
+/**
+ * Upper bound of every test client's connection pool (`TEST_DB_POOL_MAX`, 4
+ * by default). Each Vitest worker of each project holds its own pool and the
+ * test PostgreSQL allows 100 connections in all, so the driver's default of
+ * 10 per worker runs the server out when several projects test at once
+ * (P1001/P1002 under load). Four still lets concurrent domain calls overlap;
+ * a spec that needs more raises the variable for its own run.
+ */
+export const TEST_POOL_MAX = Math.max(1, Number(process.env['TEST_DB_POOL_MAX'] ?? 4) || 4);
+
 // Declared before `TEST_SCHEMA` on purpose: that constant is initialised at
 // module load and reaches this cache through `projectKey()`.
 let cachedRoot: string | undefined;
@@ -46,7 +56,7 @@ let prepared: Promise<void> | undefined;
 
 /** Returns a singleton Prisma client pointed at this worker's schema in the test database. */
 export function withTestDb(): Db {
-  client ??= createPrismaClient(TEST_DATABASE_URL, { schema: TEST_SCHEMA });
+  client ??= createPrismaClient(TEST_DATABASE_URL, { schema: TEST_SCHEMA, poolMax: TEST_POOL_MAX });
   return client;
 }
 
@@ -112,7 +122,7 @@ export async function withQueryCountingDb<T>(
   run: (db: Db, queryCount: () => number) => Promise<T>
 ): Promise<T> {
   const adapter = new PrismaPg(
-    { connectionString: TEST_DATABASE_URL, options: searchPathStartupOption(TEST_SCHEMA) },
+    { connectionString: TEST_DATABASE_URL, options: searchPathStartupOption(TEST_SCHEMA), max: TEST_POOL_MAX },
     { schema: TEST_SCHEMA }
   );
   const client = new PrismaClient({ adapter, log: [{ emit: 'event', level: 'query' }] });

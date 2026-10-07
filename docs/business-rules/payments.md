@@ -533,6 +533,13 @@ de recibo en la misma transacción.
 - Método `LEGACY` por omisión, o `CASH` si se sabe; `paid_at` en el pasado
   (nunca futuro), `is_backfilled`, `recorded_by` = el trabajador, nota
   opcional (por ejemplo, la hoja de la libreta).
+- **Las fechas llegan como fecha de calendario** (`YYYY-MM-DD`), no como
+  instante: el servidor las lee en la zona horaria de la organización, nunca
+  en la del navegador. El pago se fecha a **mediodía de ese día en esa zona,
+  sin pasar de ahora** (`noonOrNow`, la misma regla de la importación CSV):
+  una fecha de hoy capturada antes del mediodía queda fechada en ese momento.
+  Una fecha posterior a hoy en la zona de la organización es
+  `VALIDATION_FAILED` (`field: payments.<i>.paidAt`).
 - Dos caminos con la misma función: un abono único con todo lo ya pagado, o
   el desglose pago por pago. Se escriben **del más antiguo al más reciente**,
   para que la foto del saldo de cada recibo siga el orden real.

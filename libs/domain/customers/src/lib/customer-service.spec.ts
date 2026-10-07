@@ -274,6 +274,63 @@ describe('invitations', () => {
     expect(results.find((result) => !result.ok)).toMatchObject({ error: { code: 'TOKEN_INVALID' } });
   });
 
+  it('survives accepting the invitation and resetting the password at the same time, 30 times over', async () => {
+    const iterations = 30;
+    const outcomes: PromiseSettledResult<{ ok: boolean }>[][] = [];
+    for (let i = 0; i < iterations; i++) {
+      const created = await register({ email: `race${i}@example.com` });
+      const invitation = tokenFrom(email.sent.at(-1));
+      await issueResetToken(created.id, `race-reset-${i}`);
+
+      const settled = await Promise.allSettled([
+        acceptInvitation(db, { token: invitation, password: 'Accepted-Horse-1' }),
+        resetPassword(db, `race-reset-${i}`, 'Reset-Horse-2'),
+      ]);
+      outcomes.push(settled);
+
+      // Neither side may blow up (a 500 for the caller)...
+      expect(settled.map((result) => result.status)).toEqual(['fulfilled', 'fulfilled']);
+      // ...the holder of the reset token always ends with their password: if the
+      // invitation ran first the reset overwrites it, if the reset ran first the
+      // invitation is TOKEN_INVALID and must not touch it.
+      const user = await db.user.findUniqueOrThrow({ where: { id: created.id } });
+      expect(await verifyPassword(user.passwordHash!, 'Reset-Horse-2')).toBe(true);
+      expect(await db.passwordReset.count({ where: { userId: created.id, consumedAt: null } })).toBe(0);
+    }
+    expect(outcomes).toHaveLength(iterations);
+  });
+
+  it('activates a counter customer who sets a password through a reset, without recording terms they never accepted', async () => {
+    const created = await register();
+    await issueResetToken(created.id, 'reset-activation');
+
+    await resetPassword(db, 'reset-activation', 'Chosen-Horse-1');
+
+    const customer = await getCustomerForStaff(db, created.id);
+    expect(customer.ok && customer.value.hasPassword).toBe(true);
+    expect(customer.ok && customer.value.activatedAt).not.toBeNull();
+    expect(customer.ok && customer.value.acceptedTermsAt).toBeNull();
+  });
+
+  it('keeps the original activation date when an already active customer resets the password', async () => {
+    const created = await register();
+    await acceptInvitation(db, { token: tokenFrom(email.sent[0]), password: 'Correct-Horse-1' });
+    const before = await db.customerProfile.findUniqueOrThrow({ where: { userId: created.id } });
+    await issueResetToken(created.id, 'reset-again');
+
+    await resetPassword(db, 'reset-again', 'Chosen-Horse-1');
+
+    const after = await db.customerProfile.findUniqueOrThrow({ where: { userId: created.id } });
+    expect(after.activatedAt).toEqual(before.activatedAt);
+    expect(after.acceptedTermsAt).toEqual(before.acceptedTermsAt);
+  });
+
+  it('resets a staff password, who has no customer profile', async () => {
+    await issueResetToken(staffId, 'reset-staff');
+
+    expect(await resetPassword(db, 'reset-staff', 'Staff-Horse-1')).toMatchObject({ ok: true });
+  });
+
   it('refuses to invite a customer who already has a password', async () => {
     const created = await register();
     await acceptInvitation(db, { token: tokenFrom(email.sent[0]), password: 'Correct-Horse-1' });
