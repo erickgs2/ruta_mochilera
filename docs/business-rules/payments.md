@@ -168,6 +168,23 @@ apartado expiró:
 El dinero existe y debe verse; devolverlo o aplicarlo a otro viaje es decisión
 humana. Ningún movimiento de dinero es automático.
 
+> **Advertencia: este pago no se acredita.** A diferencia de una reserva
+> `CANCELLED` (cuyo pago tardío sí pasa al saldo, ver más abajo) y de lo que
+> `expireHolds` acredita **al vencer** (decisión 16), un pago que llega **después**
+> de que la reserva ya está `EXPIRED` queda registrado y **sube `paid_cents`,
+> pero no genera ningún movimiento de saldo**. Si el personal «devuelve» ese
+> dinero al cliente con un `ADJUSTMENT` positivo y luego **revive** la reserva
+> (decisión 13), el mismo dinero cuenta dos veces: una en el saldo del cliente
+> y otra en el `paid_cents` de la reserva viva. **Procedimiento correcto: no
+> ajustar el saldo.** Se cobra o se revive sobre la propia reserva (efectivo o
+> saldo en el mostrador, ver «Revivir con un cobro»): el pago tardío ya cuenta
+> en su `paid_cents` y sólo falta el resto del anticipo. Si de verdad hay que
+> devolver el dinero al cliente en lugar de revivir, se registra como `REFUND`
+> **después** de acreditarlo, nunca como un `ADJUSTMENT` positivo previo a
+> revivir. Esta salida es deliberada y está fuera del alcance de la decisión 16
+> (la decisión del dueño fue no automatizarla); `docs/decisiones-fase-2b.md`
+> lo deja anotado.
+
 **Lo mismo para una reserva `CANCELLED` (Tarea 19).** Si el personal canceló
 la reserva mientras una ficha o un intento de tarjeta seguían cobrables (la
 cancelación los cancela en el proveedor, pero una ficha pagada en ese mismo
