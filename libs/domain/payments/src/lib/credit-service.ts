@@ -345,6 +345,12 @@ async function outstandingExpirationCredit(tx: DbTransactionClient, reservationI
 }
 
 /**
+ * What `expireHolds` (`apps/worker`) receives to credit an expired hold's
+ * payments, typed here so the worker never reaches into the function's shape.
+ */
+export type CreditFromExpiration = typeof creditFromExpiration;
+
+/**
  * The money an expired hold had received becomes the customer's credit
  * (`EXPIRATION`, business rule 5.3), written in `expireHolds`' own
  * transaction, on the call that actually expired the reservation -- the same

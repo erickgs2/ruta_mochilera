@@ -190,7 +190,8 @@ stateDiagram-v2
 ```
 
 Los dos jobs de `apps/worker` que tocan este ciclo: `expireHolds` (cada 5
-minutos) dispara `HELD → EXPIRED` y cancela los Payment Intents pendientes;
+minutos) dispara `HELD → EXPIRED`, pasa lo ya pagado al saldo del cliente
+(`EXPIRATION`, en la misma transacción) y cancela los Payment Intents pendientes;
 `warnExpiringHolds` (cada hora) no cambia el estado, sólo avisa
 `HOLD_EXPIRING` cuando queda menos de un cuarto del plazo del apartado.
 `HELD → ACTIVE` no lo dispara ningún job: llega con el webhook de Stripe (o,

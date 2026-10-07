@@ -2,7 +2,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vites
 import { closeTestDb, prepareTestDb, resetDatabase, withTestDb } from '@rm/db/testing';
 import { closeTestQueue, resetTestQueue, withTestQueue } from '@rm/jobs/testing';
 import type { Db, DbTransactionClient, Reservation, ReservationStatus } from '@rm/db';
-import { createCancelPendingPaymentIntents, recordPayment } from '@rm/domain-payments';
+import { createCancelPendingPaymentIntents, creditBalance, creditFromExpiration, recordPayment } from '@rm/domain-payments';
 import { FakePaymentProvider, PROVIDER_CANCEL_REJECTED_TEST_RESERVATION_ID } from '@rm/payments-stripe';
 import { expireHolds } from './expire-holds';
 
@@ -71,6 +71,8 @@ async function seedReservation(
     minimumDepositCents?: number;
     holdExpiresAt?: Date | null;
     customerId?: string;
+    /** Seeds a SUCCEEDED cash payment of this amount and the matching `paid_cents`. */
+    paidCents?: number;
   } = {}
 ): Promise<Reservation> {
   const index = next();
@@ -89,7 +91,7 @@ async function seedReservation(
     },
   });
   const status = overrides.status ?? 'HELD';
-  return client.reservation.create({
+  const reservation = await client.reservation.create({
     data: {
       code: `RM-EXP${index}`,
       tripId: trip.id,
@@ -103,10 +105,24 @@ async function seedReservation(
           : overrides.holdExpiresAt,
       totalPriceCents: 500_000,
       minimumDepositCents: overrides.minimumDepositCents ?? 100_000,
+      paidCents: overrides.paidCents ?? 0,
       paymentDeadline: trip.paymentDeadline,
       source: 'APP',
     },
   });
+  if (overrides.paidCents) {
+    await client.payment.create({
+      data: {
+        reservationId: reservation.id,
+        amountCents: overrides.paidCents,
+        method: 'CASH',
+        status: 'SUCCEEDED',
+        provider: 'MANUAL',
+        paidAt: new Date(),
+      },
+    });
+  }
+  return reservation;
 }
 
 /**
@@ -288,6 +304,155 @@ describe('expireHolds', () => {
     // HOLD_EXPIRED notice for a reservation that is, in fact, active.
     const deliveries = await db.notificationDelivery.findMany({ where: { reservationId: reservation.id } });
     expect(deliveries).toHaveLength(0);
+  });
+
+  describe('crediting what the hold had received (decision 16)', () => {
+    /**
+     * The invariant behind "never return the money twice": what the customer
+     * holds as credit plus what a live reservation still counts is exactly
+     * what was paid.
+     */
+    async function expectMoneyConserved(reservationId: string): Promise<void> {
+      const reservation = await db.reservation.findUniqueOrThrow({ where: { id: reservationId } });
+      const paid = await db.payment.aggregate({
+        where: { reservationId, status: 'SUCCEEDED' },
+        _sum: { amountCents: true },
+      });
+      const live = reservation.status === 'HELD' || reservation.status === 'ACTIVE';
+      const credit = await creditBalance(db, reservation.customerId);
+      expect(credit + (live ? reservation.paidCents : 0)).toBe(paid._sum.amountCents ?? 0);
+    }
+
+    it('turns the payments of an expired hold into credit, leaving paid_cents on the reservation', async () => {
+      const reservation = await seedReservation(db, { paidCents: 40_000, holdExpiresAt: new Date(Date.now() - HOUR_MS) });
+      const boss = await withTestQueue();
+
+      await expireHolds(db, boss, undefined, creditFromExpiration);
+
+      const after = await db.reservation.findUniqueOrThrow({ where: { id: reservation.id } });
+      expect(after.status).toBe('EXPIRED');
+      expect(after.paidCents).toBe(40_000);
+      expect(await db.customerCreditEntry.findMany({ where: { customerId: reservation.customerId } })).toMatchObject([
+        { kind: 'EXPIRATION', amountCents: 40_000, reservationId: reservation.id },
+      ]);
+      await expectMoneyConserved(reservation.id);
+    });
+
+    it('tells the customer their money became credit, and only then', async () => {
+      const paid = await seedReservation(db, { paidCents: 40_000, holdExpiresAt: new Date(Date.now() - HOUR_MS) });
+      const unpaid = await seedReservation(db, { holdExpiresAt: new Date(Date.now() - HOUR_MS) });
+      const boss = await withTestQueue();
+
+      await expireHolds(db, boss, undefined, creditFromExpiration);
+
+      const paidNotices = await db.notificationDelivery.findMany({ where: { reservationId: paid.id } });
+      const unpaidNotices = await db.notificationDelivery.findMany({ where: { reservationId: unpaid.id } });
+      expect(paidNotices).toHaveLength(2);
+      expect(paidNotices.every((row) => row.eventType === 'HOLD_EXPIRED_CREDIT')).toBe(true);
+      expect(unpaidNotices.every((row) => row.eventType === 'HOLD_EXPIRED')).toBe(true);
+    });
+
+    it('writes no credit for a hold that received nothing', async () => {
+      const reservation = await seedReservation(db, { holdExpiresAt: new Date(Date.now() - HOUR_MS) });
+      const boss = await withTestQueue();
+
+      await expireHolds(db, boss, undefined, creditFromExpiration);
+
+      expect(await db.customerCreditEntry.count({ where: { customerId: reservation.customerId } })).toBe(0);
+    });
+
+    it('does not credit a hold that is still running', async () => {
+      const reservation = await seedReservation(db, { paidCents: 40_000, holdExpiresAt: new Date(Date.now() + HOUR_MS) });
+      const boss = await withTestQueue();
+
+      await expireHolds(db, boss, undefined, creditFromExpiration);
+
+      expect(await db.customerCreditEntry.count({ where: { customerId: reservation.customerId } })).toBe(0);
+      await expectMoneyConserved(reservation.id);
+    });
+
+    it('credits once however many times it runs', async () => {
+      const reservation = await seedReservation(db, { paidCents: 40_000, holdExpiresAt: new Date(Date.now() - HOUR_MS) });
+      const boss = await withTestQueue();
+
+      await expireHolds(db, boss, undefined, creditFromExpiration);
+      await expireHolds(db, boss, undefined, creditFromExpiration);
+      await Promise.all([
+        expireHolds(db, boss, undefined, creditFromExpiration),
+        expireHolds(db, boss, undefined, creditFromExpiration),
+      ]);
+
+      expect(await db.customerCreditEntry.count({ where: { customerId: reservation.customerId } })).toBe(1);
+      await expectMoneyConserved(reservation.id);
+    });
+
+    it('credits nothing when a concurrent payment activated the reservation first', async () => {
+      const reservation = await seedReservation(db, {
+        paidCents: 40_000,
+        minimumDepositCents: 100_000,
+        holdExpiresAt: new Date(Date.now() - HOUR_MS),
+      });
+      const boss = await withTestQueue();
+
+      const expireHasReadCandidates = deferred();
+      const paymentHasActivated = deferred();
+      const pausing = clientPausingAt(db, { model: 'reservation', operation: 'updateMany', when: 'before' }, async () => {
+        expireHasReadCandidates.resolve();
+        await paymentHasActivated.promise;
+      });
+      const expiring = expireHolds(pausing, boss, undefined, creditFromExpiration);
+      const paying = (async () => {
+        await expireHasReadCandidates.promise;
+        return db.$transaction((tx) =>
+          recordPayment(tx, {
+            reservationId: reservation.id,
+            amountCents: 60_000,
+            method: 'CASH',
+            status: 'SUCCEEDED',
+            provider: 'MANUAL',
+          })
+        );
+      })();
+      await settle(200);
+      paymentHasActivated.resolve();
+      await Promise.all([expiring, paying]);
+
+      expect((await db.reservation.findUniqueOrThrow({ where: { id: reservation.id } })).status).toBe('ACTIVE');
+      expect(await db.customerCreditEntry.count({ where: { customerId: reservation.customerId } })).toBe(0);
+      await expectMoneyConserved(reservation.id);
+    });
+
+    it('never credits more than the hold had received when a payment races the expiry, 30 times over', async () => {
+      for (let i = 0; i < 30; i++) {
+        const reservation = await seedReservation(db, {
+          paidCents: 40_000,
+          minimumDepositCents: 100_000,
+          holdExpiresAt: new Date(Date.now() - HOUR_MS),
+        });
+        const boss = await withTestQueue();
+
+        await Promise.all([
+          expireHolds(db, boss, undefined, creditFromExpiration),
+          db.$transaction((tx) =>
+            recordPayment(tx, {
+              reservationId: reservation.id,
+              amountCents: 60_000,
+              method: 'CASH',
+              status: 'SUCCEEDED',
+              provider: 'MANUAL',
+            })
+          ),
+        ]);
+
+        const after = await db.reservation.findUniqueOrThrow({ where: { id: reservation.id } });
+        const credit = await creditBalance(db, reservation.customerId);
+        // Either the payment won (active, nothing credited) or the expiry
+        // won and credited only what the hold had received before it; the
+        // late payment stays a recorded payment, as before.
+        if (after.status === 'ACTIVE') expect(credit).toBe(0);
+        else expect({ status: after.status, credit }).toEqual({ status: 'EXPIRED', credit: 40_000 });
+      }
+    });
   });
 
   describe('cancelling pending Payment Intents (Task 9, closing the Task 8 hook)', () => {

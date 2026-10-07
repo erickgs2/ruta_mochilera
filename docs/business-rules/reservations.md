@@ -291,7 +291,7 @@ que existe pg-boss; registra ambas con su cadencia y nada más.
 
 | Job | Cadencia | Qué hace |
 |---|---|---|
-| `expireHolds` | cada 5 minutos | Pasa a `EXPIRED` cada `HELD` con `hold_expires_at` vencido, cancela sus Payment Intents pendientes (ver abajo) y avisa `HOLD_EXPIRED` al cliente. |
+| `expireHolds` | cada 5 minutos | Pasa a `EXPIRED` cada `HELD` con `hold_expires_at` vencido, cancela sus Payment Intents pendientes (ver abajo), pasa lo ya pagado al saldo del cliente (ver abajo) y avisa `HOLD_EXPIRED` —o `HOLD_EXPIRED_CREDIT` si había pagos— al cliente. |
 | `warnExpiringHolds` | cada hora | Avisa `HOLD_EXPIRING` a quien le quede menos de un cuarto del plazo de su apartado. |
 
 ### `expireHolds`: por qué la escritura es condicional, no por `id`
@@ -324,6 +324,32 @@ tercer parámetro opcional, `cancelPendingPaymentIntents`, sin invocarlo aquí
 más que como un hueco inyectado: el mismo stub honesto que la Fase 1 dejó en
 `committedSeats` en vez de inventar una dependencia que esta tarea no puede
 probar de verdad.
+
+**Lo pagado pasa al saldo del cliente (decisión 16, Fase 2B).** `expireHolds`
+recibe un cuarto parámetro opcional, `creditFromExpiration`
+(`@rm/domain-payments`, inyectado por `main.ts`: los dos dominios no se
+importan). Corre **dentro de la transacción de la reserva que sí expiró** —la
+llamada que ganó el `UPDATE` condicional—, con el `paid_cents` leído después de
+que ese `UPDATE` tomó el bloqueo de la fila, y antes del aviso:
+
+- Una reserva con `paid_cents > 0` deja su dinero como saldo a favor
+  (`EXPIRATION`), igual que al cancelar (decisión 6). La reserva `EXPIRED`
+  **conserva** `paid_cents` y sus pagos: es historia contable.
+- El aviso es `HOLD_EXPIRED_CREDIT` —la misma noticia que `HOLD_EXPIRED` más
+  la frase de que el dinero quedó como saldo— y sólo cuando de verdad se
+  acreditó algo.
+- Es **idempotente**: lo que se acredita es `paid_cents` menos el neto de los
+  `EXPIRATION`/`REVIVAL` de esa reserva, así que repetir la pasada, o dos
+  pasadas a la vez, no duplican el crédito (`payments.md`, «Lo pagado de un
+  apartado vencido»).
+- **Una carrera con un pago** se resuelve en la base: si el pago activó la
+  reserva antes, el `UPDATE` condicional no encuentra `HELD` y no se acredita
+  nada; si el job ganó, acredita sólo lo que la reserva había recibido hasta
+  ahí (el pago tardío se registra como siempre, `payments.md`).
+- **Orden de bloqueo: viaje, reserva, cliente** en toda operación que toque
+  más de uno. `expireHolds` toma reserva y luego cliente; nunca el viaje.
+- Sin llamada de red dentro de la transacción: cancelar los Payment Intents
+  sigue ocurriendo después del commit.
 
 ### `warnExpiringHolds`: el umbral es relativo al apartado, no fijo
 
