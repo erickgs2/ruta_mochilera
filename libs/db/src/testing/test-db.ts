@@ -1,14 +1,20 @@
-import { execFileSync } from 'node:child_process';
+import { execFile } from 'node:child_process';
 import { readdirSync, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
+import { promisify } from 'node:util';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '../generated/prisma/client';
-import { createPrismaClient, searchPathStartupOption, type Db } from '../lib/client';
+import { createPrismaClient, searchPathStartupOption, type Db, type DbTransactionClient } from '../lib/client';
 import { composeSchemaName, findWorkspaceRoot } from './schema-name';
 
 const DEFAULT_TEST_DATABASE_URL = 'postgresql://rm:rm@localhost:5432/rm_test';
 
 const TEST_DATABASE_URL = process.env['TEST_DATABASE_URL'] ?? DEFAULT_TEST_DATABASE_URL;
+
+const execFileAsync = promisify(execFile);
+
+/** How long one schema's migration may hold its lock (and so how long a second process waits for it). */
+const MIGRATE_TIMEOUT_MS = 180_000;
 
 /**
  * Upper bound of every test client's connection pool (`TEST_DB_POOL_MAX`, 4
@@ -154,38 +160,81 @@ export async function withQueryCountingDb<T>(
 export { uniqueViolationIndex } from '../lib/prisma-errors';
 
 async function provisionWorkerSchema(): Promise<void> {
-  const db = withTestDb();
-  await db.$executeRawUnsafe(`CREATE SCHEMA IF NOT EXISTS "${TEST_SCHEMA}"`);
+  await provisionSchema(TEST_SCHEMA, withTestDb());
+}
 
+/**
+ * Brings `schema` of the test database up to date with every migration (the
+ * schema is created on the way if it does not exist).
+ *
+ * Prisma Migrate takes `pg_advisory_lock(72707369)` around `migrate deploy`,
+ * and that lock belongs to the whole *database*, not to the schema being
+ * migrated. Every worker of every project of every checkout migrates its own
+ * schema in the one `rm_test`, so the lock serialised work that never
+ * conflicted -- and once enough of them queued, the 10s Prisma waits for it
+ * ran out (P1002 "Timed out trying to acquire a postgres advisory lock"; the
+ * `identity`, `customers` and `payments` suites failed that way under a normal
+ * parallel `nx run-many`).
+ *
+ * So the global lock is switched off (`PRISMA_SCHEMA_DISABLE_ADVISORY_LOCK`,
+ * a variable the schema engine of this Prisma version checks for, and the
+ * documented switch for exactly this) and replaced by one that is as narrow as
+ * the thing it protects: a transaction-level advisory lock keyed by the
+ * schema's name. Two processes preparing *different* schemas never wait for
+ * each other; two preparing the *same* one (the same project run twice in one
+ * checkout) still queue, and the second finds the work done.
+ */
+export async function provisionSchema(schema: string, db: Db): Promise<void> {
   const expected = migrationNames();
-  const applied = await appliedMigrationNames(db);
-  if (expected.every((name) => applied.has(name))) return;
+  if (await isUpToDate(db, schema, expected)) return;
 
   const url = new URL(TEST_DATABASE_URL);
-  url.searchParams.set('schema', TEST_SCHEMA);
-  // `migrate deploy` takes a database-wide advisory lock, so concurrent workers
-  // queue rather than collide. It only runs when a migration is missing.
+  url.searchParams.set('schema', schema);
+  // The transaction exists only to hold the lock while the CLI runs in a child
+  // process; it ends, and releases the lock, when the migration does. The
+  // child uses its own connection, so this one is not in its way.
+  await db.$transaction(
+    async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${schema}, 0))`;
+      // No CREATE SCHEMA here: `migrate deploy` creates a missing schema itself,
+      // and one made inside this still-open transaction would be invisible to its
+      // connection yet block its own CREATE SCHEMA -- a deadlock.
+      // Someone else may have finished while this process waited for the lock.
+      if (await isUpToDate(tx, schema, expected)) return;
+      await migrateDeploy(schema, url);
+    },
+    { timeout: MIGRATE_TIMEOUT_MS, maxWait: MIGRATE_TIMEOUT_MS }
+  );
+}
+
+async function migrateDeploy(schema: string, url: URL): Promise<void> {
   try {
-    execFileSync(join(workspaceRoot(), 'node_modules', '.bin', 'prisma'), ['migrate', 'deploy'], {
+    const migration = execFileAsync(join(workspaceRoot(), 'node_modules', '.bin', 'prisma'), ['migrate', 'deploy'], {
       cwd: workspaceRoot(),
-      env: { ...process.env, DATABASE_URL: url.toString() },
-      // Captured rather than ignored: a broken migration must explain itself
-      // here instead of surfacing as a bare non-zero exit.
-      stdio: ['ignore', 'pipe', 'pipe'],
+      env: { ...process.env, DATABASE_URL: url.toString(), PRISMA_SCHEMA_DISABLE_ADVISORY_LOCK: '1' },
       encoding: 'utf8',
     });
+    // Nothing to tell it: close its stdin so it never waits for input.
+    migration.child.stdin?.end();
+    await migration;
   } catch (error) {
+    // Captured rather than ignored: a broken migration must explain itself
+    // here instead of surfacing as a bare non-zero exit.
     const { stdout, stderr } = error as { stdout?: string; stderr?: string };
     const output = [stdout, stderr]
       .map((stream) => stream?.trim())
       .filter((stream) => stream)
       .join('\n');
     throw new Error(
-      `prisma migrate deploy failed for schema "${TEST_SCHEMA}".` +
-        (output ? `\n${output}` : ' The CLI produced no output.'),
+      `prisma migrate deploy failed for schema "${schema}".` + (output ? `\n${output}` : ' The CLI produced no output.'),
       { cause: error }
     );
   }
+}
+
+async function isUpToDate(db: Db | DbTransactionClient, schema: string, expected: string[]): Promise<boolean> {
+  const applied = await appliedMigrationNames(db, schema);
+  return expected.every((name) => applied.has(name));
 }
 
 /**
@@ -210,16 +259,16 @@ function migrationNames(): string[] {
     .sort();
 }
 
-async function appliedMigrationNames(db: Db): Promise<Set<string>> {
+async function appliedMigrationNames(db: Db | DbTransactionClient, schema: string): Promise<Set<string>> {
   const present = await db.$queryRaw<{ exists: boolean }[]>`
     SELECT EXISTS (
       SELECT 1 FROM information_schema.tables
-      WHERE table_schema = ${TEST_SCHEMA} AND table_name = '_prisma_migrations'
+      WHERE table_schema = ${schema} AND table_name = '_prisma_migrations'
     ) AS exists
   `;
   if (!present[0]?.exists) return new Set();
   const rows = await db.$queryRawUnsafe<{ migration_name: string }[]>(
-    `SELECT migration_name FROM "${TEST_SCHEMA}"."_prisma_migrations" WHERE finished_at IS NOT NULL`
+    `SELECT migration_name FROM "${schema}"."_prisma_migrations" WHERE finished_at IS NOT NULL`
   );
   return new Set(rows.map((row) => row.migration_name));
 }
