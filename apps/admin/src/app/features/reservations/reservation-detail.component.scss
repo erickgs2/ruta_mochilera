@@ -59,6 +59,67 @@ h2 {
   width: 100%;
 }
 
+.reservation-payment-status-inline {
+  display: none;
+}
+
+.reservation-receipt-actions {
+  white-space: nowrap;
+}
+
+// Narrow screens: the table has to fit without sideways scrolling, so the
+// receipt actions (the reason staff open this table) stay on screen. The
+// status column folds into the method cell, the receipt number sits above its
+// buttons and the buttons and cell padding shrink.
+@media (max-width: 600px) {
+  .reservation-payments-table {
+    .mat-column-status {
+      display: none;
+    }
+
+    // Material pads the first and last cell of a row more than the rest; on a
+    // phone that is the difference between fitting and scrolling sideways.
+    .mat-mdc-header-cell,
+    .mat-mdc-cell,
+    .mat-mdc-header-cell:first-of-type,
+    .mat-mdc-cell:first-of-type,
+    .mat-mdc-header-cell:last-of-type,
+    .mat-mdc-cell:last-of-type {
+      padding-inline: 0.25rem;
+    }
+
+    .reservation-payment-status-inline {
+      display: block;
+      font-size: 0.75rem;
+      color: var(--mat-sys-on-surface-variant);
+    }
+
+    // Material's cells do not wrap; the receipt number has to, or it keeps the
+    // column as wide as the number and pushes the buttons off screen.
+    .reservation-receipt-cell {
+      white-space: normal;
+    }
+
+    .reservation-receipt-number {
+      display: block;
+      font-size: 0.75rem;
+      overflow-wrap: anywhere;
+    }
+
+    .reservation-receipt-actions {
+      display: flex;
+    }
+
+    .reservation-receipt-download,
+    .reservation-receipt-resend {
+      --mat-icon-button-state-layer-size: 2.25rem;
+      width: 2.25rem;
+      height: 2.25rem;
+      padding: 0.375rem;
+    }
+  }
+}
+
 .reservation-cancel {
   border-top: 1px solid var(--mat-sys-outline-variant);
   padding-top: 1rem;
