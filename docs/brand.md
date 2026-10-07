@@ -92,3 +92,11 @@ carteles, publicadas, con su foto central como portada
 de los carteles; **precios, anticipos y cupo son ilustrativos**, porque los
 carteles no los publican. Se niega a correr con `NODE_ENV=production` salvo
 que se fije `ALLOW_DEMO_SEED=1`.
+
+**Las portadas son provisionales.** Salen recortadas de los carteles (unos
+300 px de lado), así que en pantallas grandes se ven suaves. No hace falta
+tocar código para cambiarlas: en el panel, **Viajes → Imágenes** de cada ruta,
+se sube la foto original y se elimina la de demostración; al borrar la
+portada, la siguiente imagen del viaje pasa a serlo sola
+(`deleteTripImage`, `libs/domain/trips`). Las fotos originales del cliente,
+en buena resolución, son las que deben quedar.
