@@ -185,7 +185,7 @@ async function applyConfirmedPayment(
   tx: DbTransactionClient,
   reservationId: string,
   amountCents: number
-): Promise<void> {
+): Promise<Reservation> {
   const reservation = await tx.reservation.update({
     where: { id: reservationId },
     data: { paidCents: { increment: amountCents } },
@@ -197,6 +197,7 @@ async function applyConfirmedPayment(
       data: { status: 'ACTIVE', holdExpiresAt: null },
     });
   }
+  return reservation;
 }
 
 /**
@@ -285,6 +286,13 @@ export async function recordPayment(
         // checks above, so no early return can leave a number unused.
         receiptNumber:
           input.status === 'SUCCEEDED' && paidAt ? await assignReceiptNumber(tx, paidAt) : null,
+        // The balance this payment leaves behind, read under the lock above.
+        ...(input.status === 'SUCCEEDED'
+          ? {
+              receiptTotalCents: reservation.totalPriceCents,
+              receiptPaidCents: reservation.paidCents + input.amountCents,
+            }
+          : {}),
         providerVoucherUrl: input.providerVoucherUrl ?? null,
         voucherExpiresAt: input.voucherExpiresAt ?? null,
         recordedById: input.recordedById ?? null,
@@ -428,9 +436,15 @@ export async function confirmPaymentWithin(
   // race above must not take a number it will not use, or the year's
   // sequence would have a gap.
   const receiptNumber = await assignReceiptNumber(tx, input.paidAt);
-  await tx.payment.update({ where: { id: payment.id }, data: { receiptNumber } });
-
-  await applyConfirmedPayment(tx, payment.reservationId, payment.amountCents);
+  const reservation = await applyConfirmedPayment(tx, payment.reservationId, payment.amountCents);
+  await tx.payment.update({
+    where: { id: payment.id },
+    data: {
+      receiptNumber,
+      receiptTotalCents: reservation.totalPriceCents,
+      receiptPaidCents: reservation.paidCents,
+    },
+  });
 
   await recordAudit(tx, {
     action: 'payment.confirmed',

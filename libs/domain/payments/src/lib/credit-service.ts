@@ -2,6 +2,7 @@ import type { CreditEntryKind, CustomerCreditEntry, Db, DbTransactionClient } fr
 import { recordAudit } from '@rm/domain-audit';
 import { fail, ok, type Result } from '@rm/shared-utils';
 import { recordPayment, type PaymentDto } from './payment-service';
+import { enqueueReceipt, type ReceiptQueue } from './receipt-service';
 
 /**
  * The customer credit ledger (Phase 2B, business rule 5.5).
@@ -223,7 +224,7 @@ export async function adjustCredit(db: Db, input: CreditMovementInput): Promise<
  * Pays part of a live reservation with the customer's credit.
  *
  * One transaction writes a `CREDIT` payment through `recordPayment` -- so it
- * gets a receipt number, moves `paid_cents` and activates a `HELD`
+ * gets a receipt number (and its receipt is enqueued), moves `paid_cents` and activates a `HELD`
  * reservation that now covers its deposit, exactly like cash would -- and
  * the matching `APPLIED` entry. `paid_cents` therefore stays the sum of
  * SUCCEEDED payments and the nightly reconciliation needs no special case.
@@ -236,6 +237,7 @@ export async function adjustCredit(db: Db, input: CreditMovementInput): Promise<
  */
 export async function applyCreditToReservation(
   db: Db,
+  queue: ReceiptQueue,
   input: ApplyCreditInput
 ): Promise<Result<PaymentDto>> {
   if (!Number.isInteger(input.amountCents) || input.amountCents <= 0) {
@@ -287,6 +289,7 @@ export async function applyCreditToReservation(
     // above. Throwing rolls the payment back if that ever stops being true.
     if (!entry.ok) throw new Error(`Credit entry refused after the check: ${entry.error.code}`);
 
+    await enqueueReceipt(tx, queue, payment.value.id);
     return payment;
   });
 }

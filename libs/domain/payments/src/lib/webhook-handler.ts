@@ -11,6 +11,7 @@ import { OXXO_VOUCHER_EXPIRED_FAILURE_CODE, type WebhookEvent, type WebhookPayme
 import { fail, formatMoney, ok, type DomainError, type DomainErrorCode, type Result } from '@rm/shared-utils';
 import { creditFromCancellation } from './credit-service';
 import { confirmPaymentWithin } from './payment-service';
+import { enqueueReceipt } from './receipt-service';
 
 /**
  * The index behind `stripe_events`'s primary key. A violation of it is the
@@ -185,6 +186,15 @@ async function applySucceeded(
   intent: WebhookPaymentIntent,
   occurredAt: Date
 ): Promise<Result<null>> {
+  // A second, different event for an intent already confirmed (Stripe can
+  // send more than one) confirms nothing new and must not enqueue a second
+  // receipt. The job is idempotent anyway; this keeps the queue honest.
+  const before = await tx.payment.findUnique({
+    where: { providerIntentId: intent.providerIntentId },
+    select: { status: true },
+  });
+  const alreadySucceeded = before?.status === 'SUCCEEDED';
+
   const confirmed = await confirmPaymentWithin(tx, {
     providerIntentId: intent.providerIntentId,
     paidAt: occurredAt,
@@ -214,6 +224,12 @@ async function applySucceeded(
     }
     return confirmed;
   }
+
+  // Every SUCCEEDED payment gets its receipt (Phase 2B, §5.4), whatever
+  // the reservation's status -- enqueued on this transaction, so a rollback
+  // takes the job with it. A redelivery is harmless: the job never sends a
+  // receipt twice.
+  if (!alreadySucceeded) await enqueueReceipt(tx, queue, confirmed.value.id);
 
   const context = await notificationContext(tx, confirmed.value.reservationId);
 

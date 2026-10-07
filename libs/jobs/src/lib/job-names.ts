@@ -24,15 +24,31 @@ export const RECONCILE_PAID_CENTS_JOB = 'reconcile-paid-cents';
  */
 export const SEND_NOTIFICATION_EMAIL_JOB = 'send-notification-email';
 
+/**
+ * Phase 2B: generates a payment's receipt PDF if it does not exist yet,
+ * stores it and emails it to the customer. Enqueued by `@rm/domain-payments`
+ * in the same transaction that leaves the payment SUCCEEDED (same outbox
+ * pattern as above), or by staff asking to resend one.
+ */
+export const SEND_RECEIPT_JOB = 'send-receipt';
+
 /** Every job name in this workspace, for anything that needs to iterate them (e.g. `apps/worker`'s startup). */
 export const JOB_NAMES = [
   EXPIRE_HOLDS_JOB,
   WARN_EXPIRING_HOLDS_JOB,
   RECONCILE_PAID_CENTS_JOB,
   SEND_NOTIFICATION_EMAIL_JOB,
+  SEND_RECEIPT_JOB,
 ] as const;
 
 /** The payload `libs/domain/notifications` sends and `apps/worker` reads back for `SEND_NOTIFICATION_EMAIL_JOB`. */
 export interface SendNotificationEmailPayload {
   deliveryId: string;
+}
+
+/** The payload `@rm/domain-payments` sends and `apps/worker` reads back for `SEND_RECEIPT_JOB`. */
+export interface SendReceiptPayload {
+  paymentId: string;
+  /** Staff asked to send it again: send even if `receipt_sent_at` is already set. */
+  resend?: boolean;
 }

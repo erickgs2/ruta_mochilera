@@ -2,6 +2,7 @@ import { applyCreditRequestSchema, type ApplyCreditRequest } from '@rm/contracts
 import { applyCreditToReservation } from '@rm/domain-payments';
 import { db } from '../../../../../../../lib/db';
 import { route } from '../../../../../../../lib/http/route';
+import { queue } from '../../../../../../../lib/queue';
 
 /**
  * Pays part of a live reservation with its customer's credit: a numbered
@@ -12,7 +13,7 @@ export const POST = route<ApplyCreditRequest, unknown>({
   body: applyCreditRequestSchema,
   successStatus: 201,
   handler: async ({ actor, body, params }) =>
-    applyCreditToReservation(db(), {
+    applyCreditToReservation(db(), await queue(), {
       reservationId: params['reservationId'] as string,
       amountCents: body.amountCents,
       actorId: actor.userId,

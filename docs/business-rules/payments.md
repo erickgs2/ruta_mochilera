@@ -599,6 +599,52 @@ fila por año con el año como llave primaria.
   usar.
 - Costo aceptado: todos los cobros exitosos del año se serializan en esa fila
   durante el resto de su transacción, que es corta (sin llamadas de red).
+- En la misma escritura quedan `receipt_total_cents` y `receipt_paid_cents`:
+  el precio total y lo pagado **justo después de este pago**. Es la foto que
+  imprime el recibo.
+
+## Recibos en PDF (Fase 2B, Tareas 4 y 5, §5.4)
+
+**Todo pago que llega a `SUCCEEDED` tiene recibo**: efectivo, tarjeta, OXXO,
+saldo a favor e históricos.
+
+- **Qué imprime** (`@rm/receipts`, `PdfLibReceiptRenderer`): los datos de la
+  agencia (`organization.name`, `address`, `phone`, `website`), el folio, la
+  fecha de pago en la zona de la organización, el cliente, el viaje y sus
+  fechas, el folio de la reserva, el monto y la forma de pago, y el estado de
+  cuenta **de ese momento** (total, pagado y saldo pendiente tras este pago).
+  En el idioma del cliente. Aclara que no es un comprobante fiscal (CFDI).
+- **La foto del saldo no se recalcula**: sale de `receipt_total_cents` y
+  `receipt_paid_cents`. Para un pago confirmado antes de que existieran esas
+  columnas se reconstruye con los pagos `SUCCEEDED` hasta su `paid_at`.
+- **Se genera una vez y se guarda.** `ensureReceiptPdf` lo dibuja la primera
+  vez, lo guarda en `receipts/{año}/{folio}-{aleatorio}.pdf` y lo anota en
+  `receipt_key` con una escritura condicional (dos generaciones simultáneas
+  dejan un solo PDF); después siempre devuelve el guardado. Lo que un recibo
+  dice no cambia aunque la reserva cambie.
+- **Los recibos son privados.** El folio es secuencial, así que la llave
+  lleva un sufijo aleatorio, y la ruta pública de archivos locales
+  (`/api/v1/files/...`) rechaza el prefijo `receipts/` con el mismo 404 de un
+  archivo inexistente. Sólo se descargan por rutas que verifican quién pide:
+  `GET /admin/payments/{id}/receipt` (`payment.view`) y
+  `GET /payments/{id}/receipt` (el dueño; otro cliente recibe
+  `RESERVATION_NOT_OWNED`, 404). En S3, la política del bucket no debe hacer
+  público el prefijo `receipts/`.
+- **Envío: el job `SEND_RECEIPT`** (`apps/worker/src/jobs/send-receipt.ts`).
+  Se encola con `enqueueReceipt` **en la misma transacción** que deja el pago
+  en `SUCCEEDED` (la bandeja de salida de `notifications.md`, Regla 11): el
+  webhook en toda rama (también cuando la reserva ya venció o se canceló) y
+  `applyCreditToReservation`. Un segundo evento de Stripe para un intento ya
+  confirmado no encola otro. La captura histórica y la importación lo omiten
+  salvo que el trabajador marque el envío.
+- El job asegura el PDF, lo envía **adjunto** al correo **actual** del
+  cliente y sella `receipt_sent_at`. **Idempotente**: un recibo enviado no se
+  reenvía. **Un fallo del proveedor** deja el PDF guardado y
+  `receipt_sent_at` nulo; el job falla para que pg-boss lo reintente, y el
+  reintento no vuelve a dibujar el PDF.
+- **Reenviar** es una acción explícita del panel
+  (`POST /admin/payments/{id}/receipt/resend`, `payment.view`): encola el job
+  con `resend: true`, que envía aunque ya se hubiera enviado.
 
 ## Errores
 

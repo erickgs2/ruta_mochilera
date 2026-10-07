@@ -117,6 +117,19 @@ intacta en vez de reenviarse. Lo prueba `delivery-service.spec.ts` ("is a
 no-op the second time it runs..."), llamando a la función dos veces seguidas
 con un proveedor que cuenta sus propias invocaciones.
 
+## El recibo de pago usa la misma frontera, pero no es un aviso (Fase 2B)
+
+El job `SEND_RECEIPT` sigue la Regla 11 al pie de la letra —se encola en la
+transacción que confirma el pago y sólo el worker llama al proveedor—, pero
+**no escribe filas en `notification_deliveries`**: el recibo no es un aviso
+de la bandeja, es un documento que el cliente descarga desde su historial de
+pagos. Su estado vive en el propio pago (`receipt_key`, `receipt_sent_at`).
+El correo lleva el PDF **adjunto** (`EmailMessage.attachments`; Resend lo
+recibe en base64 y el proveedor de consola sólo registra nombre y tamaño).
+A diferencia de `deliverQueuedEmail`, un fallo del proveedor hace fallar el
+job para que pg-boss lo reintente. Reglas completas en `payments.md`,
+«Recibos en PDF».
+
 ## Un fallo de envío no debe perder la copia de bandeja
 
 Si `EmailProvider.send` falla (dirección mal formada, proveedor caído), la

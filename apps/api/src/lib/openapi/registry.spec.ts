@@ -52,6 +52,9 @@ const EVERY_ROUTE_FILE_PATH = [
   '/api/v1/admin/customers/{customerId}/credit/refund',
   '/api/v1/admin/customers/{customerId}/credit/adjust',
   '/api/v1/me/credit',
+  '/api/v1/admin/payments/{paymentId}/receipt',
+  '/api/v1/admin/payments/{paymentId}/receipt/resend',
+  '/api/v1/payments/{paymentId}/receipt',
   '/api/v1/payments',
   '/api/v1/notifications',
   '/api/v1/notifications/{deliveryId}/read',
@@ -102,6 +105,7 @@ const NO_PERMISSION_CHECK_PATHS = [
   '/api/v1/reservations/{reservationId}/cancellation-requests',
   '/api/v1/reservations/{reservationId}/payment-intents',
   '/api/v1/payments',
+  '/api/v1/payments/{paymentId}/receipt',
   '/api/v1/notifications',
   '/api/v1/notifications/{deliveryId}/read',
 ];

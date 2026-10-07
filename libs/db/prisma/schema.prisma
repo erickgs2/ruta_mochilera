@@ -501,6 +501,12 @@ model Payment {
   /// leaves the payment SUCCEEDED (see `ReceiptCounter`). The key and sent
   /// timestamp are filled by the worker's send-receipt job.
   receiptNumber      String?         @unique @map("receipt_number")
+  /// The reservation's total and paid amount right after this payment,
+  /// written in the same transaction as the receipt number: a receipt shows
+  /// the balance as it was when the money arrived, however late its PDF is
+  /// generated.
+  receiptTotalCents  Int?            @map("receipt_total_cents")
+  receiptPaidCents   Int?            @map("receipt_paid_cents")
   receiptKey         String?         @map("receipt_key")
   receiptSentAt      DateTime?       @map("receipt_sent_at") @db.Timestamptz
   recordedById       String?         @map("recorded_by") @db.Uuid

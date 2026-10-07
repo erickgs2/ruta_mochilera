@@ -1,5 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { closeTestDb, prepareTestDb, resetDatabase, withTestDb } from '@rm/db/testing';
+import { SEND_RECEIPT_JOB } from '@rm/jobs';
+import type { PgBoss } from 'pg-boss';
 import { closeTestQueue, resetTestQueue, withTestQueue } from '@rm/jobs/testing';
 import type { Db, DbTransactionClient, Reservation, ReservationStatus } from '@rm/db';
 import {
@@ -7,7 +9,6 @@ import {
   type WebhookEvent,
   type WebhookPaymentIntent,
 } from '@rm/payments-stripe';
-import type { NotificationQueue } from '@rm/domain-notifications';
 import { handleStripeEvent } from './webhook-handler';
 
 const db = withTestDb();
@@ -86,7 +87,7 @@ function clientPausingAt(client: Db, point: PausePoint, pause: () => Promise<voi
   }) as Db;
 }
 
-let queue: NotificationQueue;
+let queue: PgBoss;
 let staffId: string;
 let sequence = 0;
 
@@ -257,6 +258,20 @@ describe('handleStripeEvent', () => {
       expect(after.paidCents).toBe(150_000);
       expect(after.status).toBe('ACTIVE');
       expect(after.holdExpiresAt).toBeNull();
+    });
+
+    it('numbers the payment, keeps the balance it left and enqueues its receipt once (Phase 2B)', async () => {
+      const reservation = await seedReservation(db, { totalPriceCents: 500_000, minimumDepositCents: 100_000 });
+      await seedPendingPayment(db, reservation.id, 'pi_receipt');
+
+      await handleStripeEvent(db, queue, event({ intent: { providerIntentId: 'pi_receipt' } }));
+      await handleStripeEvent(db, queue, event({ intent: { providerIntentId: 'pi_receipt' } }));
+
+      const payment = await db.payment.findUniqueOrThrow({ where: { providerIntentId: 'pi_receipt' } });
+      expect(payment.receiptNumber).toMatch(/^RM-2026-\d{6}$/);
+      expect(payment).toMatchObject({ receiptTotalCents: 500_000, receiptPaidCents: 150_000 });
+      const jobs = await queue.findJobs(SEND_RECEIPT_JOB, {});
+      expect(jobs.map((job) => job.data)).toEqual([{ paymentId: payment.id }]);
     });
 
     it('tells the customer their payment landed', async () => {
@@ -441,6 +456,15 @@ describe('handleStripeEvent', () => {
       const after = await db.reservation.findUniqueOrThrow({ where: { id: reservation.id } });
       expect(after.status).toBe('CANCELLED');
       expect(after.paidCents).toBe(150_000);
+    });
+
+    it('enqueues the receipt of the late payment too (Phase 2B)', async () => {
+      await arrange();
+
+      const payment = await db.payment.findUniqueOrThrow({ where: { providerIntentId: 'pi_after_cancel' } });
+      const jobs = await queue.findJobs(SEND_RECEIPT_JOB, {});
+      expect(jobs.map((job) => job.data)).toEqual([{ paymentId: payment.id }]);
+      expect(payment.receiptNumber).not.toBeNull();
     });
 
     it('turns the late money into the customer credit, tied to that payment (Phase 2B)', async () => {

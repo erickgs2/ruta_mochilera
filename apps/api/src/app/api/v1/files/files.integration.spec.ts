@@ -34,6 +34,16 @@ describe('files route', () => {
     expect(await response.text()).toBe('hello world');
   });
 
+  it('never serves a private receipt, even when it exists', async () => {
+    await storage().put('receipts/2027/RM-2027-000001-x.pdf', Buffer.from('%PDF-'), 'application/pdf');
+
+    const response = await filesRoute(new Request('http://localhost/api/v1/files/receipts/2027/RM-2027-000001-x.pdf'), {
+      params: Promise.resolve({ key: ['receipts', '2027', 'RM-2027-000001-x.pdf'] }),
+    });
+
+    expect(response.status).toBe(404);
+  });
+
   it('returns 404 for a key that was never stored', async () => {
     const response = await filesRoute(new Request('http://localhost/api/v1/files/trips/a/missing.jpg'), {
       params: Promise.resolve({ key: ['trips', 'a', 'missing.jpg'] }),

@@ -2,6 +2,14 @@ import { config } from '../../../../../lib/config';
 import { storage } from '../../../../../lib/storage';
 
 /**
+ * Prefixes that hold private documents and are only ever served through an
+ * authenticated route that checks ownership or a permission -- payment
+ * receipts (Phase 2B) go through `/payments/{id}/receipt`. This public
+ * passthrough answers them with the same bare 404 as a missing key.
+ */
+const PRIVATE_PREFIXES = new Set(['receipts']);
+
+/**
  * Serves locally stored files in development. In qa and production the
  * driver is S3 and files are served straight from the bucket, so this route
  * refuses -- it is not a general-purpose passthrough, only the local
@@ -24,6 +32,7 @@ export async function GET(
   }
 
   const { key } = await context.params;
+  if (PRIVATE_PREFIXES.has(key[0] ?? '')) return new Response(null, { status: 404 });
   try {
     const body = await storage().get(key.join('/'));
     return new Response(new Uint8Array(body), {

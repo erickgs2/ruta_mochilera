@@ -1,6 +1,9 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { closeTestDb, prepareTestDb, resetDatabase, withTestDb } from '@rm/db/testing';
 import type { DbTransactionClient } from '@rm/db';
+import { SEND_RECEIPT_JOB } from '@rm/jobs';
+import { closeTestQueue, resetTestQueue, withTestQueue } from '@rm/jobs/testing';
+import type { PgBoss } from 'pg-boss';
 import {
   addCreditEntry,
   adjustCredit,
@@ -15,17 +18,21 @@ import { seedCustomer, seedReservation, seedStaff } from './test-fixtures';
 const db = withTestDb();
 
 let staffId: string;
+let queue: PgBoss;
 
 beforeAll(async () => {
   await prepareTestDb();
+  queue = await withTestQueue();
 });
 
 beforeEach(async () => {
   await resetDatabase(db);
+  await resetTestQueue();
   staffId = await seedStaff(db);
 });
 
 afterAll(async () => {
+  await closeTestQueue();
   await closeTestDb();
 });
 
@@ -174,7 +181,7 @@ describe('applyCreditToReservation', () => {
     const reservation = await seedReservation(db, staffId, { minimumDepositCents: 100_000 });
     await giveCredit(reservation.customerId, 150_000);
 
-    const applied = await applyCreditToReservation(db, {
+    const applied = await applyCreditToReservation(db, queue, {
       customerId: reservation.customerId,
       reservationId: reservation.id,
       amountCents: 120_000,
@@ -194,13 +201,16 @@ describe('applyCreditToReservation', () => {
       { amountCents: -120_000, reservationId: reservation.id, paymentId: applied.value.id, createdById: staffId },
     ]);
     expect(await creditBalance(db, reservation.customerId)).toBe(30_000);
+
+    const jobs = await queue.findJobs(SEND_RECEIPT_JOB, {});
+    expect(jobs.map((job) => job.data)).toEqual([{ paymentId: applied.value.id }]);
   });
 
   it('never applies more than the customer has', async () => {
     const reservation = await seedReservation(db, staffId);
     await giveCredit(reservation.customerId, 10_000);
 
-    const applied = await applyCreditToReservation(db, {
+    const applied = await applyCreditToReservation(db, queue, {
       customerId: reservation.customerId,
       reservationId: reservation.id,
       amountCents: 10_001,
@@ -209,13 +219,14 @@ describe('applyCreditToReservation', () => {
 
     expect(applied).toMatchObject({ ok: false, error: { code: 'CREDIT_INSUFFICIENT' } });
     expect(await db.payment.count()).toBe(0);
+    expect(await queue.findJobs(SEND_RECEIPT_JOB, {})).toEqual([]);
   });
 
   it('never applies more than the reservation still owes', async () => {
     const reservation = await seedReservation(db, staffId, { totalPriceCents: 500_000, paidCents: 450_000, status: 'ACTIVE' });
     await giveCredit(reservation.customerId, 100_000);
 
-    const applied = await applyCreditToReservation(db, {
+    const applied = await applyCreditToReservation(db, queue, {
       customerId: reservation.customerId,
       reservationId: reservation.id,
       amountCents: 60_000,
@@ -234,7 +245,7 @@ describe('applyCreditToReservation', () => {
     const cancelled = await seedReservation(db, staffId, { customerId: someoneElse, status: 'CANCELLED' });
 
     expect(
-      await applyCreditToReservation(db, {
+      await applyCreditToReservation(db, queue, {
         customerId: someoneElse,
         reservationId: reservation.id,
         amountCents: 1_000,
@@ -242,7 +253,7 @@ describe('applyCreditToReservation', () => {
       })
     ).toMatchObject({ ok: false, error: { code: 'RESERVATION_NOT_OWNED' } });
     expect(
-      await applyCreditToReservation(db, {
+      await applyCreditToReservation(db, queue, {
         customerId: someoneElse,
         reservationId: cancelled.id,
         amountCents: 1_000,
@@ -259,7 +270,7 @@ describe('applyCreditToReservation', () => {
 
     const results = await Promise.all(
       [first, second].map((reservation) =>
-        applyCreditToReservation(db, { customerId, reservationId: reservation.id, amountCents: 100_000, actorId: staffId })
+        applyCreditToReservation(db, queue, { customerId, reservationId: reservation.id, amountCents: 100_000, actorId: staffId })
       )
     );
 
@@ -272,7 +283,7 @@ describe('applyCreditToReservation', () => {
     const reservation = await seedReservation(db, staffId);
     await giveCredit(reservation.customerId, 80_000);
 
-    await applyCreditToReservation(db, {
+    await applyCreditToReservation(db, queue, {
       customerId: reservation.customerId,
       reservationId: reservation.id,
       amountCents: 80_000,

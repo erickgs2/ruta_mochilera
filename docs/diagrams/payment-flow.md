@@ -42,6 +42,7 @@ sequenceDiagram
     W->>DB: "INSERT stripe_events (PRIMERO: es el candado)"
     W->>DB: "Payment PENDING → SUCCEEDED, paid_cents += monto"
     W->>DB: "folio: receipt_counters del año FOR UPDATE, last_number + 1"
+    W->>DB: "encola SEND_RECEIPT (misma transacción)"
     W->>DB: "HELD → ACTIVE si se alcanzó el anticipo"
     W->>DB: "aviso PAYMENT_CONFIRMED (misma transacción)"
     W->>DB: "COMMIT"
@@ -70,6 +71,39 @@ sequenceDiagram
     else "A se revierte"
         T1-->>RC: "ROLLBACK: el 41 nunca existió"
         RC-->>T2: "→ 41, sin hueco"
+    end
+```
+
+## El envío del recibo (Fase 2B)
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Q as "pg-boss (SEND_RECEIPT)"
+    participant Wk as "apps/worker: sendReceipt"
+    participant DB as PostgreSQL
+    participant St as Almacenamiento
+    participant E as "Correo (Resend)"
+
+    Q->>Wk: "{ paymentId, resend? }"
+    Wk->>DB: "¿receipt_sent_at? (y no es reenvío)"
+    alt "ya enviado"
+        Wk-->>Q: "ALREADY_SENT, nada más"
+    else "por enviar"
+        Wk->>DB: "¿receipt_key?"
+        alt "sin PDF"
+            Wk->>Wk: "dibuja el PDF con la foto del saldo"
+            Wk->>St: "put receipts/{año}/{folio}-{aleatorio}.pdf"
+            Wk->>DB: "receipt_key (escritura condicional)"
+        else "con PDF"
+            Wk->>St: "get (nunca se regenera)"
+        end
+        Wk->>E: "correo actual del cliente + PDF adjunto"
+        alt "el proveedor falla"
+            Wk-->>Q: "error: pg-boss reintenta, el PDF ya quedó guardado"
+        else "aceptado"
+            Wk->>DB: "receipt_sent_at = now()"
+        end
     end
 ```
 

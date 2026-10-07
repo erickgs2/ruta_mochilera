@@ -1,4 +1,5 @@
 import 'dotenv/config';
+import { isAbsolute, resolve } from 'node:path';
 import { PgBoss } from 'pg-boss';
 import { createPrismaClient } from '@rm/db';
 import { loadEnv } from '@rm/shared-utils';
@@ -7,17 +8,22 @@ import { deliverQueuedEmail } from '@rm/domain-notifications';
 import { createCancelPendingPaymentIntents } from '@rm/domain-payments';
 import { organizationTimeZone } from '@rm/domain-settings';
 import { createPaymentProvider } from '@rm/payments-stripe';
+import { PdfLibReceiptRenderer } from '@rm/receipts';
+import { createStorage } from '@rm/storage';
 import {
   EXPIRE_HOLDS_JOB,
   JOB_NAMES,
   RECONCILE_PAID_CENTS_JOB,
   SEND_NOTIFICATION_EMAIL_JOB,
+  SEND_RECEIPT_JOB,
   WARN_EXPIRING_HOLDS_JOB,
   type SendNotificationEmailPayload,
+  type SendReceiptPayload,
 } from '@rm/jobs';
 import { expireHolds } from './jobs/expire-holds';
 import { warnExpiringHolds } from './jobs/warn-expiring-holds';
 import { reconcilePaidCents } from './jobs/reconcile-paid-cents';
+import { sendReceipt } from './jobs/send-receipt';
 
 /**
  * The background worker (Task 8). A separate Node process from `apps/api`
@@ -36,6 +42,16 @@ const db = createPrismaClient(env.databaseUrl);
 const email = createEmail(env);
 const paymentProvider = createPaymentProvider(env);
 const cancelPendingPaymentIntents = createCancelPendingPaymentIntents(paymentProvider);
+// Receipts are written here and read back by the API, so both must see the
+// same files. A relative STORAGE_LOCAL_ROOT (development) is relative to the
+// API's directory, which is where `nx dev api` runs; this process runs from
+// apps/worker. In production the driver is S3 and this changes nothing.
+const storage = createStorage(
+  env.storageLocalRoot && !isAbsolute(env.storageLocalRoot)
+    ? { ...env, storageLocalRoot: resolve(__dirname, '../../api', env.storageLocalRoot) }
+    : env
+);
+const receiptRenderer = new PdfLibReceiptRenderer();
 // No explicit `schema` here: pg-boss's own default (`pgboss`) sits next to
 // Prisma's default (`public`), the same deliberate separation the test
 // harness gives each of them in `@rm/jobs/testing` -- see that module's doc
@@ -84,6 +100,14 @@ async function main(): Promise<void> {
   await boss.work<SendNotificationEmailPayload>(SEND_NOTIFICATION_EMAIL_JOB, async (jobs) => {
     for (const job of jobs) {
       await deliverQueuedEmail(db, email, job.data.deliveryId);
+    }
+  });
+  await boss.work<SendReceiptPayload>(SEND_RECEIPT_JOB, async (jobs) => {
+    for (const job of jobs) {
+      const result = await sendReceipt(db, storage, receiptRenderer, email, job.data);
+      // Thrown so pg-boss retries: the PDF is already stored, only the email
+      // is missing (see `sendReceipt`).
+      if (!result.ok) throw new Error(`Receipt for payment ${job.data.paymentId} not sent: ${result.error.code}`);
     }
   });
 

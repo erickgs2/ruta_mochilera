@@ -1,6 +1,8 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { closeTestDb, prepareTestDb, resetDatabase, withTestDb } from '@rm/db/testing';
+import { closeTestQueue, resetTestQueue, withTestQueue } from '@rm/jobs/testing';
 import { loginAs, loginAsCustomer, seedPermissionCatalog } from '../../../../../test-support/auth-fixtures';
+import { setQueue } from '../../../../../lib/queue';
 import { GET as myCreditRoute } from '../../me/credit/route';
 import { POST as applyCreditRoute } from '../reservations/[reservationId]/apply-credit/route';
 import { POST as adjustRoute } from './[customerId]/credit/adjust/route';
@@ -58,12 +60,16 @@ describe('customer credit endpoints', () => {
   beforeAll(async () => {
     await prepareTestDb();
     await db.$connect();
+    setQueue(await withTestQueue());
   });
   beforeEach(async () => {
     await resetDatabase(db);
+    await resetTestQueue();
     await seedPermissionCatalog(db);
   });
   afterAll(async () => {
+    setQueue(undefined);
+    await closeTestQueue();
     await closeTestDb();
   });
 

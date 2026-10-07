@@ -4,6 +4,7 @@ import {
   JOB_NAMES,
   RECONCILE_PAID_CENTS_JOB,
   SEND_NOTIFICATION_EMAIL_JOB,
+  SEND_RECEIPT_JOB,
   WARN_EXPIRING_HOLDS_JOB,
 } from './job-names';
 
@@ -18,6 +19,10 @@ describe('job names', () => {
     expect(SEND_NOTIFICATION_EMAIL_JOB).toBe('send-notification-email');
   });
 
+  it('names the receipt job the payments domain enqueues', () => {
+    expect(SEND_RECEIPT_JOB).toBe('send-receipt');
+  });
+
   it('collects every job name into one array with no duplicates', () => {
     expect(JOB_NAMES).toHaveLength(new Set(JOB_NAMES).size);
     expect(JOB_NAMES).toEqual(
@@ -26,6 +31,7 @@ describe('job names', () => {
         WARN_EXPIRING_HOLDS_JOB,
         RECONCILE_PAID_CENTS_JOB,
         SEND_NOTIFICATION_EMAIL_JOB,
+        SEND_RECEIPT_JOB,
       ])
     );
   });

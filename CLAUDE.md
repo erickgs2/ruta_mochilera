@@ -57,8 +57,9 @@ SPEI, que además tardan horas o días. Ver `docs/diagrams/payment-flow.md`.
 
 ### `apps/worker`: los trabajos en segundo plano
 
-`expireHolds`, `warnExpiringHolds`, `reconcilePaidCents` y el envío de correos
-(la bandeja de salida de avisos) corren en `apps/worker`, un proceso aparte de
+`expireHolds`, `warnExpiringHolds`, `reconcilePaidCents`, el envío de correos
+(la bandeja de salida de avisos) y el de recibos en PDF (`SEND_RECEIPT`) corren
+en `apps/worker`, un proceso aparte de
 la API sobre pg-boss. Está separado a propósito: cada despliegue de Next.js
 mata los procesos en curso, y un `expireHolds` a medias es justo el trabajo que
 un reinicio no debe interrumpir. Cada job es una función pura del cliente de

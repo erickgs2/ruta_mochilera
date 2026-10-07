@@ -1258,6 +1258,60 @@ export function buildOpenApiDocument() {
     },
   });
 
+  // --- receipts (Phase 2B) ---------------------------------------------------
+  const pdf = (description: string) => ({
+    description,
+    content: { 'application/pdf': { schema: z.string().meta({ format: 'binary' }) } },
+  });
+
+  registry.registerPath({
+    method: 'get',
+    path: '/api/v1/admin/payments/{paymentId}/receipt',
+    tags: ['payments', 'admin'],
+    security: [{ bearerAuth: [] }],
+    description:
+      "A payment's receipt PDF (spec §5.4). Generated and stored on first request if the job has not done " +
+      'it yet; never regenerated afterwards. Requires payment.view.',
+    request: { params: uuidParam('paymentId') },
+    responses: {
+      200: pdf('The receipt PDF'),
+      401: problem('Missing or invalid access token'),
+      403: problem('PERMISSION_DENIED -- requires payment.view'),
+      404: problem('NOT_FOUND -- unknown payment, or one with no receipt (not SUCCEEDED)'),
+    },
+  });
+
+  registry.registerPath({
+    method: 'post',
+    path: '/api/v1/admin/payments/{paymentId}/receipt/resend',
+    tags: ['payments', 'admin'],
+    security: [{ bearerAuth: [] }],
+    description:
+      'Queues the receipt to be emailed again to the customer -- or for the first time, for a payment captured ' +
+      'without sending. Requires payment.view.',
+    request: { params: uuidParam('paymentId') },
+    responses: {
+      202: { description: 'Queued' },
+      401: problem('Missing or invalid access token'),
+      403: problem('PERMISSION_DENIED -- requires payment.view'),
+      404: problem('NOT_FOUND -- unknown payment, or one with no receipt'),
+    },
+  });
+
+  registry.registerPath({
+    method: 'get',
+    path: '/api/v1/payments/{paymentId}/receipt',
+    tags: ['payments'],
+    security: [{ bearerAuth: [] }],
+    description: "The receipt PDF of one of the authenticated customer's own payments.",
+    request: { params: uuidParam('paymentId') },
+    responses: {
+      200: pdf('The receipt PDF'),
+      401: problem('Missing or invalid access token'),
+      404: problem('RESERVATION_NOT_OWNED -- not the caller\'s payment, or NOT_FOUND -- no receipt yet'),
+    },
+  });
+
   // --- payments (customer, authenticated) -----------------------------------
   registry.registerPath({
     method: 'get',
