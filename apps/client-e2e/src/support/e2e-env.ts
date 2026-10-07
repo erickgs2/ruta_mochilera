@@ -30,6 +30,12 @@ export const FAKE_WEBHOOK_SECRET = 'fake-webhook-secret';
 export const E2E_DATABASE_URL =
   process.env['E2E_DATABASE_URL'] ?? 'postgresql://rm:rm@localhost:5432/rm_e2e';
 
+/**
+ * Where the API under test stores files (receipt PDFs among them). Absolute,
+ * so a job run from a spec reads and writes the very files the API serves.
+ */
+export const E2E_STORAGE_ROOT = resolve(WORKSPACE_ROOT, 'tmp/e2e-storage');
+
 /** Variables every child process gets on top of the developer's `.env`. */
 export function e2eProcessEnv(): Record<string, string> {
   const inherited = Object.fromEntries(
@@ -45,6 +51,6 @@ export function e2eProcessEnv(): Record<string, string> {
     STRIPE_WEBHOOK_SECRET: '',
     STRIPE_PUBLISHABLE_KEY: '',
     STORAGE_DRIVER: 'local',
-    STORAGE_LOCAL_ROOT: resolve(WORKSPACE_ROOT, 'tmp/e2e-storage'),
+    STORAGE_LOCAL_ROOT: E2E_STORAGE_ROOT,
   };
 }
