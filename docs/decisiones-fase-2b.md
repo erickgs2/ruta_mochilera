@@ -269,10 +269,13 @@ reserva muerta, sin movimiento que lo hiciera disponible.
   dinero dos veces; si el cliente ya lo gastó o se le devolvió →
   `CREDIT_INSUFFICIENT` y el personal ajusta con un `ADJUSTMENT`.
 - Un pago tardío por webhook sobre una `EXPIRED` queda como estaba: sin saldo
-  automático (fuera de alcance). **Cuidado operativo:** no «devolverlo» con un
-  `ADJUSTMENT` positivo si luego se va a revivir la reserva (el dinero contaría
-  doble); se cobra o se revive sobre la reserva. Ver la advertencia en
-  `payments.md`, «Caso límite: pago confirmado de una reserva ya expirada».
+  automático (fuera de alcance). **Cuidado operativo:** si se va a revivir la reserva, no se ajusta el
+  saldo (el dinero contaría doble); se cobra o se revive sobre ella. Si no se
+  va a revivir y hay que devolver el dinero, la secuencia es un `ADJUSTMENT`
+  positivo por el monto del pago tardío y luego un `REFUND` por el mismo monto
+  (un `REFUND` directo da `CREDIT_INSUFFICIENT` porque ese pago nunca llegó al
+  saldo), y la reserva ya no se revive. Ver la advertencia en `payments.md`,
+  «Caso límite: pago confirmado de una reserva ya expirada».
 
 La invariante que comprueban las pruebas: para cada reserva, el saldo que dejó
 en el cliente más su `paid_cents` si está viva es exactamente lo pagado.

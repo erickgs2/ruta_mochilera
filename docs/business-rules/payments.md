@@ -172,18 +172,30 @@ humana. Ningún movimiento de dinero es automático.
 > `CANCELLED` (cuyo pago tardío sí pasa al saldo, ver más abajo) y de lo que
 > `expireHolds` acredita **al vencer** (decisión 16), un pago que llega **después**
 > de que la reserva ya está `EXPIRED` queda registrado y **sube `paid_cents`,
-> pero no genera ningún movimiento de saldo**. Si el personal «devuelve» ese
-> dinero al cliente con un `ADJUSTMENT` positivo y luego **revive** la reserva
-> (decisión 13), el mismo dinero cuenta dos veces: una en el saldo del cliente
-> y otra en el `paid_cents` de la reserva viva. **Procedimiento correcto: no
-> ajustar el saldo.** Se cobra o se revive sobre la propia reserva (efectivo o
-> saldo en el mostrador, ver «Revivir con un cobro»): el pago tardío ya cuenta
-> en su `paid_cents` y sólo falta el resto del anticipo. Si de verdad hay que
-> devolver el dinero al cliente en lugar de revivir, se registra como `REFUND`
-> **después** de acreditarlo, nunca como un `ADJUSTMENT` positivo previo a
-> revivir. Esta salida es deliberada y está fuera del alcance de la decisión 16
-> (la decisión del dueño fue no automatizarla); `docs/decisiones-fase-2b.md`
-> lo deja anotado.
+> pero no genera ningún movimiento de saldo** (la rama `EXPIRED` del webhook
+> sólo avisa y escala; no llama a `creditFromCancellation` ni a
+> `creditFromExpiration`). Hay dos salidas, y la elección es del personal:
+>
+> - **Si se va a revivir la reserva** (decisión 13): **no se ajusta el saldo.**
+>   Se cobra o se revive sobre la propia reserva (efectivo o saldo en el
+>   mostrador, ver «Revivir con un cobro»): el pago tardío ya cuenta en su
+>   `paid_cents` y sólo falta el resto del anticipo. Si se «devolviera» antes
+>   con un `ADJUSTMENT` positivo y luego se revive, el mismo dinero contaría
+>   dos veces: en el saldo del cliente y en el `paid_cents` de la reserva viva.
+>   `reclaimCreditForRevival` sólo recupera lo que escribió el vencimiento
+>   (`EXPIRATION`/`REVIVAL`); no sabe deshacer un `ADJUSTMENT`.
+> - **Si NO se va a revivir** y hay que devolver el dinero: como ese pago
+>   nunca llegó al saldo, un `REFUND` directo respondería
+>   `CREDIT_INSUFFICIENT` —o, peor, si el cliente tiene otro saldo, gastaría
+>   ése—. La secuencia correcta, en la misma gestión, es un `ADJUSTMENT`
+>   **positivo** por el monto del pago tardío (con motivo, que nombre el pago)
+>   y enseguida un `REFUND` por el mismo monto (con motivo, que diga cómo se
+>   devolvió fuera del sistema). La reserva se queda `EXPIRED` y **ya no debe
+>   revivirse**: su `paid_cents` seguiría contando ese dinero.
+>
+> Esta salida es deliberada y está fuera del alcance de la decisión 16 (la
+> decisión del dueño fue no automatizarla); `docs/decisiones-fase-2b.md` lo
+> deja anotado.
 
 **Lo mismo para una reserva `CANCELLED` (Tarea 19).** Si el personal canceló
 la reserva mientras una ficha o un intento de tarjeta seguían cobrables (la
