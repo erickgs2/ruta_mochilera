@@ -77,9 +77,20 @@ sequenceDiagram
     alt "no"
         API-->>App: "401 TOKEN_INVALID"
     else "sí"
-        API->>DB: "BEGIN: consume el token (condicional)"
+        API->>DB: "BEGIN: bloquea la fila del usuario (FOR UPDATE)"
+        API->>DB: "consume el token (condicional)"
         API->>DB: "password_hash, activated_at, accepted_terms_at"
         API->>DB: "COMMIT"
-        API-->>App: "200 { email }: la app abre el inicio de sesión"
+        alt "conflicto de escritura (P2034)"
+            API-->>App: "401 TOKEN_INVALID"
+        else "sin conflicto"
+            API-->>App: "200 { email }: la app abre el inicio de sesión"
+        end
     end
 ```
+
+El restablecimiento de contraseña bloquea la misma fila de usuario **antes**
+de tocar los tokens, igual que la aceptación: un solo orden de bloqueos, así
+que ambas operaciones a la vez no se interbloquean. Si el cliente de mostrador
+fija su contraseña con «olvidé mi contraseña», queda activado (`activated_at`),
+sin sellar `accepted_terms_at`.

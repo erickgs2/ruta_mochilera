@@ -72,6 +72,16 @@ e idioma opcional.
   invitaciones pendientes de esa cuenta.
 - Un token de restablecimiento se consume con una escritura condicional: dos
   usos simultáneos del mismo token no ganan ambos.
+- **Aceptar la invitación y restablecer la contraseña a la vez no falla.** Las
+  dos operaciones bloquean primero la fila del usuario y después los tokens
+  (un solo orden de bloqueos, sin interbloqueo); si aun así la base reporta
+  un conflicto de escritura (P2034), la respuesta es `TOKEN_INVALID`, nunca un
+  500. Gana siempre quien tiene el token de restablecimiento: si la invitación
+  corrió primero, el restablecimiento fija su contraseña encima; si corrió
+  después, la invitación es `TOKEN_INVALID` y no toca nada.
+- Un cliente de mostrador que fija su contraseña con «olvidé mi contraseña»
+  **queda activado** (`activated_at` se sella si estaba vacío, en la misma
+  transacción); no se sella `accepted_terms_at`, porque no aceptó términos.
 
 ## Clientes importados
 
