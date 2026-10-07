@@ -56,7 +56,9 @@ CSV».
 ### 3. Los recibos son privados
 
 - La ruta pública de archivos (`/api/v1/files/...`) **rechaza** el prefijo
-  `receipts/` con el mismo 404 de un archivo que no existe. Un recibo sólo se
+  `receipts/` (sin distinguir mayúsculas: `Receipts/...` tampoco se sirve, porque en un
+  sistema de archivos que no distingue mayúsculas sería el mismo archivo) con el
+  mismo 404 de un archivo que no existe. Un recibo sólo se
   sirve por rutas que verifican quién pregunta: la del cliente dueño del pago
   (`/payments/{id}/receipt`) o la del personal con `payment.view`
   (`/admin/payments/{id}/receipt`).
@@ -162,15 +164,25 @@ diseñe la solución.
 - **Pendiente: el job `APPLY_IMPORT` vence a la hora** (`expireInSeconds: 3600`).
   Un lote muy grande puede quedar `APPLYING` por esa causa y caer en el mismo
   problema.
+- **Pendiente: un error inesperado en una fila aborta el lote.** Un fallo que no
+  es un resultado de dominio (una excepción, no un `Result` fallido) detiene
+  `applyImport` y el lote queda `APPLYING`. Las filas aplicadas desde el último
+  punto de control (cada 100) **conservan sus pagos y sus clientes**, pero su
+  resultado no llegó al reporte: se ven sin `outcome`. Es el mismo callejón sin
+  salida de los dos puntos anteriores, y como `external_ref` es lo único que
+  evita duplicados, volver a subir el archivo duplicaría los pagos que no lo traen.
+- **Limitación conocida: los recibos con caracteres fuera de Poppins.** El PDF
+  embebe Poppins; un nombre con caracteres que la fuente no tiene (chino,
+  japonés, coreano, emoji) no se dibuja bien y queda en blanco en ese lugar. El
+  PDF se genera y se envía igual, con el resto del recibo intacto.
 
 ---
 
-## Observadas en el código; por confirmar
+## Confirmadas por el dueño tras revisarlas en el código
 
 El plan dice «donde este plan y el código difieran, manda el código». Estas
-diferencias existen hoy entre la spec y el código, y ninguna está registrada
-como decisión. Se anotan para que el dueño las confirme o las corrija; **no**
-se tratan como decididas.
+diferencias existían entre la spec y el código, sin estar registradas como
+decisión. El dueño las revisó y **las confirmó**.
 
 ### 11. `ImportBatch` tiene un estado más: `APPLYING`
 
@@ -185,14 +197,6 @@ La spec (§4.2) sólo menciona `receipt_key` y `receipt_sent_at`. El código
 añade `receipt_total_cents` y `receipt_paid_cents`, escritos con el folio, para
 que el recibo diga siempre el saldo de ese momento. Para un pago sin esas
 columnas llenas, el saldo se reconstruye con los pagos hasta ese.
-
-### 13. Una reserva `HELD` con el apartado vencido no recibe cobro
-
-La spec (§5.3) sólo exige que la reserva esté `HELD` o `ACTIVE`. El código
-responde `HOLD_EXPIRED` al cobrar en efectivo o al aplicar saldo sobre una
-`HELD` cuyo apartado ya venció, aunque el job `expireHolds` aún no la haya
-pasado a `EXPIRED`: su lugar ya no está garantizado y activarla podría tomar
-un asiento que el mostrador devolvió.
 
 ### 14. La invitación no pasa por la bandeja de salida de pg-boss
 
@@ -209,8 +213,44 @@ folio del contador de **ese** año (`RM-2025-…`): toma el siguiente número de
 serie que ya estaba cerrada, así que los folios de 2025 dejan de seguir el
 orden de las fechas de pago (un pago de marzo puede llevar un folio mayor que
 uno de diciembre). Tampoco quedan huecos ni duplicados: sólo se pierde el orden
-cronológico. Es consecuencia de la decisión 9 y de que el folio use el año de
-`paid_at` en la zona de la organización (`assignReceiptNumber`). Pendiente de
-decidir si es aceptable (un recibo histórico es un recibo nuevo), si los
-históricos deben llevar otra serie o prefijo, o si la serie de un año cerrado
-debe bloquearse. Ver `docs/diagrams/payment-flow.md`, «Pagos históricos».
+cronológico. Es consecuencia de la decisión 9 y de que el folio use el año de `paid_at` en la
+zona de la organización (`assignReceiptNumber`). **Aceptado:** se pierde el orden
+cronológico dentro de un año ya cerrado y no se busca otra serie ni prefijo para
+los históricos. Ver `docs/diagrams/payment-flow.md`, «Pagos históricos».
+
+---
+
+## Decididas por el dueño, en implementación
+
+### 16. Un apartado que vence con pagos devuelve lo pagado como saldo a favor
+
+Cuando una reserva `HELD` que ya recibió un pago (menor al anticipo) vence y
+`expireHolds` la pasa a `EXPIRED`, **lo pagado se vuelve saldo a favor del
+cliente**, igual que al cancelar (decisión 6). Antes el dinero se quedaba en una
+reserva muerta, sin movimiento que lo hiciera disponible.
+
+**Estado: en implementación.** Esta decisión la tomó el dueño y se está
+construyendo; las reglas y los diagramas (`reservations.md`, `payments.md`,
+`customer-credit.md`) se actualizan en el mismo commit que el código, y este
+registro se completa con el detalle cuando llegue.
+
+### 13. Un cobro en el mostrador revive un apartado vencido si queda lugar
+
+Antes (y todavía en el código al momento de escribir esto) el cobro en efectivo
+o la aplicación de saldo sobre una reserva con el apartado vencido respondía
+`HOLD_EXPIRED`. **El dueño decidió que ya no bloquea**: el personal puede cobrar
+en efectivo o aplicar saldo a una reserva vencida, sea una `HELD` pasada de su
+hora o una `EXPIRED`, **si queda un lugar bajo el candado del viaje**.
+
+- Si el pago cubre el anticipo, la reserva **revive como `ACTIVE`**.
+- Si no lo cubre, revive como `HELD` con un apartado nuevo.
+- Si ya no queda lugar, `TRIP_SOLD_OUT` y no se escribe nada.
+- Una reserva `CANCELLED` **no revive**: sigue siendo `INVALID_STATUS_TRANSITION`,
+  y el dinero de un cliente sin reserva viva se registra como saldo a favor.
+
+**Estado: en implementación.** Las reglas y los diagramas (`payments.md`,
+`reservations.md`, `payment-flow.md`, `trip-reservation.md`, `customer-credit.md`)
+se actualizan en el mismo commit que el código; hasta entonces describen el
+comportamiento anterior (`HOLD_EXPIRED`). Se registra aquí primero para que la
+decisión no se pierda. Sustituye a la observación original sobre `HOLD_EXPIRED`
+(la spec §5.3 sólo exigía `HELD` o `ACTIVE`).

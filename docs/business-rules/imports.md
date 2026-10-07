@@ -77,11 +77,6 @@ Ver `docs/decisiones-fase-2b.md`, «Pendientes». Se documentan tal como son hoy
   `expireInSeconds: 3600`. Un lote que tarde más de una hora (5,000 filas con
   invitaciones) puede ser dado por vencido por pg-boss y quedar también
   `APPLYING`, con el mismo problema.
-- **Un pago fechado hoy, antes del mediodía, falla.** La validación acepta
-  `paid_at` de hoy, pero el pago se fecha a mediodía de ese día; mientras ese
-  mediodía no llega, `recordBackfilledPayments` lo rechaza por estar en el
-  futuro y la fila queda `FAILED` con `VALIDATION_FAILED`. Una fecha de ayer o
-  anterior no tiene el problema.
 
 ## Códigos por fila
 
@@ -123,9 +118,9 @@ Crea clientes `origin = IMPORT`, **correo verificado** y **sin contraseña**
 cliente no se duplica: la fila es `EXISTS` con el id de ese cliente.
 
 Valida lo mismo que el mostrador en lo que importa: la fecha de nacimiento debe
-ser real y **no futura** (`INVALID_DATE`, en la zona de la organización). *(El
-mostrador adopta el mismo rechazo con la corrección de Delta; ver
-`customers.md`.)* El teléfono pide al menos 7 **dígitos** y el nombre sólo que
+ser real y **no futura** (`INVALID_DATE`, en la zona de la organización). El
+mostrador aplica la misma regla (`VALIDATION_FAILED` con `field: birthDate`; ver
+`customers.md`). El teléfono pide al menos 7 **dígitos** y el nombre sólo que
 no esté vacío.
 
 **Una invitación que no se pudo enviar no hace fallar la fila.** Con
@@ -140,17 +135,21 @@ Busca la reserva viva (`HELD` o `ACTIVE`) de ese cliente en ese viaje:
 - si existe, el pago entra como **pago histórico** sobre ella
   (`payments.md`, «Pagos históricos»);
 - si no, crea la **reserva histórica** (`reservations.md`, «Captura
-  histórica») con el pago, fechada el día del pago (a mediodía; si esa hora
-  aún no ha llegado hoy, con la hora actual para no quedar en el futuro). Su
-  **total es el precio vigente del viaje**: la importación no puede fijar otro.
+  histórica») con el pago, con `created_at` igual a la fecha del pago (la
+  marca de abajo). Su **total es el precio vigente del viaje**: la importación
+  no puede fijar otro.
   Una reserva `CANCELLED` o `EXPIRED` del cliente en ese viaje no cuenta como
   viva, así que se crea una nueva.
 
-El pago se fecha a mediodía de `paid_at` en la zona de la organización, para
-que nunca caiga en el día (o el año) de al lado. Si `paid_at` es hoy y el
-archivo se importa antes del mediodía, el pago se fecha **en ese momento**
-(el menor entre mediodía y ahora): un pago histórico nunca queda en el futuro. **`external_ref` evita
-importarlo dos veces**: es una columna única de `payments`; repetida en el
+**La fecha del pago.** El pago se fecha a mediodía de `paid_at` en la zona de la
+organización, para que nunca caiga en el día (o el año) de al lado, pero **nunca
+después de ahora**: la marca es el menor entre ese mediodía y el momento de
+aplicar la fila. Así, un pago fechado hoy e importado antes del mediodía queda
+fechado en ese momento y funciona, porque un pago histórico no puede estar en
+el futuro. La reserva histórica que se crea con él lleva esa misma marca como
+`created_at`. Una fecha de ayer o anterior siempre queda a mediodía.
+
+**`external_ref` evita importarlo dos veces**: es una columna única de `payments`; repetida en el
 archivo es `DUPLICATE_IN_FILE`, ya importada es `EXISTS`, y si dos lotes
 compiten, la base decide y la fila perdedora queda `EXISTS`. Un pago que
 excede el saldo de su reserva falla con `PAYMENT_EXCEEDS_BALANCE`.

@@ -2,8 +2,11 @@
 
 Diagramas de `libs/domain/payments` y del webhook
 `apps/api/src/app/api/v1/webhooks/stripe`. Las reglas en prosa están en
-`docs/business-rules/payments.md`; la spec correspondiente es §5.3, §5.5 y §7
-de `docs/superpowers/specs/2026-10-03-fase-2a-reservas-y-pagos-diseno.md`.
+`docs/business-rules/payments.md`. Las specs correspondientes son §5.3, §5.5 y
+§7 de `docs/superpowers/specs/2026-10-03-fase-2a-reservas-y-pagos-diseno.md`
+(Fase 2A) y §4.2 y §5.3 a §5.7 de
+`docs/superpowers/specs/2026-10-07-fase-2b-mostrador-diseno.md` (Fase 2B:
+efectivo, recibos, saldo a favor y captura histórica).
 
 Todo el dinero de este flujo es `Int` en centavos MXN.
 
