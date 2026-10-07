@@ -137,13 +137,13 @@ export interface CancelReservationInput {
 
 /**
  * Cancels the provider-side payment intents still pending on one
- * reservation, inside the caller's transaction. The same shape `expireHolds`
+ * reservation, after the caller's transaction has committed. The same shape `expireHolds`
  * (`apps/worker`) takes, and implemented once, by `@rm/domain-payments`'
  * `createCancelPendingPaymentIntents` -- typed here structurally so this
  * library never imports the payments domain (see
  * `docs/business-rules/reservations.md`).
  */
-export type CancelPendingPaymentIntents = (tx: DbTransactionClient, reservationId: string) => Promise<void>;
+export type CancelPendingPaymentIntents = (client: Db | DbTransactionClient, reservationId: string) => Promise<void>;
 
 const HOUR_MS = 60 * 60 * 1000;
 
@@ -683,7 +683,7 @@ export async function getReservationForStaff(
  * person to decide, and relabelling it would rewrite what happened.
  *
  * Pending payment intents are cancelled through `cancelPendingPaymentIntents`
- * when the caller provides it, inside the same transaction and only on the
+ * when the caller provides it, after the transaction commits and only on the
  * call that actually cancelled: an OXXO voucher left payable for a cancelled
  * reservation is money that arrives for a seat that no longer exists.
  */
@@ -693,7 +693,7 @@ export async function cancelReservation(
   input: CancelReservationInput,
   cancelPendingPaymentIntents?: CancelPendingPaymentIntents
 ): Promise<Result<StaffReservationDetailDto>> {
-  const outcome = await db.$transaction(async (tx: DbTransactionClient): Promise<Result<null>> => {
+  const outcome = await db.$transaction(async (tx: DbTransactionClient): Promise<Result<boolean>> => {
     const reservation = await tx.reservation.findUnique({
       where: { id: input.reservationId },
       include: {
@@ -715,7 +715,7 @@ export async function cancelReservation(
         where: { id: input.reservationId },
         select: { status: true },
       });
-      if (current.status === 'CANCELLED') return ok(null);
+      if (current.status === 'CANCELLED') return ok(false);
       return fail('INVALID_STATUS_TRANSITION', { status: current.status });
     }
 
@@ -736,12 +736,16 @@ export async function cancelReservation(
       params: { tripName: tripNameFor(reservation.trip, locale), reason: input.reason },
     });
 
-    if (cancelPendingPaymentIntents) await cancelPendingPaymentIntents(tx, reservation.id);
-
-    return ok(null);
+    return ok(true);
   });
 
   if (!outcome.ok) return outcome;
+  // After the commit, only on the call that actually cancelled -- see
+  // `expireHolds` (apps/worker) for why a provider call never runs inside
+  // the transaction.
+  if (outcome.value && cancelPendingPaymentIntents) {
+    await cancelPendingPaymentIntents(db, input.reservationId);
+  }
   return getReservationForStaff(db, input.reservationId);
 }
 

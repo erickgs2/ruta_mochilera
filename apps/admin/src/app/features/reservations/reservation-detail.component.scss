@@ -8,14 +8,14 @@
 }
 
 .reservation-request {
-  border: 1px solid var(--mat-sys-outline-variant, #ccc);
+  border: 1px solid var(--mat-sys-outline-variant);
   border-radius: 0.5rem;
   padding: 0.75rem 1rem;
   margin-bottom: 1rem;
 }
 
 .reservation-request-pending {
-  background: var(--mat-sys-error-container, #fde7e9);
+  background: var(--mat-sys-error-container);
 }
 
 .reservation-request-reason {
@@ -60,7 +60,7 @@ h2 {
 }
 
 .reservation-cancel {
-  border-top: 1px solid var(--mat-sys-outline-variant, #ccc);
+  border-top: 1px solid var(--mat-sys-outline-variant);
   padding-top: 1rem;
 }
 
@@ -71,5 +71,5 @@ h2 {
 }
 
 .reservation-error {
-  color: var(--mat-sys-error, #b3261e);
+  color: var(--mat-sys-error);
 }

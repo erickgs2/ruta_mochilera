@@ -291,6 +291,24 @@ describe('expireHolds', () => {
   });
 
   describe('cancelling pending Payment Intents (Task 9, closing the Task 8 hook)', () => {
+    it('calls the provider only after the expiry has committed, never inside the transaction', async () => {
+      // A provider call inside the transaction holds the row lock across a
+      // network round trip and, past Prisma's 5 s transaction timeout, rolls
+      // the expiry back -- a slow Stripe would then keep the seat locked,
+      // the one outcome the hook's contract promises never happens.
+      const reservation = await seedReservation(db, { holdExpiresAt: new Date(Date.now() - HOUR_MS) });
+      const boss = await withTestQueue();
+      const seenAtCallTime: string[] = [];
+
+      await expireHolds(db, boss, async (_client, reservationId) => {
+        const committed = await db.reservation.findUniqueOrThrow({ where: { id: reservationId } });
+        seenAtCallTime.push(committed.status);
+      });
+
+      expect(seenAtCallTime).toEqual(['EXPIRED']);
+      expect(reservation.id).toBeDefined();
+    });
+
     it("cancels a reservation's pending Payment Intent at the provider when its hold expires", async () => {
       const reservation = await seedReservation(db, { holdExpiresAt: new Date(Date.now() - HOUR_MS) });
       const boss = await withTestQueue();

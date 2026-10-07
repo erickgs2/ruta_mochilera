@@ -90,6 +90,8 @@ export interface PaymentDto {
   voucherExpiresAt: Date | null;
 }
 
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 /** `total_price_cents - paid_cents`, never negative (business rule 5.5). */
 function balanceOf(reservation: Reservation): number {
   return Math.max(0, reservation.totalPriceCents - reservation.paidCents);
@@ -238,6 +240,12 @@ export async function recordPayment(
     });
     if (existing) return fail('CONFLICT', { field: 'providerIntentId' });
   }
+
+  // Checked before the `::uuid` cast in the lock: an id that is not a UUID
+  // (an intent created outside the app can carry any metadata) would make
+  // PostgreSQL raise, aborting the caller's whole transaction instead of
+  // answering the NOT_FOUND the webhook escalates to a person.
+  if (!UUID_PATTERN.test(input.reservationId)) return fail('NOT_FOUND');
 
   await lockReservationForPayment(tx, input.reservationId);
   const reservation = await tx.reservation.findUnique({ where: { id: input.reservationId } });

@@ -50,7 +50,9 @@ export function applyCorsHeaders(response: Response, request: Request, allowedOr
  * cookie (see `refresh-cookie.ts`'s `clientPlatform` and `readRefreshToken`).
  */
 const ALLOWED_REQUEST_HEADERS = ['content-type', 'authorization', 'x-client-platform', 'x-refresh-token'];
-const ALLOWED_METHODS = ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'];
+// Every method a route exports. PATCH (`/me/profile`) was missing, which made
+// the packaged app's profile edit fail its preflight.
+const ALLOWED_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'];
 /** 24 hours -- preflight results are cheap to cache and this allowlist changes only at deploy time. */
 const PREFLIGHT_MAX_AGE_SECONDS = 60 * 60 * 24;
 

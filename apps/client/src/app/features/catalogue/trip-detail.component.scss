@@ -67,7 +67,7 @@
     color: var(--rm-yellow);
 
     &:hover {
-      background: #000000;
+      background: var(--rm-ink-strong);
     }
   }
 }
@@ -77,7 +77,7 @@
     position: sticky;
     bottom: max(0.75rem, env(safe-area-inset-bottom));
     z-index: 2;
-    box-shadow: 0 12px 28px -12px rgb(42 41 36 / 0.45);
+    box-shadow: var(--rm-shadow-floating);
   }
 }
 

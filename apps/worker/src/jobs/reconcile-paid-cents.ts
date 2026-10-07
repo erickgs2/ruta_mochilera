@@ -23,17 +23,22 @@ import { formatMoney } from '@rm/shared-utils';
  * a per-trip round trip.
  */
 export async function reconcilePaidCents(db: Db, queue: NotificationQueue): Promise<void> {
-  const [reservations, succeededTotals] = await Promise.all([
-    db.reservation.findMany({ select: { id: true, code: true, paidCents: true } }),
-    db.payment.groupBy({ by: ['reservationId'], where: { status: 'SUCCEEDED' }, _sum: { amountCents: true } }),
-  ]);
-  const actualByReservationId = new Map(
-    succeededTotals.map((row) => [row.reservationId, row._sum.amountCents ?? 0])
-  );
+  // One statement, not two queries: a single SQL statement reads one
+  // snapshot, so `paid_cents` and the sum of its SUCCEEDED payments can never
+  // be read on either side of a webhook that lands in between -- which, with
+  // two independent reads, raised a false PAID_CENTS_MISMATCH. It also
+  // returns only the drifting rows instead of every reservation.
+  const drifting = await db.$queryRaw<{ id: string; code: string; paidCents: number; actualCents: bigint }[]>`
+    SELECT r.id, r.code, r.paid_cents AS "paidCents",
+           COALESCE(SUM(p.amount_cents) FILTER (WHERE p.status = 'SUCCEEDED'), 0) AS "actualCents"
+    FROM reservations r
+    LEFT JOIN payments p ON p.reservation_id = r.id
+    GROUP BY r.id
+    HAVING r.paid_cents <> COALESCE(SUM(p.amount_cents) FILTER (WHERE p.status = 'SUCCEEDED'), 0)
+  `;
 
-  for (const reservation of reservations) {
-    const actualCents = actualByReservationId.get(reservation.id) ?? 0;
-    if (actualCents === reservation.paidCents) continue;
+  for (const reservation of drifting) {
+    const actualCents = Number(reservation.actualCents);
 
     await db.$transaction((tx) =>
       notifyAdmins(tx, queue, {

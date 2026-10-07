@@ -105,6 +105,30 @@ async function escalateOrphanPayment(
   });
 }
 
+/**
+ * Which reservation an escalated payment belongs to, when the system knows:
+ * the one its `Payment` row points at, else the one the intent names --
+ * but only if that reservation really exists, since the alert row carries a
+ * foreign key to it. `undefined` for money with no reservation at all.
+ * Linking it is what lets staff act on PAYMENT_EXCEEDS_BALANCE or a
+ * written-off payment without searching for the reservation by hand.
+ */
+async function reservationTheMoneyBelongsTo(
+  tx: DbTransactionClient,
+  intent: WebhookPaymentIntent
+): Promise<string | undefined> {
+  const payment = await tx.payment.findUnique({
+    where: { providerIntentId: intent.providerIntentId },
+    select: { reservationId: true },
+  });
+  if (payment) return payment.reservationId;
+  if (!intent.reservationId || !UUID_PATTERN.test(intent.reservationId)) return undefined;
+  const reservation = await tx.reservation.findUnique({ where: { id: intent.reservationId }, select: { id: true } });
+  return reservation?.id;
+}
+
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 /** Everything a notice about one payment needs: who to tell, what the trip is called, and where the balance stands. */
 async function notificationContext(tx: DbTransactionClient, reservationId: string) {
   const reservation = await tx.reservation.findUniqueOrThrow({
@@ -178,7 +202,13 @@ async function applySucceeded(
 
   if (!confirmed.ok) {
     if (NEEDS_A_HUMAN.includes(confirmed.error.code)) {
-      await escalateOrphanPayment(tx, queue, intent.amountCents, intent.providerIntentId);
+      await escalateOrphanPayment(
+        tx,
+        queue,
+        intent.amountCents,
+        intent.providerIntentId,
+        await reservationTheMoneyBelongsTo(tx, intent)
+      );
       return ok(null);
     }
     return confirmed;

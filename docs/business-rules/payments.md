@@ -320,10 +320,20 @@ hay nada que empezar a cobrar sobre una reserva que ya terminó.
 ### La ficha de OXXO nunca sobrevive al apartado
 
 `voucherExpiresAt` enviado al proveedor es siempre el propio `hold_expires_at`
-de la reserva — nunca una fecha inventada aquí. Cuando queda menos de un día,
-`StripePaymentProvider` se niega a crear el intento en vez de redondear la
-ventana hacia arriba (ver `oxxoExpiresAfterDays` en `@rm/payments-stripe` y
-"Cancelar el Payment Intent al expirar el apartado" más abajo): esa negativa
+de la reserva — nunca una fecha inventada aquí.
+
+Stripe no acepta una fecha exacta, sólo `expires_after_days = N`, y lo
+interpreta como **«a las 23:59 de Ciudad de México del día calendario N»**, no
+como N × 24 horas. Por eso N es el mayor número de días cuyo fin de día (en
+esa zona, la de Stripe, no la de la organización) todavía no rebasa el fin del
+apartado: un apartado que vence el martes a las 13:00 no admite N = 1, porque
+la ficha seguiría cobrable hasta las 23:59 del martes, unas 11 horas después de
+liberar el lugar. (La primera versión contaba bloques de 24 horas y tenía
+justo ese hueco; lo encontró la revisión final de la rama.)
+
+Cuando ni N = 1 cabe, `StripePaymentProvider` se niega a crear el intento en
+vez de ampliar la ventana (ver `oxxoExpiresAfterDays` en `@rm/payments-stripe`
+y "Cancelar el Payment Intent al expirar el apartado" más abajo): esa negativa
 llega aquí como un `Result` normal — nunca una excepción — y sale de esta
 función como el mismo `VALIDATION_FAILED` que cualquier otra validación de
 entrada, sin ninguna rama especial para atraparla. Una reserva `ACTIVE` (que
@@ -363,6 +373,14 @@ otra. El comportamiento no cambió; sus pruebas siguen en
 `expire-holds.spec.ts` y la ruta del panel tiene la suya. `@rm/domain-
 reservations` declara el mismo tipo de función de forma estructural, sin
 importar este módulo, para que los dos dominios sigan sin depender entre sí.
+
+**La llamada al proveedor ocurre después del commit, nunca dentro de la
+transacción.** Dentro, sostendría el bloqueo de la fila durante una llamada de
+red y, pasado el límite de 5 s de las transacciones de Prisma, desharía el
+vencimiento: un Stripe lento dejaría el lugar bloqueado, justo lo que esta
+regla promete que no pasa. Además cada llamada a Stripe tiene un límite de
+10 s (`STRIPE_REQUEST_TIMEOUT_MS`). Lo mismo aplica a la cancelación desde el
+panel.
 
 **Un fallo al cancelar en el proveedor no impide que el apartado expire.**
 `createCancelPendingPaymentIntents` nunca lanza: si `cancelIntent` devuelve
@@ -407,6 +425,13 @@ pagos `SUCCEEDED` (`PENDING`, `FAILED`, `EXPIRED` y `REFUNDED` no cuentan: ver
 "Un pago pendiente no reduce el saldo" arriba, por lo que tampoco deben
 contar aquí). Si coinciden, no hace nada. Si no coinciden, llama a
 `notifyAdmins` con `PAID_CENTS_MISMATCH` y los dos números, y nada más.
+
+**Las dos cifras salen de una sola sentencia SQL.** En PostgreSQL una sentencia
+ve una sola instantánea de la base, así que un webhook que confirma un pago a
+mitad de la corrida no puede quedar contado de un lado y no del otro. La
+versión anterior leía `paid_cents` y la suma en dos consultas paralelas y
+podía alertar una desviación que no existía (lo encontró la revisión final de
+la rama). La consulta devuelve sólo las reservas desviadas.
 
 **No corrige el dato por su cuenta.** Alerta y para ahí. Una corrección
 automática escondería el bug que causó la desviación en primer lugar —

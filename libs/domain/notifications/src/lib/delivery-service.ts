@@ -222,6 +222,18 @@ export async function notifyAdmins(
   }
 }
 
+const HTML_ESCAPES: Record<string, string> = {
+  '&': '&amp;',
+  '<': '&lt;',
+  '>': '&gt;',
+  '"': '&quot;',
+  "'": '&#39;',
+};
+
+function escapeHtml(text: string): string {
+  return text.replace(/[&<>"']/g, (character) => HTML_ESCAPES[character] ?? character);
+}
+
 /**
  * The worker-side half of the outbox: reads the `EMAIL` row `deliveryId`
  * names, sends it through `email` using its already-frozen
@@ -256,7 +268,10 @@ export async function deliverQueuedEmail(db: Db, email: EmailProvider, deliveryI
   const sendResult = await email.send({
     to: user.email,
     subject: delivery.renderedTitle,
-    html: `<p>${delivery.renderedBody}</p>`,
+    // Escaped: the rendered text interpolates values people typed -- a
+    // customer's cancellation reason, their name -- and this HTML lands in
+    // staff inboxes. The plain-text part needs no escaping.
+    html: `<p>${escapeHtml(delivery.renderedBody)}</p>`,
     text: delivery.renderedBody,
   });
 

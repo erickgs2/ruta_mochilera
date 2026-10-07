@@ -114,4 +114,16 @@ describe('corsPreflightResponse', () => {
     expect(response?.headers.get('access-control-allow-headers')).toContain('x-client-platform');
     expect(response?.headers.get('access-control-max-age')).toBeTruthy();
   });
+
+  it('allows every method a route exports to a cross-origin caller, PATCH included (PATCH /me/profile)', () => {
+    const request = new Request('http://localhost/api/v1/me/profile', {
+      method: 'OPTIONS',
+      headers: { origin: 'capacitor://localhost', 'access-control-request-method': 'PATCH' },
+    });
+
+    const methods = corsPreflightResponse(request, ALLOWED)?.headers.get('access-control-allow-methods') ?? '';
+
+    for (const method of ['GET', 'POST', 'PUT', 'PATCH', 'DELETE']) expect(methods).toContain(method);
+  });
 });
+

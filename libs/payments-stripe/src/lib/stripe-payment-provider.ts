@@ -1,3 +1,4 @@
+import { DateTime } from 'luxon';
 import { createHmac } from 'node:crypto';
 import { fail, ok, type Result } from '@rm/shared-utils';
 import {
@@ -12,8 +13,14 @@ import {
   type WebhookEvent,
 } from './payment-provider';
 
+/**
+ * A Stripe call that hangs must fail rather than stall the caller: `fetch`
+ * has no timeout of its own. Ten seconds is far above Stripe's normal
+ * latency; past it the call fails like any provider error.
+ */
+const STRIPE_REQUEST_TIMEOUT_MS = 10_000;
+
 const STRIPE_API_BASE_URL = 'https://api.stripe.com/v1';
-const DAY_MS = 24 * 60 * 60 * 1000;
 // Stripe's own default tolerance for a webhook signature's `t=` timestamp,
 // used by every official Stripe SDK to reject a replayed request.
 const SIGNATURE_TOLERANCE_SECONDS = 300;
@@ -40,31 +47,46 @@ function stripePaymentMethodType(method: PaymentIntentMethod): string {
 }
 
 /**
- * Stripe's OXXO payment method option only accepts a whole number of days
- * from intent creation (`expires_after_days`), not an exact timestamp --
- * unlike this port's own `voucherExpiresAt`, which is a `Date`. Floors the
- * remaining time toward now rather than rounding or ceiling, the only
- * direction that cannot push the voucher's actual expiry past the
- * reservation's `holdExpiresAt`: a ceiling could ask Stripe to keep the
- * voucher alive for up to a day after the hold releases the seat, exactly
- * the gap business rule 5.3 exists to close.
+ * Stripe's OXXO voucher expiry, as Stripe defines it: `expires_after_days = N`
+ * expires the voucher at 23:59 America/Mexico_City on the Nth calendar day
+ * after creation -- not N x 24 hours later. That zone is Stripe's, fixed by
+ * Stripe, which is why it is a constant here and not the organisation's
+ * `organization.timezone`.
+ */
+const STRIPE_OXXO_TIME_ZONE = 'America/Mexico_City';
+
+/**
+ * The `expires_after_days` to ask Stripe for so the voucher never outlives
+ * `voucherExpiresAt` (the reservation's hold; business rule 5.3): the largest
+ * N whose end of day -- 23:59:59.999 in Mexico City, N calendar days from
+ * today there -- is still no later than it.
  *
- * **Returns `undefined` when the floor would be less than one whole day.**
- * There is no way to ask Stripe for "less than a day": clamping a
- * sub-24-hour window up to the required minimum of 1 would recreate the
- * exact bug this function exists to prevent (Critical finding, Task 9
- * review round 1) by telling Stripe to keep the voucher alive for up to a
- * full day after a hold shorter than that has already released the seat.
- * `hold_ttl_hours` is configured per trip and can be well under 24 (the
- * business-rules docs use a six-hour hold as a worked example), so this is
- * reachable, not hypothetical. The caller (`createIntent`) refuses the
- * request instead of silently widening the window. Clamped at the top to
+ * An earlier version floored `(voucherExpiresAt - now) / 24h`, which treated
+ * N as N x 24 hours: a hold ending at 13:00 tomorrow gave N = 1, and Stripe
+ * kept the voucher payable until 23:59 tomorrow, ~11 hours after the seat
+ * had been released (final review of the phase 2A branch).
+ *
+ * **Returns `undefined` when not even N = 1 fits.** Stripe has no "less than
+ * a day", and widening the window to 1 would recreate the bug; the caller
+ * (`createIntent`) refuses OXXO for that hold instead. Clamped at the top to
  * `MAX_OXXO_EXPIRES_AFTER_DAYS`.
  */
-export function oxxoExpiresAfterDays(voucherExpiresAt: Date, now: Date = new Date()): number | undefined {
-  const daysRemaining = Math.floor((voucherExpiresAt.getTime() - now.getTime()) / DAY_MS);
-  if (daysRemaining < MIN_OXXO_EXPIRES_AFTER_DAYS) return undefined;
-  return Math.min(MAX_OXXO_EXPIRES_AFTER_DAYS, daysRemaining);
+export function oxxoExpiresAfterDays(
+  voucherExpiresAt: Date,
+  now: Date = new Date(),
+): number | undefined {
+  const today = DateTime.fromJSDate(now, {
+    zone: STRIPE_OXXO_TIME_ZONE,
+  }).startOf('day');
+  const holdEnds = DateTime.fromJSDate(voucherExpiresAt, {
+    zone: STRIPE_OXXO_TIME_ZONE,
+  });
+  const lastFullDay = holdEnds.equals(holdEnds.endOf('day'))
+    ? holdEnds.startOf('day')
+    : holdEnds.startOf('day').minus({ days: 1 });
+  const days = Math.round(lastFullDay.diff(today, 'days').days);
+  if (days < MIN_OXXO_EXPIRES_AFTER_DAYS) return undefined;
+  return Math.min(MAX_OXXO_EXPIRES_AFTER_DAYS, days);
 }
 
 interface StripeOxxoDisplayDetails {
@@ -182,6 +204,7 @@ export class StripePaymentProvider implements PaymentProvider {
     try {
       const response = await fetch(`${STRIPE_API_BASE_URL}/payment_intents`, {
         method: 'POST',
+        signal: AbortSignal.timeout(STRIPE_REQUEST_TIMEOUT_MS),
         headers: {
           Authorization: `Bearer ${this.secretKey}`,
           'Content-Type': 'application/x-www-form-urlencoded',
@@ -229,6 +252,7 @@ export class StripePaymentProvider implements PaymentProvider {
     try {
       const response = await fetch(`${STRIPE_API_BASE_URL}/payment_intents/${providerIntentId}/cancel`, {
         method: 'POST',
+        signal: AbortSignal.timeout(STRIPE_REQUEST_TIMEOUT_MS),
         headers: { Authorization: `Bearer ${this.secretKey}` },
       });
 

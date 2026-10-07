@@ -104,6 +104,13 @@ en cambio, **no** se congela — se lee de `User.email` en el momento del
 envío, porque sólo el *texto* es historia permanente; a qué dirección llega
 un recordatorio es lo que la cuenta tenga registrado ahora.
 
+**La parte HTML del correo va escapada.** El texto congelado interpola valores
+que escribió una persona —el motivo de una solicitud de cancelación, el nombre
+del cliente— y esos correos llegan a las bandejas del personal. Sin escapar,
+un motivo con `<a href=…>` se convertía en un enlace real dentro del correo
+(lo encontró la revisión final de la rama). La parte de texto plano no se
+escapa: no es HTML.
+
 Es **idempotente**: pg-boss entrega sus trabajos *al menos* una vez, nunca
 exactamente una, así que una fila que ya está `SENT` o `FAILED` se deja
 intacta en vez de reenviarse. Lo prueba `delivery-service.spec.ts` ("is a

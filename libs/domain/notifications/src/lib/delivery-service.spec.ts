@@ -322,6 +322,37 @@ describe('notification delivery service', () => {
       expect(updated.sentAt).not.toBeNull();
     });
 
+    it('escapes the rendered text in the HTML part: a customer-written reason never becomes markup in a staff inbox', async () => {
+      const customerId = await seedCustomer(db);
+      const boss = await withTestQueue();
+      await db.$transaction((tx) =>
+        notifyCustomer(tx, boss, {
+          customerId,
+          eventType: 'RESERVATION_CANCELLED',
+          params: { tripName: 'Oaxaca', reason: '<a href="https://phish.test">Ver reserva</a><img src=x>' },
+        })
+      );
+      const emailRow = await db.notificationDelivery.findFirstOrThrow({
+        where: { userId: customerId, channel: 'EMAIL' },
+      });
+      const sent: { html: string; text: string }[] = [];
+      const capturing: EmailProvider = {
+        send: async (message) => {
+          sent.push({ html: message.html, text: message.text });
+          return { ok: true, value: { providerMessageId: 'captured' } };
+        },
+      };
+
+      await deliverQueuedEmail(db, capturing, emailRow.id);
+
+      expect(sent).toHaveLength(1);
+      expect(sent[0]?.html).not.toContain('<a href');
+      expect(sent[0]?.html).not.toContain('<img');
+      expect(sent[0]?.html).toContain('&lt;a href=&quot;https://phish.test&quot;&gt;');
+      // The plain-text part is not HTML and stays readable as written.
+      expect(sent[0]?.text).toContain('<a href="https://phish.test">');
+    });
+
     it('marks the EMAIL row FAILED with the error and leaves INBOX SENT, without throwing, when the provider rejects the address', async () => {
       const customerId = await seedCustomer(db, { email: PROVIDER_REJECTED_TEST_ADDRESS });
       const boss = await withTestQueue();

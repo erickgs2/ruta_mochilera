@@ -22,13 +22,13 @@
   gap: 0.5rem;
   margin: 0 0 1rem;
   font-weight: 500;
-  color: var(--mat-sys-error, #b3261e);
+  color: var(--mat-sys-error);
 }
 
 // The rows that wait on a person: a tinted background, and the chip says it
 // in words too, so it never relies on colour alone.
 .reservations-pending {
-  background: var(--mat-sys-error-container, #fde7e9);
+  background: var(--mat-sys-error-container);
 }
 
 .reservations-table-container {
@@ -49,7 +49,7 @@
   display: block;
   color: inherit;
   text-decoration: none;
-  border: 1px solid var(--mat-sys-outline-variant, #ccc);
+  border: 1px solid var(--mat-sys-outline-variant);
   border-radius: 0.5rem;
   padding: 0.75rem 1rem;
 }
@@ -62,5 +62,5 @@
 
 .reservations-card-meta {
   margin: 0.25rem 0;
-  color: var(--mat-sys-on-surface-variant, #666);
+  color: var(--mat-sys-on-surface-variant);
 }

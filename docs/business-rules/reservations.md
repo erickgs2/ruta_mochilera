@@ -250,6 +250,11 @@ media, nunca al crearse (6h > 1.5h en ese momento).
 `warn-expiring-holds.spec.ts` prueba ambos viajes exactamente para
 comprobar que el de 6 horas no avisa de inmediato.
 
+La fecha de vencimiento del aviso se escribe como fecha y hora locales en la
+zona de `SystemSetting['organization.timezone']` y en el idioma del cliente
+(«8 oct 2026, 21:00»), nunca como la marca UTC cruda, que además se lee como el
+día siguiente.
+
 No avisa si `paid_cents` ya alcanzó `minimum_deposit_cents` (debería estar
 `ACTIVE` y por tanto fuera del filtro `status: 'HELD'`, pero la comprobación
 es explícita de todos modos) ni si ya avisó antes de esa misma reservación.

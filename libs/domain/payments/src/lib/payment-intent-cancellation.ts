@@ -1,9 +1,11 @@
-import type { DbTransactionClient } from '@rm/db';
+import type { Db, DbTransactionClient } from '@rm/db';
 import type { PaymentProvider } from '@rm/payments-stripe';
 
 /**
- * Cancels one reservation's pending Payment Intents at the provider, inside
- * the caller's transaction (spec §5.3: a hold that expires -- or, since Task
+ * Cancels one reservation's pending Payment Intents at the provider, after
+ * the caller's transaction has committed -- never inside it: a network call
+ * there would hold the row lock and could outlast the transaction timeout,
+ * rolling the expiry or cancellation back (spec §5.3: a hold that expires -- or, since Task
  * 19, a reservation staff cancel -- with an outstanding OXXO voucher or an
  * unconfirmed card intent must not leave Stripe still expecting money for a
  * seat that no longer exists).
@@ -15,7 +17,7 @@ import type { PaymentProvider } from '@rm/payments-stripe';
  * `@rm/domain-reservations` declares the same function type structurally
  * rather than importing it, so the two domains never depend on each other.
  */
-export type CancelPendingPaymentIntents = (tx: DbTransactionClient, reservationId: string) => Promise<void>;
+export type CancelPendingPaymentIntents = (client: Db | DbTransactionClient, reservationId: string) => Promise<void>;
 
 /**
  * Builds the `CancelPendingPaymentIntents` hook from a `PaymentProvider`
@@ -48,8 +50,8 @@ export type CancelPendingPaymentIntents = (tx: DbTransactionClient, reservationI
  * still be safe.
  */
 export function createCancelPendingPaymentIntents(paymentProvider: PaymentProvider): CancelPendingPaymentIntents {
-  return async (tx, reservationId) => {
-    const pendingPayments = await tx.payment.findMany({
+  return async (client, reservationId) => {
+    const pendingPayments = await client.payment.findMany({
       where: { reservationId, status: 'PENDING', providerIntentId: { not: null } },
       select: { id: true, providerIntentId: true },
     });

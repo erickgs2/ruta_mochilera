@@ -1,5 +1,7 @@
 import type { Db } from '@rm/db';
 import { notifyCustomer, type NotificationQueue } from '@rm/domain-notifications';
+import { DateTime } from 'luxon';
+import { organizationTimeZone } from '@rm/domain-settings';
 
 const HOUR_MS = 60 * 60 * 1000;
 
@@ -38,6 +40,7 @@ function warningThresholdMs(holdTtlHours: number): number {
  */
 export async function warnExpiringHolds(db: Db, queue: NotificationQueue): Promise<void> {
   const now = new Date();
+  const timeZone = await organizationTimeZone(db);
   const candidates = await db.reservation.findMany({
     where: { status: 'HELD', holdExpiresAt: { gt: now } },
     include: {
@@ -68,8 +71,20 @@ export async function warnExpiringHolds(db: Db, queue: NotificationQueue): Promi
         customerId: reservation.customerId,
         reservationId: reservation.id,
         eventType: 'HOLD_EXPIRING',
-        params: { tripName, holdExpiresAt: reservation.holdExpiresAt!.toISOString() },
+        params: { tripName, holdExpiresAt: formatHoldExpiry(reservation.holdExpiresAt!, timeZone, reservation.customer.user.locale) },
       })
     );
   }
 }
+
+/**
+ * The hold's expiry as the customer reads it: a date and time in the
+ * organisation's time zone (`organization.timezone`, never hardcoded) and in
+ * the customer's language -- "8 oct 2026, 21:00", not the raw UTC
+ * "2026-10-09T03:00:00.000Z", which also reads as the next day. Frozen into
+ * the notice when it is written, like the rest of its text.
+ */
+function formatHoldExpiry(holdExpiresAt: Date, timeZone: string, locale: string): string {
+  return DateTime.fromJSDate(holdExpiresAt, { zone: timeZone }).setLocale(locale).toLocaleString(DateTime.DATETIME_MED);
+}
+

@@ -913,7 +913,24 @@ describe('reservation service', () => {
       if (!cancelled.ok) expect(cancelled.error.code).toBe('NOT_FOUND');
     });
 
-    it('asks to cancel the pending payment intents, inside the cancellation, exactly once', async () => {
+    it('asks the provider to cancel only after the cancellation has committed', async () => {
+      const { reservation } = await heldReservation();
+      const seenAtCallTime: string[] = [];
+
+      await cancelReservation(
+        db,
+        queue,
+        { reservationId: reservation.id, actorId: staffId, reason: 'x' },
+        async (_client, reservationId) => {
+          const committed = await db.reservation.findUniqueOrThrow({ where: { id: reservationId } });
+          seenAtCallTime.push(committed.status);
+        }
+      );
+
+      expect(seenAtCallTime).toEqual(['CANCELLED']);
+    });
+
+    it('asks to cancel the pending payment intents exactly once', async () => {
       const { reservation } = await heldReservation();
       const calls: string[] = [];
 

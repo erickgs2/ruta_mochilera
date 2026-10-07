@@ -179,7 +179,22 @@ cancela en el proveedor las fichas pendientes al cancelar, pero una pagada en
 ese mismo minuto puede llegar igual.
 
 Y el caso en que no hay siquiera reserva a la que atar el dinero —un intento
-creado fuera de la app, sin `metadata.reservationId`—: no se puede escribir un
-`Payment` sin reserva, así que se avisa a una persona y se responde 200, porque
-un error sólo haría que Stripe reenviara para siempre algo que nadie puede
-aplicar automáticamente.
+creado fuera de la app, sin `metadata.reservationId` o con uno que ni siquiera
+es un UUID—: no se puede escribir un `Payment` sin reserva, así que se avisa a
+una persona y se responde 200, porque un error sólo haría que Stripe
+reenviara para siempre algo que nadie puede aplicar automáticamente.
+
+```mermaid
+flowchart LR
+    A["El pago no se puede aplicar solo"] --> B{"¿A qué reserva pertenece?"}
+    B -- "su fila Payment la nombra" --> L["ORPHAN_PAYMENT enlazado a esa reserva"]
+    B -- "el intento nombra una reserva que existe" --> L
+    B -- "ninguna, o un id que no es UUID" --> U["ORPHAN_PAYMENT sin reserva"]
+    L --> R["200 a Stripe"]
+    U --> R
+```
+
+El aviso al personal va **enlazado a la reserva** siempre que se sabe cuál es
+(un segundo pago que excede el saldo, un pago que llegó sobre uno ya dado por
+perdido): es justo cuando alguien tiene que actuar a mano. Antes el aviso
+salía sin enlace aunque el intento la nombrara.

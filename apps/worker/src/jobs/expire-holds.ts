@@ -40,17 +40,13 @@ export async function expireHolds(
   });
 
   for (const { id } of candidates) {
-    await db.$transaction(async (tx: DbTransactionClient) => {
+    const expiredThisOne = await db.$transaction(async (tx: DbTransactionClient) => {
       const expired = await tx.reservation.updateMany({
         where: { id, status: 'HELD', holdExpiresAt: { lt: now } },
         data: { status: 'EXPIRED', holdExpiresAt: null },
       });
       // Lost the race for this row -- see the doc comment above.
-      if (expired.count === 0) return;
-
-      if (cancelPendingPaymentIntents) {
-        await cancelPendingPaymentIntents(tx, id);
-      }
+      if (expired.count === 0) return false;
 
       const reservation = await tx.reservation.findUniqueOrThrow({
         where: { id },
@@ -68,7 +64,17 @@ export async function expireHolds(
         eventType: 'HOLD_EXPIRED',
         params: { tripName },
       });
+      return true;
     });
+
+    // After the commit, never inside the transaction: a provider call there
+    // would hold the row lock across a network round trip and, past
+    // Prisma's transaction timeout, roll the expiry back -- a slow Stripe
+    // keeping the seat locked, the one thing the hook must never cause. The
+    // hook never throws; a failure is logged and reconciled by hand.
+    if (expiredThisOne && cancelPendingPaymentIntents) {
+      await cancelPendingPaymentIntents(db, id);
+    }
   }
 }
 

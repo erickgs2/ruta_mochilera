@@ -15,29 +15,34 @@ import { oxxoExpiresAfterDays, StripePaymentProvider } from './stripe-payment-pr
  * make sure it cannot reappear silently.
  */
 describe('oxxoExpiresAfterDays', () => {
-  const now = new Date('2026-01-01T00:00:00.000Z');
+  // Stripe's own rule: `expires_after_days = N` makes the voucher expire at
+  // 23:59 America/Mexico_City on the Nth calendar day after creation -- not
+  // N x 24h later. The voucher must never outlive the hold (rule 5.3), so the
+  // answer is the largest N whose end of day is still no later than it.
   const HOUR_MS = 60 * 60 * 1000;
+  // Monday 2026-01-05 01:00 in Mexico City (UTC-6).
+  const now = new Date('2026-01-05T07:00:00.000Z');
 
-  it('floors a window well over a day to the whole number of days remaining', () => {
-    // 72h -> exactly 3 days, nothing to floor away.
-    const voucherExpiresAt = new Date(now.getTime() + 72 * HOUR_MS);
-    expect(oxxoExpiresAfterDays(voucherExpiresAt, now)).toBe(3);
+  it('stops at the last calendar day that ends before the hold does, never past it', () => {
+    // Hold ends Tuesday 13:00 MX (36h). N = 1 would expire the voucher at
+    // 23:59 Tuesday, ~11h after the seat was released -- the bug. Monday
+    // ends at 23:59 Monday, but N must be at least 1, so no OXXO here.
+    const holdEnds = new Date(now.getTime() + 36 * HOUR_MS);
+    expect(oxxoExpiresAfterDays(holdEnds, now)).toBeUndefined();
   });
 
-  it('returns 1 for a window of exactly one day', () => {
-    const voucherExpiresAt = new Date(now.getTime() + 24 * HOUR_MS);
-    expect(oxxoExpiresAfterDays(voucherExpiresAt, now)).toBe(1);
+  it('gives N = 1 when the hold outlasts the end of the next calendar day', () => {
+    // Hold ends Wednesday 10:00 MX: the voucher may live until 23:59 Tuesday.
+    const holdEnds = new Date('2026-01-07T16:00:00.000Z');
+    expect(oxxoExpiresAfterDays(holdEnds, now)).toBe(1);
   });
 
-  it('refuses (returns undefined) a window just under one day, rather than clamping it up to 1', () => {
-    // The Critical bug this guards against: the old code clamped this case
-    // up to 1 day, which asks Stripe to keep an OXXO voucher alive longer
-    // than a hold shorter than 24h (hold_ttl_hours is configurable per
-    // trip and the business-rules docs use a 6-hour hold as a worked
-    // example) -- letting the system confirm a payment for a seat it had
-    // already released back into inventory (business rule 5.3).
-    const voucherExpiresAt = new Date(now.getTime() + 23 * HOUR_MS + 59 * 60 * 1000);
-    expect(oxxoExpiresAfterDays(voucherExpiresAt, now)).toBeUndefined();
+  it('stops a 72-hour hold ending mid-day at the day before, and allows the day itself when the hold ends at 23:59', () => {
+    // Thursday 01:00 MX -> the last whole day before it ends is Wednesday.
+    const holdEnds = new Date(now.getTime() + 72 * HOUR_MS);
+    expect(oxxoExpiresAfterDays(holdEnds, now)).toBe(2);
+    // Ending exactly at 23:59:59.999 Thursday MX allows Thursday itself.
+    expect(oxxoExpiresAfterDays(new Date('2026-01-09T05:59:59.999Z'), now)).toBe(3);
   });
 
   it('refuses a window that has already passed or is exactly now', () => {
@@ -45,14 +50,16 @@ describe('oxxoExpiresAfterDays', () => {
     expect(oxxoExpiresAfterDays(new Date(now.getTime() - HOUR_MS), now)).toBeUndefined();
   });
 
-  it('clamps a window far beyond the documented ceiling to 31 days', () => {
-    const voucherExpiresAt = new Date(now.getTime() + 400 * 24 * HOUR_MS);
-    expect(oxxoExpiresAfterDays(voucherExpiresAt, now)).toBe(31);
+  it('counts calendar days in Mexico City, not in UTC', () => {
+    // 23:30 Monday MX is already Tuesday in UTC. A hold ending Wednesday
+    // 12:00 MX allows the voucher to live until 23:59 Tuesday MX: N = 1.
+    const lateMonday = new Date('2026-01-06T05:30:00.000Z');
+    expect(oxxoExpiresAfterDays(new Date('2026-01-07T18:00:00.000Z'), lateMonday)).toBe(1);
   });
 
-  it('returns exactly 31 for a window of exactly 31 days, the ceiling itself', () => {
-    const voucherExpiresAt = new Date(now.getTime() + 31 * 24 * HOUR_MS);
-    expect(oxxoExpiresAfterDays(voucherExpiresAt, now)).toBe(31);
+  it('clamps a window far beyond the documented ceiling to 31 days', () => {
+    const holdEnds = new Date(now.getTime() + 400 * 24 * HOUR_MS);
+    expect(oxxoExpiresAfterDays(holdEnds, now)).toBe(31);
   });
 });
 

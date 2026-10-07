@@ -2,6 +2,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { closeTestDb, prepareTestDb, resetDatabase, withTestDb } from '@rm/db/testing';
 import { closeTestQueue, resetTestQueue, withTestQueue } from '@rm/jobs/testing';
 import type { Db, Reservation, ReservationStatus } from '@rm/db';
+import { DateTime } from 'luxon';
 import { warnExpiringHolds } from './warn-expiring-holds';
 
 const db = withTestDb();
@@ -113,6 +114,27 @@ describe('warnExpiringHolds', () => {
     const deliveries = await db.notificationDelivery.findMany({ where: { reservationId: reservation.id } });
     expect(deliveries).toHaveLength(2);
     expect(deliveries.every((row) => row.eventType === 'HOLD_EXPIRING')).toBe(true);
+  });
+
+  it("writes the expiry as a local date and time in the organisation's zone, never a raw UTC timestamp", async () => {
+    await db.systemSetting.upsert({
+      where: { key: 'organization.timezone' },
+      create: { key: 'organization.timezone', value: 'America/Mexico_City' },
+      update: { value: 'America/Mexico_City' },
+    });
+    const holdExpiresAt = new Date(Date.now() + 10 * HOUR_MS);
+    const reservation = await seedReservation(db, { holdTtlHours: 72, holdExpiresAt });
+    const boss = await withTestQueue();
+
+    await warnExpiringHolds(db, boss);
+
+    const inbox = await db.notificationDelivery.findFirstOrThrow({
+      where: { reservationId: reservation.id, channel: 'INBOX' },
+    });
+    const text = `${inbox.renderedTitle} ${inbox.renderedBody}`;
+    expect(text).not.toMatch(/\d{4}-\d{2}-\d{2}T\d{2}:/);
+    const local = DateTime.fromJSDate(holdExpiresAt, { zone: 'America/Mexico_City' }).setLocale('es');
+    expect(text).toContain(local.toLocaleString(DateTime.DATETIME_MED));
   });
 
   it('does not warn a 72-hour hold with more than a quarter of its term left', async () => {

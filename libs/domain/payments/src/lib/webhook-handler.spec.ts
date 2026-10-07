@@ -333,6 +333,27 @@ describe('handleStripeEvent', () => {
       expect(await noticesFor(staffId, 'ORPHAN_PAYMENT')).toBe(2);
       // The event is on record even though no Payment row could be written.
       expect(await db.stripeEvent.count()).toBe(2);
+      // The alert points staff at the reservation the money belongs to.
+      const alerts = await db.notificationDelivery.findMany({ where: { userId: staffId, eventType: 'ORPHAN_PAYMENT' } });
+      expect(alerts.every((alert) => alert.reservationId === reservation.id)).toBe(true);
+    });
+
+    it('escalates, and still answers ok, when the intent names a reservation id that is not even a UUID', async () => {
+      // An intent created outside the app (the Stripe dashboard, another
+      // integration) can carry any string in metadata.reservationId. A
+      // PostgreSQL cast error here would abort the transaction, answer 500,
+      // and have Stripe retry forever while the money stayed invisible.
+      const result = await handleStripeEvent(
+        db,
+        queue,
+        event({
+          intent: { providerIntentId: 'pi_foreign', amountCents: 50_000, method: 'CARD', reservationId: 'order-1234' },
+        })
+      );
+
+      expect(result).toEqual({ ok: true, value: null });
+      expect(await db.payment.count()).toBe(0);
+      expect(await noticesFor(staffId, 'ORPHAN_PAYMENT')).toBe(2);
     });
 
     it('escalates, and still answers ok, for money that arrived against a payment already written off', async () => {

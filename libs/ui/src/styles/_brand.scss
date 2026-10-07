@@ -28,6 +28,8 @@ $font:
   // Charcoal lettering. On yellow, cream or white it clears 4.5:1 comfortably.
   --rm-ink: #2a2924;
   --rm-ink-soft: #57544a;
+  // The ink pressed one step darker: hover on a charcoal button.
+  --rm-ink-strong: #12110e;
   --rm-line: #e8e0c4;
   // Form-control borders: 3:1 against the ground (WCAG 1.4.11).
   --rm-line-strong: #8a8470;
@@ -41,6 +43,9 @@ $font:
   --rm-radius-control: 10px;
   --rm-radius-pill: 999px;
   --rm-shadow-card: 0 10px 24px -14px rgb(42 41 36 / 0.35);
+  // A card lifted under the pointer, and a bar floating over the content.
+  --rm-shadow-raised: 0 18px 32px -16px rgb(42 41 36 / 0.4);
+  --rm-shadow-floating: 0 12px 28px -12px rgb(42 41 36 / 0.45);
   --rm-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
 }
 
