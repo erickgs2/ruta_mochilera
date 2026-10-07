@@ -6,8 +6,37 @@ agrupadas por quién las tomó. Las del diseño original están en la spec
 «Cambios respecto del diseño general»); aquí van las que se tomaron o se
 confirmaron después, al implementar.
 
-**Estado:** las Tareas 1 a 14 están en `main` (`934c971`). La Tarea 15
-(extremo a extremo, documentación y cierre) se trabaja en ramas aparte.
+**Estado:** las Tareas 1 a 14 están en `main` (`934c971`). La Tarea 15 (extremo
+a extremo, documentación y cierre) y los arreglos que dejó la validación están
+integrados en `phase-2b/integration`, pendiente de pasar a `main`. Las
+decisiones 13 y 16 (revivir un apartado vencido y acreditar lo pagado al
+vencer) están **implementadas**; la 17 es un caso inerte conocido. Quedan
+abiertas las limitaciones de «Pendientes» y la interpretación de la decisión 7.
+
+## Índice
+
+| # | Decisión | Estado |
+|---|---|---|
+| 1 | Una bajada de precio resta lo pagado de más de la reserva | Decidida |
+| 2 | Las importaciones CSV corren en el worker, con progreso y sin reintento automático | Decidida |
+| 3 | Los recibos son privados | Decidida |
+| 4 | La descarga del recibo en la app de Capacitor queda pendiente | Pendiente |
+| 5 | Las Tareas 1 a 14 entraron directo a `main`, sin pull request | Decidida |
+| 6 | El dinero de una reserva cancelada se vuelve saldo a favor | Registrada en la spec |
+| 7 | Quien cambia el saldo es la agencia, no el viajero | Interpretación por confirmar |
+| 8 | El saldo vive por cliente, en un libro de movimientos | Registrada en la spec |
+| 9 | El folio del recibo sale de un contador por año | Registrada en la spec |
+| 10 | Cambiar el precio de un viaje y llevarlo a las reservas son dos operaciones | Registrada en la spec |
+| 11 | `ImportBatch` tiene un estado más: `APPLYING` | Confirmada |
+| 12 | El recibo guarda la foto del saldo en el pago | Confirmada |
+| 13 | Un cobro en el mostrador revive un apartado vencido si queda lugar | **Implementada** |
+| 14 | La invitación no pasa por la bandeja de salida de pg-boss | Confirmada |
+| 15 | El folio de un pago histórico sigue el año de `paid_at` | Confirmada |
+| 16 | Un apartado que vence con pagos devuelve lo pagado como saldo a favor | **Implementada** |
+| 17 | Reenviar una invitación mientras el cliente restablece su contraseña | Caso inerte conocido |
+
+Las decisiones van agrupadas por quién las tomó, no por número: la 13 y la 16
+están al final porque se tomaron y se implementaron después de las demás.
 
 ---
 

@@ -275,7 +275,7 @@ vencida no es un pago rechazado— así que el puerto expone el código
 
 `payment_intent.canceled` **no es una anomalía**: es justo lo que llega cuando
 `expireHolds` cancela el intento de un apartado que acaba de vencer (Tarea 9).
-Por eso no genera aviso: el cliente ya recibió su `HOLD_EXPIRED` del job que
+Por eso no genera aviso: el cliente ya recibió su `HOLD_EXPIRED` (o `HOLD_EXPIRED_CREDIT`) del job que
 provocó esta cancelación.
 
 **Un tipo de evento que no manejamos responde 200 y no hace nada.** Stripe

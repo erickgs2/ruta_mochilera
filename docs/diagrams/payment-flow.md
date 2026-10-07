@@ -284,7 +284,7 @@ flowchart TD
     E --> F["Aviso PAYMENT_FAILED con el código del proveedor"]
 
     G["payment_intent.canceled"] --> H["Payment → EXPIRED"]
-    H --> I["Sin aviso: lo provocó expireHolds,<br/>que ya mandó HOLD_EXPIRED"]
+    H --> I["Sin aviso: lo provocó expireHolds,<br/>que ya mandó HOLD_EXPIRED o HOLD_EXPIRED_CREDIT"]
 
     J["Cualquier otro tipo de evento"] --> K["Nada, y 200"]
 
