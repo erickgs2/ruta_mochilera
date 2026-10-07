@@ -525,6 +525,26 @@ de recibo en la misma transacción.
 - El primer pago de una reserva hecha en mostrador usa el mismo camino
   (`createInitialCashPayment`), inyectado en la transacción de la reserva.
 
+## Pagos históricos (Fase 2B, Tarea 9, §5.7)
+
+`recordBackfilledPayments` (`POST /admin/backfill/payments`) y el gancho de
+`createBackfilledReservation`; permiso `data.backfill`.
+
+- Método `LEGACY` por omisión, o `CASH` si se sabe; `paid_at` en el pasado
+  (nunca futuro), `is_backfilled`, `recorded_by` = el trabajador, nota
+  opcional (por ejemplo, la hoja de la libreta).
+- Dos caminos con la misma función: un abono único con todo lo ya pagado, o
+  el desglose pago por pago. Se escriben **del más antiguo al más reciente**,
+  para que la foto del saldo de cada recibo siga el orden real.
+- Reciben folio **del año de su `paid_at`**, como cualquier pago
+  `SUCCEEDED`: un pago de noviembre de 2025 capturado en 2026 es
+  `RM-2025-…`.
+- Sólo sobre reservas vivas; todo o nada (un pago que excede el saldo revierte
+  los demás).
+- **Recibos silenciados por omisión**: no se encola ninguno salvo que el
+  trabajador marque `sendReceipts`. El folio y el PDF existen igual: el PDF
+  se genera al descargarlo o al reenviarlo.
+
 ## Saldo a favor: el modelo (Fase 2B, Tarea 1)
 
 `customer_credit_entries` guarda movimientos con signo: `CANCELLATION`,

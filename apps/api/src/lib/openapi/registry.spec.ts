@@ -20,6 +20,8 @@ const EVERY_ROUTE_FILE_PATH = [
   '/api/v1/auth/oauth/apple',
   '/api/v1/auth/invitation/accept',
   '/api/v1/admin/customers',
+  '/api/v1/admin/backfill/reservations',
+  '/api/v1/admin/backfill/payments',
   '/api/v1/admin/customers/{customerId}',
   '/api/v1/admin/customers/{customerId}/invitation',
   '/api/v1/me',

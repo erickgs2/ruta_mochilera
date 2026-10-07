@@ -39,12 +39,39 @@ export interface CreateBranchReservationInput {
   initialPayment?: { amountCents: number; record: RecordInitialPayment };
 }
 
+/**
+ * Records the historical payments of a reservation being backfilled, inside
+ * its own transaction (Phase 2B, §5.7). Implemented by `@rm/domain-payments`'
+ * `recordBackfilledPayments`; the payments themselves and whether receipts go
+ * out are captured by the closure the caller builds.
+ */
+export type RecordBackfilledPayments = (
+  tx: DbTransactionClient,
+  input: { reservationId: string; actorId: string }
+) => Promise<Result<unknown>>;
+
+export interface CreateBackfilledReservationInput {
+  tripId: string;
+  customerId: string;
+  actorId: string;
+  /** When the reservation really happened. */
+  createdAt: Date;
+  /** The price agreed back then, when it differs from the trip's current one. */
+  totalPriceCents?: number;
+  recordPayments?: RecordBackfilledPayments;
+}
+
 /** Where a reservation is being created from, and by whom. */
 interface CreationContext {
   source: 'APP' | 'BRANCH';
   actorId: string;
-  initialPayment?: CreateBranchReservationInput['initialPayment'];
+  /** Writes the reservation's payments inside its transaction; a failure rolls everything back. */
+  recordPayments?: (tx: DbTransactionClient, input: { reservationId: string; actorId: string }) => Promise<Result<unknown>>;
+  /** Historical capture: see `createBackfilledReservation`. */
+  backfill?: { createdAt: Date; totalPriceCents?: number };
 }
+
+const BACKFILL_REFUSED_TRIP_STATUSES = ['DRAFT', 'CANCELLED'];
 
 /** Carries a failed `Result` out of a transaction so the transaction rolls back. */
 class RollbackWith extends Error {
@@ -312,13 +339,22 @@ async function insertReservation(
 
     const trip = await tx.trip.findUnique({ where: { id: input.tripId } });
     if (!trip) return fail('NOT_FOUND');
-    if (trip.status !== 'PUBLISHED') return fail('TRIP_NOT_PUBLISHED', { status: trip.status });
+    const backfill = context.backfill;
+    if (backfill) {
+      // History may be captured on a trip that is running or already over,
+      // never on one that was not offered or was called off.
+      if (BACKFILL_REFUSED_TRIP_STATUSES.includes(trip.status)) {
+        return fail('INVALID_STATUS_TRANSITION', { status: trip.status });
+      }
+    } else if (trip.status !== 'PUBLISHED') {
+      return fail('TRIP_NOT_PUBLISHED', { status: trip.status });
+    }
 
     // A `@db.Date` column against the organisation's calendar day, not
     // against a raw instant: the deadline is a date somebody wrote down, and
     // in a zone behind UTC the naive comparison turns "today" into "past" for
-    // the first hours of every day.
-    if (isPastDate(trip.paymentDeadline, new Date(), timeZone)) {
+    // the first hours of every day. History is exempt: it already happened.
+    if (!backfill && isPastDate(trip.paymentDeadline, new Date(), timeZone)) {
       return fail('PAYMENT_DEADLINE_PASSED');
     }
 
@@ -330,7 +366,7 @@ async function insertReservation(
     // `Reservation.customerId` points at `customer_profiles.user_id`, so the
     // row could not be written anyway.
     if (!customer?.customerProfile) return fail('NOT_FOUND');
-    if (!customer.emailVerifiedAt) return fail('EMAIL_NOT_VERIFIED');
+    if (!backfill && !customer.emailVerifiedAt) return fail('EMAIL_NOT_VERIFIED');
 
     // Mirrors `reservations_live_trip_customer_key` exactly, expired holds
     // included: a `HELD` row whose expiry has passed no longer occupies a
@@ -355,18 +391,21 @@ async function insertReservation(
     // `reservations_held_requires_hold_expiry` refuses a `HELD` row without
     // one, and the capacity count reads a `HELD` row with a null expiry as a
     // free seat (see `docs/business-rules/reservations.md`).
-    const holdExpiresAt = new Date(Date.now() + trip.holdTtlHours * HOUR_MS);
+    // A backfilled reservation is history, not a hold: it is ACTIVE with no
+    // expiry, which the CHECK constraint allows.
+    const holdExpiresAt = backfill ? null : new Date(Date.now() + trip.holdTtlHours * HOUR_MS);
 
     const reservation = await tx.reservation.create({
       data: {
         code: await uniqueReservationCode(tx),
         tripId: trip.id,
         customerId: input.customerId,
-        status: 'HELD',
+        status: backfill ? 'ACTIVE' : 'HELD',
         holdExpiresAt,
+        ...(backfill ? { isBackfilled: true, createdAt: backfill.createdAt } : {}),
         // Frozen here: repricing the trip later never moves an existing
         // reservation (schema comment on `Reservation.totalPriceCents`).
-        totalPriceCents: trip.pricePerSeatCents,
+        totalPriceCents: backfill?.totalPriceCents ?? trip.pricePerSeatCents,
         minimumDepositCents: trip.minimumDepositCents,
         paymentDeadline: trip.paymentDeadline,
         source: context.source,
@@ -376,29 +415,26 @@ async function insertReservation(
 
     await recordAudit(tx, {
       actorUserId: context.actorId,
-      action: 'reservation.created',
+      action: backfill ? 'reservation.backfilled' : 'reservation.created',
       entityType: 'Reservation',
       entityId: reservation.id,
       after: {
         code: reservation.code,
         tripId: reservation.tripId,
         status: reservation.status,
-        holdExpiresAt: holdExpiresAt.toISOString(),
+        holdExpiresAt: holdExpiresAt?.toISOString() ?? null,
+        createdAt: reservation.createdAt.toISOString(),
         totalPriceCents: reservation.totalPriceCents,
         minimumDepositCents: reservation.minimumDepositCents,
         source: context.source,
       },
     });
 
-    if (!context.initialPayment) return ok(toDto(reservation));
+    if (!context.recordPayments) return ok(toDto(reservation));
 
-    // The payment moves `paid_cents` and, when it covers the deposit, turns
-    // the row ACTIVE and clears the hold -- so the answer is read back after.
-    const paid = await context.initialPayment.record(tx, {
-      reservationId: reservation.id,
-      amountCents: context.initialPayment.amountCents,
-      actorId: context.actorId,
-    });
+    // The payments move `paid_cents` and, when they cover the deposit, turn
+    // a HELD row ACTIVE and clear the hold -- so the answer is read back after.
+    const paid = await context.recordPayments(tx, { reservationId: reservation.id, actorId: context.actorId });
     if (!paid.ok) throw new RollbackWith(paid);
     return ok(toDto(await tx.reservation.findUniqueOrThrow({ where: { id: reservation.id } })));
   });
@@ -440,10 +476,47 @@ export async function createBranchReservation(
   if (input.initialPayment && (!Number.isInteger(input.initialPayment.amountCents) || input.initialPayment.amountCents <= 0)) {
     return fail('VALIDATION_FAILED', { field: 'initialPaymentCents' });
   }
+  const initialPayment = input.initialPayment;
   return createWithRetry(
     db,
     { tripId: input.tripId, customerId: input.customerId },
-    { source: 'BRANCH', actorId: input.actorId, initialPayment: input.initialPayment }
+    {
+      source: 'BRANCH',
+      actorId: input.actorId,
+      recordPayments: initialPayment
+        ? (tx, ids) => initialPayment.record(tx, { ...ids, amountCents: initialPayment.amountCents })
+        : undefined,
+    }
+  );
+}
+
+/**
+ * Captures a reservation that happened before the system (Phase 2B, §5.7,
+ * `data.backfill`): on a trip in any status but `DRAFT` and `CANCELLED`
+ * (running and finished trips included), with its real `created_at`,
+ * `is_backfilled`, `source = BRANCH`, **ACTIVE with no hold** and no deposit
+ * or deadline check -- it already happened. It **counts for capacity** like
+ * any other and takes the same trip lock, so a full trip is `TRIP_SOLD_OUT`.
+ * Its historical payments, if any, are written by the injected hook in the
+ * same transaction.
+ */
+export async function createBackfilledReservation(
+  db: Db,
+  input: CreateBackfilledReservationInput
+): Promise<Result<ReservationDto>> {
+  if (input.createdAt.getTime() > Date.now()) return fail('VALIDATION_FAILED', { field: 'createdAt' });
+  if (input.totalPriceCents !== undefined && (!Number.isInteger(input.totalPriceCents) || input.totalPriceCents < 0)) {
+    return fail('VALIDATION_FAILED', { field: 'totalPriceCents' });
+  }
+  return createWithRetry(
+    db,
+    { tripId: input.tripId, customerId: input.customerId },
+    {
+      source: 'BRANCH',
+      actorId: input.actorId,
+      recordPayments: input.recordPayments,
+      backfill: { createdAt: input.createdAt, totalPriceCents: input.totalPriceCents },
+    }
   );
 }
 

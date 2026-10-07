@@ -7,6 +7,7 @@ import { closeTestQueue, resetTestQueue, withTestQueue } from '@rm/jobs/testing'
 import { availableSeats, countCommittedSeats } from './capacity';
 import {
   cancelReservation,
+  createBackfilledReservation,
   createBranchReservation,
   createReservation,
   declineCancellationRequest,
@@ -542,6 +543,35 @@ describe('reservation service', () => {
       });
 
       expect(created).toMatchObject({ ok: false, error: { code: 'VALIDATION_FAILED' } });
+    });
+  });
+
+  describe('createBackfilledReservation (Phase 2B)', () => {
+    it('accepts a customer whose email was never verified (history imported from paper)', async () => {
+      const trip = await seedTrip(db, { status: 'COMPLETED', paymentDeadline: new Date('2020-01-01') });
+      const customerId = await seedCustomer(db, { emailVerified: false });
+
+      const created = await createBackfilledReservation(db, {
+        tripId: trip.id,
+        customerId,
+        actorId: staffId,
+        createdAt: new Date('2019-11-01T12:00:00Z'),
+      });
+
+      expect(created.ok && created.value).toMatchObject({ status: 'ACTIVE', holdExpiresAt: null });
+    });
+
+    it('refuses a creation date in the future', async () => {
+      const trip = await seedTrip(db);
+
+      const created = await createBackfilledReservation(db, {
+        tripId: trip.id,
+        customerId: await seedCustomer(db),
+        actorId: staffId,
+        createdAt: new Date(Date.now() + 86_400_000),
+      });
+
+      expect(created).toMatchObject({ ok: false, error: { code: 'VALIDATION_FAILED', details: { field: 'createdAt' } } });
     });
   });
 

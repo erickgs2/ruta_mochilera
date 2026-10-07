@@ -124,6 +124,12 @@ violación de `reservations_live_trip_customer_key` se traduce a
 `DUPLICATE_RESERVATION`, que es la carrera que la comprobación previa no
 puede cerrar sola.
 
+La captura histórica (Fase 2B, `createBackfilledReservation`) también recorre
+este camino con tres diferencias: acepta viajes en cualquier estado salvo
+`DRAFT` y `CANCELLED` en el nodo D, se salta los nodos E y F (fecha límite y
+correo verificado), e inserta `ACTIVE` sin apartado con su `created_at`
+pasado. El cupo (nodos G a I) se decide igual.
+
 La reserva en mostrador (Fase 2B, `createBranchReservation`) recorre **el
 mismo camino**, con `source = BRANCH` y `created_by` = el trabajador. Si trae
 pago inicial, el pago se escribe con el gancho inyectado antes del `COMMIT`:

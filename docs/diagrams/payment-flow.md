@@ -107,6 +107,17 @@ sequenceDiagram
     end
 ```
 
+## Pagos históricos (Fase 2B)
+
+```mermaid
+flowchart LR
+    A["Captura histórica<br/>(data.backfill)"] --> B["Ordena los pagos<br/>por paid_at"]
+    B --> C["recordPayment por cada uno:<br/>LEGACY o CASH, SUCCEEDED,<br/>is_backfilled, folio del año de paid_at"]
+    C --> D{"¿sendReceipts?"}
+    D -- No --> E["Sin correo: el PDF se genera<br/>al descargarlo o reenviarlo"]
+    D -- Sí --> F["encola SEND_RECEIPT<br/>(misma transacción)"]
+```
+
 ## Tres métodos, tres tiempos (Tarea 20)
 
 Los tres métodos terminan igual —la verdad del pago llega **sólo** por el

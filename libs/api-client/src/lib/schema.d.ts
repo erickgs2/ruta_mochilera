@@ -3403,6 +3403,176 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/backfill/reservations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Captures a reservation that happened before the system (spec §5.7): any trip status but DRAFT and CANCELLED, past created_at, ACTIVE with no hold, is_backfilled, counts for capacity. Historical payments (LEGACY or CASH, past paid_at) are recorded in the same transaction. Receipts stay silent unless sendReceipts. Requires data.backfill. */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["BackfillReservationRequest"];
+                };
+            };
+            responses: {
+                /** @description Reservation captured */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Reservation"];
+                    };
+                };
+                /** @description Missing or invalid access token */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description PERMISSION_DENIED -- requires data.backfill */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description NOT_FOUND -- unknown trip or customer */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description INVALID_STATUS_TRANSITION -- DRAFT or CANCELLED trip, TRIP_SOLD_OUT, or DUPLICATE_RESERVATION */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description VALIDATION_FAILED, or PAYMENT_EXCEEDS_BALANCE */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/backfill/payments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Historical payments for a live reservation already in the system: all or none, numbered in the year of their paid_at. Receipts stay silent unless sendReceipts. Requires data.backfill. */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["BackfillPaymentsRequest"];
+                };
+            };
+            responses: {
+                /** @description Payments captured */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Payment"][];
+                    };
+                };
+                /** @description Missing or invalid access token */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description PERMISSION_DENIED -- requires data.backfill */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description NOT_FOUND */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description INVALID_STATUS_TRANSITION -- the reservation is not live */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description VALIDATION_FAILED, or PAYMENT_EXCEEDS_BALANCE */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/customers": {
         parameters: {
             query?: never;
@@ -4933,6 +5103,46 @@ export interface components {
         ApplyPriceChangeRequest: {
             noticeEs: string;
             noticeEn?: string;
+        };
+        BackfillReservationRequest: {
+            /** Format: uuid */
+            tripId: string;
+            /** Format: uuid */
+            customerId: string;
+            /** Format: date-time */
+            createdAt: string;
+            totalPriceCents?: number;
+            /** @default [] */
+            payments: {
+                amountCents: number;
+                /** Format: date-time */
+                paidAt: string;
+                /**
+                 * @default LEGACY
+                 * @enum {string}
+                 */
+                method: "LEGACY" | "CASH";
+                notes?: string;
+            }[];
+            /** @default false */
+            sendReceipts: boolean;
+        };
+        BackfillPaymentsRequest: {
+            /** Format: uuid */
+            reservationId: string;
+            payments: {
+                amountCents: number;
+                /** Format: date-time */
+                paidAt: string;
+                /**
+                 * @default LEGACY
+                 * @enum {string}
+                 */
+                method: "LEGACY" | "CASH";
+                notes?: string;
+            }[];
+            /** @default false */
+            sendReceipts: boolean;
         };
         CustomerPage: {
             items: {

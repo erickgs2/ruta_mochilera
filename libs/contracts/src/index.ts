@@ -1,4 +1,5 @@
 export * from './lib/auth';
+export * from './lib/backfill';
 export * from './lib/common';
 export * from './lib/costing';
 export * from './lib/credit';

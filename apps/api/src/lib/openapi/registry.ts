@@ -8,6 +8,8 @@ import {
   cancelReservationRequestSchema as cancelReservationRequestSchemaImport,
   declineCancellationRequestSchema as declineCancellationRequestSchemaImport,
   adjustCreditRequestSchema as adjustCreditRequestSchemaImport,
+  backfillPaymentsRequestSchema as backfillPaymentsRequestSchemaImport,
+  backfillReservationRequestSchema as backfillReservationRequestSchemaImport,
   applyPriceChangeRequestSchema as applyPriceChangeRequestSchemaImport,
   priceChangePreviewSchema as priceChangePreviewSchemaImport,
   createBranchReservationRequestSchema as createBranchReservationRequestSchemaImport,
@@ -135,6 +137,10 @@ const createPaymentIntentRequestSchema = createPaymentIntentRequestSchemaImport.
 });
 const paymentSchema = paymentSchemaImport.meta({ id: 'Payment' });
 const creditEntrySchema = creditEntrySchemaImport.meta({ id: 'CreditEntry' });
+const backfillReservationRequestSchema = backfillReservationRequestSchemaImport.meta({
+  id: 'BackfillReservationRequest',
+});
+const backfillPaymentsRequestSchema = backfillPaymentsRequestSchemaImport.meta({ id: 'BackfillPaymentsRequest' });
 const customerPageSchema = customerPageSchemaImport.meta({ id: 'CustomerPage' });
 const customerDetailSchema = customerDetailSchemaImport.meta({ id: 'CustomerDetail' });
 const createdCustomerSchema = createdCustomerSchemaImport.meta({ id: 'CreatedCustomer' });
@@ -1314,6 +1320,47 @@ export function buildOpenApiDocument() {
       404: problem('NOT_FOUND'),
       409: problem('NO_PRICE_CHANGE'),
       422: problem('VALIDATION_FAILED -- the Spanish notice is missing'),
+    },
+  });
+
+  // --- historical capture (Phase 2B) ----------------------------------------
+  registry.registerPath({
+    method: 'post',
+    path: '/api/v1/admin/backfill/reservations',
+    tags: ['reservations', 'admin'],
+    security: [{ bearerAuth: [] }],
+    description:
+      'Captures a reservation that happened before the system (spec §5.7): any trip status but DRAFT and ' +
+      'CANCELLED, past created_at, ACTIVE with no hold, is_backfilled, counts for capacity. Historical payments ' +
+      '(LEGACY or CASH, past paid_at) are recorded in the same transaction. Receipts stay silent unless ' +
+      'sendReceipts. Requires data.backfill.',
+    request: { body: requestBody(backfillReservationRequestSchema) },
+    responses: {
+      201: { description: 'Reservation captured', ...json(reservationSchema) },
+      401: problem('Missing or invalid access token'),
+      403: problem('PERMISSION_DENIED -- requires data.backfill'),
+      404: problem('NOT_FOUND -- unknown trip or customer'),
+      409: problem('INVALID_STATUS_TRANSITION -- DRAFT or CANCELLED trip, TRIP_SOLD_OUT, or DUPLICATE_RESERVATION'),
+      422: problem('VALIDATION_FAILED, or PAYMENT_EXCEEDS_BALANCE'),
+    },
+  });
+
+  registry.registerPath({
+    method: 'post',
+    path: '/api/v1/admin/backfill/payments',
+    tags: ['payments', 'admin'],
+    security: [{ bearerAuth: [] }],
+    description:
+      'Historical payments for a live reservation already in the system: all or none, numbered in the year of ' +
+      'their paid_at. Receipts stay silent unless sendReceipts. Requires data.backfill.',
+    request: { body: requestBody(backfillPaymentsRequestSchema) },
+    responses: {
+      201: { description: 'Payments captured', ...json(paymentSchema.array()) },
+      401: problem('Missing or invalid access token'),
+      403: problem('PERMISSION_DENIED -- requires data.backfill'),
+      404: problem('NOT_FOUND'),
+      409: problem('INVALID_STATUS_TRANSITION -- the reservation is not live'),
+      422: problem('VALIDATION_FAILED, or PAYMENT_EXCEEDS_BALANCE'),
     },
   });
 

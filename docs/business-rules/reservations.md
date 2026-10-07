@@ -260,6 +260,27 @@ saldo a favor junto a ellos.
 - **Sin pago**: nace `HELD` con el apartado normal y se cobra después
   (`payments.md`, «Cobro en efectivo»).
 
+## Captura histórica (Fase 2B, §5.7)
+
+`createBackfilledReservation` (`POST /admin/backfill/reservations`, permiso
+`data.backfill`): para el arranque, cargar lo que hoy vive en papel.
+
+- Sobre viajes en **cualquier estado salvo `DRAFT` y `CANCELLED`**
+  (`INVALID_STATUS_TRANSITION`): incluye `IN_PROGRESS` y `COMPLETED`.
+- Con su `created_at` **retroactivo** (nunca futuro), `is_backfilled`,
+  `source = BRANCH`, y precio opcional cuando el pactado entonces difiere del
+  vigente.
+- Nace **`ACTIVE` sin apartado**: es historia, no un apartado que vence. No
+  se valida anticipo, fecha límite ni verificación del correo (el cliente
+  pudo llegar por importación).
+- **Cuenta para el cupo** igual que cualquier otra y toma el mismo bloqueo
+  del viaje: un viaje lleno responde `TRIP_SOLD_OUT`, y la regla de una
+  reserva viva por cliente y viaje sigue en pie.
+- Sus pagos históricos se escriben en la misma transacción con un gancho
+  inyectado desde `@rm/domain-payments` (ver `payments.md`, «Pagos
+  históricos»). Todo o nada.
+- Se audita `reservation.backfilled` con el actor.
+
 ## Los jobs de fondo: `expireHolds` y `warnExpiringHolds` (Tarea 8)
 
 Implementados en `apps/worker/src/jobs/`, no en `libs/domain/reservations`:
