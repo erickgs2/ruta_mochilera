@@ -83,6 +83,25 @@ la 2B aterrizaron directamente en `main`. Por eso **CI y `docs-guard` no
 corrieron como pull request** sobre ese trabajo: la regla de «documentación
 obligatoria en el mismo commit» no tuvo guardián automático en esas tareas.
 
+Revisado commit por commit contra la tabla de `CLAUDE.md`, **6 commits rompieron
+la regla de «en el mismo commit»** (cambiaron `libs/domain/<módulo>/src/**` sin tocar
+uno de los archivos que la tabla exige en ese mismo commit):
+
+| Commit | Módulo | Faltaba |
+|---|---|---|
+| `d0c4938` | reservations | `docs/diagrams/trip-reservation.md` |
+| `5795720` | notifications | `docs/business-rules/notifications.md` |
+| `9fc233e` | payments | `docs/diagrams/payment-flow.md` |
+| `47b54f2` | payments | `docs/diagrams/payment-flow.md` |
+| `143e7de` | customers | `docs/diagrams/counter-sale.md` |
+| `934c971` | reservations | `docs/diagrams/trip-reservation.md` |
+
+Corriendo `docs-guard` sobre todo el rango como si fuera un pull request, **pasa**:
+la regla se cumple sobre el conjunto, así que el daño es sólo de historia (un
+`git log` de esos commits no cuenta la regla completa). Los commits de la
+Tarea 15 completan los diagramas que faltaban (`counter-sale.md`,
+`customer-credit.md`, `payment-flow.md` y `trip-reservation.md`).
+
 ---
 
 ## Registradas en la spec y el plan
@@ -182,3 +201,16 @@ Las invitaciones, no: la bandeja guarda su contenido en la base y el token en
 claro no debe quedar ahí. El correo sale directo tras el commit, igual que el
 de restablecer contraseña; si falla, la respuesta dice `invitationSent: false`
 y el personal reenvía.
+
+### 15. El folio de un pago histórico sigue el año de `paid_at`
+
+Un pago capturado o importado hoy con `paid_at` de un año anterior recibe su
+folio del contador de **ese** año (`RM-2025-…`): toma el siguiente número de una
+serie que ya estaba cerrada, así que los folios de 2025 dejan de seguir el
+orden de las fechas de pago (un pago de marzo puede llevar un folio mayor que
+uno de diciembre). Tampoco quedan huecos ni duplicados: sólo se pierde el orden
+cronológico. Es consecuencia de la decisión 9 y de que el folio use el año de
+`paid_at` en la zona de la organización (`assignReceiptNumber`). Pendiente de
+decidir si es aceptable (un recibo histórico es un recibo nuevo), si los
+históricos deben llevar otra serie o prefijo, o si la serie de un año cerrado
+debe bloquearse. Ver `docs/diagrams/payment-flow.md`, «Pagos históricos».

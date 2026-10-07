@@ -174,13 +174,14 @@ Ver `docs/business-rules/reservations.md`, «Leer una reserva propia».
 
 ## Estados de una reserva y quién dispara cada transición
 
-El ciclo completo a la fecha de la Tarea 19. El esquema no tiene un estado
+El ciclo completo a la fecha de la Fase 2B. El esquema no tiene un estado
 `COMPLETED` para la reserva; el viaje sí lo tiene, la reserva no.
 
 ```mermaid
 stateDiagram-v2
-    [*] --> HELD: "createReservation (el cliente reserva)"
-    HELD --> ACTIVE: "recordPayment / webhook: paid_cents ≥ anticipo mínimo"
+    [*] --> HELD: "createReservation (la app) o createBranchReservation (mostrador, sin pago o con pago menor al anticipo)"
+    [*] --> ACTIVE: "mostrador con pago inicial que cubre el anticipo, o captura histórica"
+    HELD --> ACTIVE: "pago que cubre el anticipo (paid_cents ≥ anticipo mínimo): webhook, efectivo en mostrador o saldo a favor"
     HELD --> EXPIRED: "job expireHolds: hold_expires_at vencido"
     HELD --> CANCELLED: "cancelReservation (personal con reservation.cancel)"
     ACTIVE --> CANCELLED: "cancelReservation (personal con reservation.cancel)"
@@ -193,7 +194,9 @@ minutos) dispara `HELD → EXPIRED` y cancela los Payment Intents pendientes;
 `warnExpiringHolds` (cada hora) no cambia el estado, sólo avisa
 `HOLD_EXPIRING` cuando queda menos de un cuarto del plazo del apartado.
 `HELD → ACTIVE` no lo dispara ningún job: llega con el webhook de Stripe (o,
-en la Fase 2B, con un pago del mostrador), nunca con la respuesta de la app.
+en la Fase 2B, con un pago en efectivo o con saldo a favor registrado por el
+personal), nunca con la respuesta de la app. Un cambio de precio no mueve el
+estado: una `ACTIVE` sigue `ACTIVE` aunque ahora deba más.
 
 La solicitud del cliente (`requestCancellation`) **no** es una transición: no
 aparece en este diagrama porque no cambia el estado. Sólo pone la reserva en
