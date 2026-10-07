@@ -6,7 +6,7 @@ import { loadEnv } from '@rm/shared-utils';
 import { createEmail } from '@rm/email';
 import { applyImport } from '@rm/domain-imports';
 import { deliverQueuedEmail } from '@rm/domain-notifications';
-import { createCancelPendingPaymentIntents, creditFromExpiration } from '@rm/domain-payments';
+import { createCancelPendingPaymentIntents } from '@rm/domain-payments';
 import { organizationTimeZone } from '@rm/domain-settings';
 import { createPaymentProvider } from '@rm/payments-stripe';
 import { PdfLibReceiptRenderer } from '@rm/receipts';
@@ -23,7 +23,7 @@ import {
   type SendNotificationEmailPayload,
   type SendReceiptPayload,
 } from '@rm/jobs';
-import { expireHolds } from './jobs/expire-holds';
+import { runExpireHolds } from './jobs/run-expire-holds';
 import { warnExpiringHolds } from './jobs/warn-expiring-holds';
 import { reconcilePaidCents } from './jobs/reconcile-paid-cents';
 import { sendReceipt } from './jobs/send-receipt';
@@ -92,7 +92,7 @@ async function main(): Promise<void> {
   await boss.schedule(RECONCILE_PAID_CENTS_JOB, '0 3 * * *', null, { tz: timeZone });
 
   await boss.work(EXPIRE_HOLDS_JOB, async () => {
-    await expireHolds(db, boss, cancelPendingPaymentIntents, creditFromExpiration);
+    await runExpireHolds(db, boss, cancelPendingPaymentIntents);
   });
   await boss.work(WARN_EXPIRING_HOLDS_JOB, async () => {
     await warnExpiringHolds(db, boss);
