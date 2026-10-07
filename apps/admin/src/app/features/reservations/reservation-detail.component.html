@@ -119,7 +119,10 @@
             </ng-container>
             <ng-container matColumnDef="method">
               <th mat-header-cell *matHeaderCellDef>{{ 'adminReservations.paymentColumns.method' | translate }}</th>
-              <td mat-cell *matCellDef="let payment">{{ 'payments.method.' + payment.method | translate }}</td>
+              <td mat-cell *matCellDef="let payment">
+                {{ 'payments.method.' + payment.method | translate }}
+                <span class="reservation-payment-status-inline">{{ 'payments.status.' + payment.status | translate }}</span>
+              </td>
             </ng-container>
             <ng-container matColumnDef="status">
               <th mat-header-cell *matHeaderCellDef>{{ 'adminReservations.paymentColumns.status' | translate }}</th>
@@ -130,24 +133,26 @@
               <td mat-cell *matCellDef="let payment" class="reservation-receipt-cell">
                 @if (payment.receiptNumber) {
                   <span class="reservation-receipt-number">{{ payment.receiptNumber }}</span>
-                  <button
-                    mat-icon-button
-                    type="button"
-                    class="reservation-receipt-download"
-                    (click)="downloadReceipt(payment)"
-                    [attr.aria-label]="'adminReservations.downloadReceipt' | translate"
-                  >
-                    <mat-icon>download</mat-icon>
-                  </button>
-                  <button
-                    mat-icon-button
-                    type="button"
-                    class="reservation-receipt-resend"
-                    (click)="resendReceipt(payment)"
-                    [attr.aria-label]="'adminReservations.resendReceipt' | translate"
-                  >
-                    <mat-icon>forward_to_inbox</mat-icon>
-                  </button>
+                  <span class="reservation-receipt-actions">
+                    <button
+                      mat-icon-button
+                      type="button"
+                      class="reservation-receipt-download"
+                      (click)="downloadReceipt(payment)"
+                      [attr.aria-label]="'adminReservations.downloadReceipt' | translate"
+                    >
+                      <mat-icon>download</mat-icon>
+                    </button>
+                    <button
+                      mat-icon-button
+                      type="button"
+                      class="reservation-receipt-resend"
+                      (click)="resendReceipt(payment)"
+                      [attr.aria-label]="'adminReservations.resendReceipt' | translate"
+                    >
+                      <mat-icon>forward_to_inbox</mat-icon>
+                    </button>
+                  </span>
                 }
               </td>
             </ng-container>

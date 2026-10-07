@@ -326,6 +326,18 @@ describe('ReservationDetailComponent', () => {
       expect(httpMock.expectOne(`${URL}/apply-credit`).request.body).toEqual({ amountCents: 50_000 });
     });
 
+    it('repeats the payment status inside the method cell for narrow screens', () => {
+      const { fixture, httpMock } = configure(['reservation.view', 'payment.view']);
+      httpMock.expectOne(URL).flush(detail());
+      httpMock.expectOne(`${URL}/payments`).flush([receiptPayment]);
+      fixture.detectChanges();
+
+      const row = fixture.nativeElement.querySelector('.reservation-payments-table tr.mat-mdc-row') as HTMLElement;
+      const inline = row.querySelector('.mat-column-method .reservation-payment-status-inline');
+      expect(inline?.textContent).toContain(`payments.status.${receiptPayment.status}`);
+      expect(row.querySelector('.reservation-receipt-actions .reservation-receipt-download')).not.toBeNull();
+    });
+
     it('downloads and resends a receipt from the payment history', () => {
       const { fixture, httpMock } = configure(['reservation.view', 'payment.view']);
       httpMock.expectOne(URL).flush(detail());
