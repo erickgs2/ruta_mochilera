@@ -513,11 +513,12 @@ instante, `recorded_by` = el trabajador, `paid_at` = ahora, con folio y job
 de recibo en la misma transacción.
 
 - Monto `> 0` y `≤` saldo pendiente (`PAYMENT_EXCEEDS_BALANCE`).
-- **Sólo sobre reservas vivas.** Sobre una `CANCELLED` o `EXPIRED` →
+- **Sobre reservas vivas, o que el cobro revive.** Sobre una `CANCELLED` →
   `INVALID_STATUS_TRANSITION`: el dinero de un cliente sin reserva viva se
   registra como saldo a favor (`ADJUSTMENT`), no como pago de una reserva
-  muerta. Una `HELD` cuyo apartado ya venció → `HOLD_EXPIRED`: su lugar ya no
-  está garantizado.
+  muerta. **Una `HELD` con el apartado vencido, o una `EXPIRED`, ya no
+  responde `HOLD_EXPIRED`** (decisión 13): el cobro la revive si queda lugar
+  (ver «Revivir con un cobro»).
 - Una `HELD` que con este pago cubre el anticipo pasa a `ACTIVE` con el mismo
   `updateMany` condicionado del webhook.
 - No genera aviso `PAYMENT_CONFIRMED`: el cliente está frente al mostrador y
@@ -607,11 +608,11 @@ que impide que dos de ellas se bloqueen mutuamente.
 
 ### Aplicar saldo a una reserva
 
-`applyCreditToReservation` en una transacción: bloquea la reserva, verifica
-que sea del cliente (`RESERVATION_NOT_OWNED`), que esté viva
-(`INVALID_STATUS_TRANSITION`) y que su apartado no haya vencido
-(`HOLD_EXPIRED`: activarla tomaría un lugar que el cupo ya devolvió);
-bloquea al cliente y verifica su saldo; crea el `Payment` `CREDIT` con
+`applyCreditToReservation` en una transacción: verifica que la reserva sea del
+cliente (`RESERVATION_NOT_OWNED`, antes de bloquear nada), la **revive si su
+apartado venció y queda lugar** (ver «Revivir con un cobro»), bloquea la
+reserva, verifica que esté viva (`INVALID_STATUS_TRANSITION` para una
+`CANCELLED`); bloquea al cliente y verifica su saldo; crea el `Payment` `CREDIT` con
 `recordPayment` —con folio, mueve `paid_cents` y activa una `HELD` que cubre
 el anticipo, igual que el efectivo— y escribe el `APPLIED` con el
 `payment_id`. Nunca más que el saldo del cliente ni más que el saldo
@@ -621,6 +622,37 @@ Como es un pago más, `paid_cents` sigue siendo la suma de pagos `SUCCEEDED`
 y la conciliación nocturna no necesita caso especial. Para la Fase 3: un pago
 `CREDIT` es un **traslado**, no un ingreso; los reportes de ingresos deben
 excluirlo para no contar dos veces el mismo dinero.
+
+### Revivir con un cobro (decisión 13)
+
+`registerCashPayment` y `applyCreditToReservation` reciben, como último
+parámetro opcional, `reviveReservation`: el lugar lo decide
+`reviveReservationSeat` de `@rm/domain-reservations` (`reservations.md`,
+«Revivir una reserva vencida»), **inyectado** por las rutas de la API —los dos
+dominios no se importan—. En **una sola transacción**:
+
+1. El gancho toma el candado del viaje y luego el de la reserva. Si no queda
+   lugar → `TRIP_SOLD_OUT`; viaje no publicado → `TRIP_NOT_PUBLISHED`; otra
+   reserva viva del cliente en ese viaje → `DUPLICATE_RESERVATION`;
+   `CANCELLED` → `INVALID_STATUS_TRANSITION`. Ninguna de estas escribe nada.
+2. Una `HELD` vencida pasa a `HELD` con apartado nuevo (`hold_ttl_hours` del
+   viaje desde ahora). Una `EXPIRED` además **recupera su saldo**:
+   `reclaimCreditForRevival` escribe un `REVIVAL` por lo que el vencimiento
+   había acreditado (`CREDIT_INSUFFICIENT` si el cliente ya lo gastó, y se
+   deshace todo; el personal lo ajusta antes con un `ADJUSTMENT`).
+3. Se registra el pago de siempre (`recordPayment`): si cubre el anticipo la
+   reserva pasa a `ACTIVE`; si no, queda `HELD` con el apartado nuevo. En
+   `applyCreditToReservation` el saldo que se verifica es el de **después** de
+   recuperar.
+4. Si cualquier paso falla después de haber revivido (el monto excede el
+   saldo, el saldo ya no alcanza) la transacción entera se revierte: la
+   reserva sigue `EXPIRED`, el saldo intacto, ningún pago.
+
+**Orden de bloqueo: viaje, reserva, cliente.** Sin el gancho, el comportamiento
+anterior se conserva (`HOLD_EXPIRED` / `INVALID_STATUS_TRANSITION`). El
+dinero nunca queda en dos sitios: `expire-holds.spec.ts` repite 30 veces un
+cobro con revivida contra `expireHolds` y comprueba, en cada una, que el
+saldo más lo que cuenta la reserva viva es exactamente lo pagado.
 
 ### Lo pagado de un apartado vencido (decisión 16)
 

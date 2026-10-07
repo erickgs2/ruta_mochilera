@@ -1,5 +1,6 @@
 import { registerCashPaymentRequestSchema, type RegisterCashPaymentRequest } from '@rm/contracts';
 import { listPaymentsForReservation, registerCashPayment } from '@rm/domain-payments';
+import { reviveReservationSeat } from '@rm/domain-reservations';
 import { db } from '../../../../../../../lib/db';
 import { route } from '../../../../../../../lib/http/route';
 import { queue } from '../../../../../../../lib/queue';
@@ -15,7 +16,11 @@ export const GET = route({
   handler: async ({ params }) => listPaymentsForReservation(db(), params['reservationId'] as string),
 });
 
-/** Cash at the counter for a live reservation (Phase 2B, §5.3), with its receipt. */
+/**
+ * Cash at the counter (Phase 2B, §5.3), with its receipt. A hold that already
+ * ran out is revived if a seat is left (decision 13): the seat half is
+ * injected here, so the two domains never import each other.
+ */
 export const POST = route<RegisterCashPaymentRequest, unknown>({
   permission: 'payment.register',
   body: registerCashPaymentRequestSchema,
@@ -25,5 +30,5 @@ export const POST = route<RegisterCashPaymentRequest, unknown>({
       reservationId: params['reservationId'] as string,
       amountCents: body.amountCents,
       actorId: actor.userId,
-    }),
+    }, reviveReservationSeat),
 });

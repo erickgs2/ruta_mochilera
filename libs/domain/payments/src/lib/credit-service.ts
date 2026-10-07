@@ -3,6 +3,7 @@ import { recordAudit } from '@rm/domain-audit';
 import { fail, ok, type Result } from '@rm/shared-utils';
 import { recordPayment, type PaymentDto } from './payment-service';
 import { enqueueReceipt, type ReceiptQueue } from './receipt-service';
+import { RollbackWith, rollbackable, type ReviveReservation } from './revival';
 
 /**
  * The customer credit ledger (Phase 2B, business rule 5.5).
@@ -231,42 +232,77 @@ export async function adjustCredit(db: Db, input: CreditMovementInput): Promise<
  *
  * Never more than the customer's credit (`CREDIT_INSUFFICIENT`) nor than the
  * reservation's balance (`PAYMENT_EXCEEDS_BALANCE`). Only to the customer's
- * own reservation (`RESERVATION_NOT_OWNED`), only while it is live, and not
- * to a hold whose time already ran out (`HOLD_EXPIRED`): activating it would
- * take a seat the counter already gave back.
+ * own reservation (`RESERVATION_NOT_OWNED`), and only while it is live.
+ *
+ * **A hold that already ran out** (a `HELD` past its time, or an `EXPIRED`
+ * reservation) is revived when the caller injects `reviveReservation`
+ * (decision 13), exactly as for cash: a seat left under the trip's lock, the
+ * credit its expiry produced taken back first, then this payment -- one
+ * transaction, rolled back whole if any step fails. The balance checked is the
+ * one after that reclaim. Without the hook the old answer stands
+ * (`HOLD_EXPIRED`, or `INVALID_STATUS_TRANSITION` for an `EXPIRED` one).
  */
 export async function applyCreditToReservation(
   db: Db,
   queue: ReceiptQueue,
-  input: ApplyCreditInput
+  input: ApplyCreditInput,
+  reviveReservation?: ReviveReservation
 ): Promise<Result<PaymentDto>> {
   if (!Number.isInteger(input.amountCents) || input.amountCents <= 0) {
     return fail('VALIDATION_FAILED', { field: 'amountCents' });
   }
   if (!UUID_PATTERN.test(input.reservationId)) return fail('NOT_FOUND');
 
-  return db.$transaction(async (tx: DbTransactionClient): Promise<Result<PaymentDto>> => {
-    // Reservation first, customer second: see the lock order above.
+  // The owner never changes: refuse a stranger's reservation before anything
+  // is locked or revived.
+  if (input.customerId !== undefined) {
+    const owner = await db.reservation.findUnique({ where: { id: input.reservationId }, select: { customerId: true } });
+    if (owner && owner.customerId !== input.customerId) return fail('RESERVATION_NOT_OWNED');
+  }
+
+  return rollbackable(db, async (tx: DbTransactionClient): Promise<Result<PaymentDto>> => {
+    // Trip first (inside the revival), then reservation, then customer.
+    let revived = false;
+    const refuse = <T>(result: Result<T>): Result<T> => {
+      // The revival is already written: a refusal must undo it too.
+      if (revived && !result.ok) throw new RollbackWith(result);
+      return result;
+    };
+    if (reviveReservation) {
+      const brought = await reviveForPayment(tx, reviveReservation, {
+        reservationId: input.reservationId,
+        actorId: input.actorId,
+      });
+      if (!brought.ok) return brought;
+      revived = brought.value.revived;
+    }
+
     await tx.$queryRaw`SELECT id FROM reservations WHERE id = ${input.reservationId}::uuid FOR UPDATE`;
     const reservation = await tx.reservation.findUnique({ where: { id: input.reservationId } });
     if (!reservation) return fail('NOT_FOUND');
     if (input.customerId !== undefined && reservation.customerId !== input.customerId) {
-      return fail('RESERVATION_NOT_OWNED');
+      return refuse(fail('RESERVATION_NOT_OWNED'));
     }
     const customerId = reservation.customerId;
     if (reservation.status !== 'HELD' && reservation.status !== 'ACTIVE') {
-      return fail('INVALID_STATUS_TRANSITION', { status: reservation.status });
+      return refuse(fail('INVALID_STATUS_TRANSITION', { status: reservation.status }));
     }
-    if (reservation.status === 'HELD' && reservation.holdExpiresAt && reservation.holdExpiresAt <= new Date()) {
+    if (
+      !reviveReservation &&
+      reservation.status === 'HELD' &&
+      reservation.holdExpiresAt &&
+      reservation.holdExpiresAt <= new Date()
+    ) {
       return fail('HOLD_EXPIRED');
     }
 
-    if (!(await lockCustomer(tx, customerId))) return fail('NOT_FOUND');
+    if (!(await lockCustomer(tx, customerId))) return refuse(fail('NOT_FOUND'));
     const balanceCents = await creditBalance(tx, customerId);
-    if (input.amountCents > balanceCents) return fail('CREDIT_INSUFFICIENT', { balanceCents });
+    if (input.amountCents > balanceCents) return refuse(fail('CREDIT_INSUFFICIENT', { balanceCents }));
 
     // Every refusal `recordPayment` can return happens before it writes
-    // anything, so returning its failure leaves nothing to roll back.
+    // anything, so returning its failure leaves nothing to roll back
+    // (apart from a revival, which `refuse` undoes).
     const payment = await recordPayment(tx, {
       reservationId: reservation.id,
       amountCents: input.amountCents,
@@ -275,7 +311,7 @@ export async function applyCreditToReservation(
       provider: 'MANUAL',
       recordedById: input.actorId,
     });
-    if (!payment.ok) return payment;
+    if (!payment.ok) return refuse(payment);
 
     const entry = await addCreditEntry(tx, {
       customerId,
@@ -420,6 +456,47 @@ export async function reclaimCreditForRevival(
   });
   if (!entry.ok) return entry;
   return ok({ reclaimedCents: outstanding });
+}
+
+/**
+ * Brings a reservation back to life for a payment about to be recorded, in the
+ * caller's transaction and **before** the caller locks the reservation (the
+ * seat half takes the trip's lock first: trip, reservation, customer).
+ *
+ * - The seat half refusing (`TRIP_SOLD_OUT`, `TRIP_NOT_PUBLISHED`,
+ *   `DUPLICATE_RESERVATION`, `INVALID_STATUS_TRANSITION`) returns its failure;
+ *   nothing was written.
+ * - A reservation that was `EXPIRED` had its payments credited to the
+ *   customer when it expired; reviving it takes that credit back
+ *   (`reclaimCreditForRevival`), or `CREDIT_INSUFFICIENT` when it is gone.
+ *   That failure happens after the seat was taken, so it **throws** to roll
+ *   the revival back.
+ *
+ * `revived` tells the caller whether it now owes a rollback if anything after
+ * this point fails.
+ */
+export async function reviveForPayment(
+  tx: DbTransactionClient,
+  revive: ReviveReservation,
+  input: { reservationId: string; actorId: string }
+): Promise<Result<{ revived: boolean }>> {
+  const result = await revive(tx, input);
+  if (!result.ok) return result;
+  if (result.value.outcome === 'LIVE') return ok({ revived: false });
+
+  if (result.value.previousStatus === 'EXPIRED') {
+    const reservation = await tx.reservation.findUniqueOrThrow({
+      where: { id: input.reservationId },
+      select: { customerId: true },
+    });
+    const reclaimed = await reclaimCreditForRevival(tx, {
+      customerId: reservation.customerId,
+      reservationId: input.reservationId,
+      actorId: input.actorId,
+    });
+    if (!reclaimed.ok) throw new RollbackWith(reclaimed);
+  }
+  return ok({ revived: true });
 }
 
 /**

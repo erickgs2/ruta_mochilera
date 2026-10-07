@@ -15,6 +15,8 @@ import {
   reclaimCreditForRevival,
   refundCredit,
 } from './credit-service';
+import { fail, ok } from '@rm/shared-utils';
+import type { ReviveReservation } from './revival';
 import { seedCustomer, seedReservation, seedStaff } from './test-fixtures';
 
 const db = withTestDb();
@@ -426,5 +428,88 @@ describe('reclaimCreditForRevival', () => {
     expect(result).toMatchObject({ ok: false, error: { code: 'CREDIT_INSUFFICIENT' } });
     expect(await creditBalance(db, reservation.customerId)).toBe(10_000);
     expect(await db.customerCreditEntry.count({ where: { kind: 'REVIVAL' } })).toBe(0);
+  });
+});
+
+describe('applyCreditToReservation reviving a reservation whose hold ran out (decision 13)', () => {
+  /** Stand-in for `reviveReservationSeat`: see `counter-payment.spec.ts`. */
+  const reviveStub: ReviveReservation = async (tx, { reservationId }) => {
+    const reservation = await tx.reservation.findUniqueOrThrow({ where: { id: reservationId } });
+    if (reservation.status === 'ACTIVE') return ok({ outcome: 'LIVE' as const });
+    if (reservation.status === 'CANCELLED') return fail('INVALID_STATUS_TRANSITION');
+    await tx.reservation.update({
+      where: { id: reservationId },
+      data: { status: 'HELD', holdExpiresAt: new Date(Date.now() + 60 * 60 * 1000) },
+    });
+    return ok({ outcome: 'REVIVED' as const, previousStatus: 'EXPIRED' as const });
+  };
+
+  async function expiredWithPayments(paidCents: number) {
+    const reservation = await seedReservation(db, staffId, { status: 'EXPIRED', paidCents });
+    await db.payment.create({
+      data: {
+        reservationId: reservation.id,
+        amountCents: paidCents,
+        method: 'CASH',
+        status: 'SUCCEEDED',
+        provider: 'MANUAL',
+        paidAt: new Date(),
+      },
+    });
+    await db.$transaction((tx: DbTransactionClient) =>
+      creditFromExpiration(tx, { customerId: reservation.customerId, reservationId: reservation.id, paidCents })
+    );
+    return reservation;
+  }
+
+  it('takes the expiry credit back first, then spends the rest of the customer\'s credit on the revived reservation', async () => {
+    const reservation = await expiredWithPayments(40_000);
+    await giveCredit(reservation.customerId, 100_000);
+
+    const applied = await applyCreditToReservation(
+      db,
+      queue,
+      { reservationId: reservation.id, amountCents: 60_000, actorId: staffId },
+      reviveStub
+    );
+
+    expect(applied.ok).toBe(true);
+    expect(await db.reservation.findUniqueOrThrow({ where: { id: reservation.id } })).toMatchObject({
+      status: 'ACTIVE',
+      paidCents: 100_000,
+    });
+    // 40,000 expiry + 100,000 given − 40,000 taken back − 60,000 applied.
+    expect(await creditBalance(db, reservation.customerId)).toBe(40_000);
+  });
+
+  it('is CREDIT_INSUFFICIENT and undoes the revival when the credit left cannot pay the amount after the reclaim', async () => {
+    const reservation = await expiredWithPayments(40_000);
+
+    const applied = await applyCreditToReservation(
+      db,
+      queue,
+      { reservationId: reservation.id, amountCents: 20_000, actorId: staffId },
+      reviveStub
+    );
+
+    expect(applied).toMatchObject({ ok: false, error: { code: 'CREDIT_INSUFFICIENT' } });
+    expect((await db.reservation.findUniqueOrThrow({ where: { id: reservation.id } })).status).toBe('EXPIRED');
+    expect(await creditBalance(db, reservation.customerId)).toBe(40_000);
+    expect(await db.customerCreditEntry.count({ where: { kind: 'REVIVAL' } })).toBe(0);
+  });
+
+  it('refuses a stranger\'s reservation before reviving anything', async () => {
+    const reservation = await expiredWithPayments(40_000);
+    const stranger = await seedCustomer(db);
+
+    const applied = await applyCreditToReservation(
+      db,
+      queue,
+      { customerId: stranger, reservationId: reservation.id, amountCents: 1_000, actorId: staffId },
+      reviveStub
+    );
+
+    expect(applied).toMatchObject({ ok: false, error: { code: 'RESERVATION_NOT_OWNED' } });
+    expect((await db.reservation.findUniqueOrThrow({ where: { id: reservation.id } })).status).toBe('EXPIRED');
   });
 });

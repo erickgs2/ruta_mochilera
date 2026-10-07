@@ -2,7 +2,15 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vites
 import { closeTestDb, prepareTestDb, resetDatabase, withTestDb } from '@rm/db/testing';
 import { closeTestQueue, resetTestQueue, withTestQueue } from '@rm/jobs/testing';
 import type { Db, DbTransactionClient, Reservation, ReservationStatus } from '@rm/db';
-import { createCancelPendingPaymentIntents, creditBalance, creditFromExpiration, recordPayment } from '@rm/domain-payments';
+import {
+  applyCreditToReservation,
+  createCancelPendingPaymentIntents,
+  creditBalance,
+  creditFromExpiration,
+  recordPayment,
+  registerCashPayment,
+} from '@rm/domain-payments';
+import { reviveReservationSeat } from '@rm/domain-reservations';
 import { FakePaymentProvider, PROVIDER_CANCEL_REJECTED_TEST_RESERVATION_ID } from '@rm/payments-stripe';
 import { expireHolds } from './expire-holds';
 
@@ -452,6 +460,66 @@ describe('expireHolds', () => {
         if (after.status === 'ACTIVE') expect(credit).toBe(0);
         else expect({ status: after.status, credit }).toEqual({ status: 'EXPIRED', credit: 40_000 });
       }
+    });
+
+    it('a counter payment that revives the reservation races the expiry without ever returning the money twice, 30 times over', async () => {
+      for (let i = 0; i < 30; i++) {
+        const reservation = await seedReservation(db, {
+          paidCents: 40_000,
+          minimumDepositCents: 100_000,
+          holdExpiresAt: new Date(Date.now() - HOUR_MS),
+        });
+        const boss = await withTestQueue();
+
+        const [, paid] = await Promise.all([
+          expireHolds(db, boss, undefined, creditFromExpiration),
+          registerCashPayment(db, boss, { reservationId: reservation.id, amountCents: 60_000, actorId: staffId }, reviveReservationSeat),
+        ]);
+
+        // Whichever side the row lock gives the win to: the cash lands on a
+        // live reservation (if the job went first it is revived and its
+        // credit taken back), the deposit is covered, nothing stays credited.
+        expect(paid.ok).toBe(true);
+        const after = await db.reservation.findUniqueOrThrow({ where: { id: reservation.id } });
+        expect({ status: after.status, paidCents: after.paidCents }).toEqual({ status: 'ACTIVE', paidCents: 100_000 });
+        expect(await creditBalance(db, reservation.customerId)).toBe(0);
+        await expectMoneyConserved(reservation.id);
+      }
+    });
+
+    it('revives an expired reservation through the real seat rule, and refuses it when the seat is gone', async () => {
+      const reservation = await seedReservation(db, { paidCents: 40_000, holdExpiresAt: new Date(Date.now() - HOUR_MS) });
+      const boss = await withTestQueue();
+      await expireHolds(db, boss, undefined, creditFromExpiration);
+      expect(await creditBalance(db, reservation.customerId)).toBe(40_000);
+      await db.trip.update({ where: { id: reservation.tripId }, data: { totalCapacity: 1 } });
+      const rival = await seedReservation(db, { status: 'ACTIVE' });
+      await db.reservation.update({ where: { id: rival.id }, data: { tripId: reservation.tripId } });
+
+      const soldOut = await registerCashPayment(
+        db,
+        boss,
+        { reservationId: reservation.id, amountCents: 60_000, actorId: staffId },
+        reviveReservationSeat
+      );
+
+      expect(soldOut).toMatchObject({ ok: false, error: { code: 'TRIP_SOLD_OUT' } });
+      expect((await db.reservation.findUniqueOrThrow({ where: { id: reservation.id } })).status).toBe('EXPIRED');
+      expect(await creditBalance(db, reservation.customerId)).toBe(40_000);
+      await expectMoneyConserved(reservation.id);
+
+      await db.reservation.update({ where: { id: rival.id }, data: { status: 'CANCELLED' } });
+      const revived = await applyCreditToReservation(
+        db,
+        boss,
+        { reservationId: reservation.id, amountCents: 1, actorId: staffId },
+        reviveReservationSeat
+      );
+      // The 40,000 the expiry credited go back onto the reservation first, so
+      // nothing is left to apply: the revival is undone whole.
+      expect(revived).toMatchObject({ ok: false, error: { code: 'CREDIT_INSUFFICIENT' } });
+      expect((await db.reservation.findUniqueOrThrow({ where: { id: reservation.id } })).status).toBe('EXPIRED');
+      expect(await creditBalance(db, reservation.customerId)).toBe(40_000);
     });
   });
 
