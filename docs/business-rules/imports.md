@@ -147,7 +147,9 @@ Busca la reserva viva (`HELD` o `ACTIVE`) de ese cliente en ese viaje:
   viva, así que se crea una nueva.
 
 El pago se fecha a mediodía de `paid_at` en la zona de la organización, para
-que nunca caiga en el día (o el año) de al lado. **`external_ref` evita
+que nunca caiga en el día (o el año) de al lado. Si `paid_at` es hoy y el
+archivo se importa antes del mediodía, el pago se fecha **en ese momento**
+(el menor entre mediodía y ahora): un pago histórico nunca queda en el futuro. **`external_ref` evita
 importarlo dos veces**: es una columna única de `payments`; repetida en el
 archivo es `DUPLICATE_IN_FILE`, ya importada es `EXISTS`, y si dos lotes
 compiten, la base decide y la fila perdedora queda `EXISTS`. Un pago que

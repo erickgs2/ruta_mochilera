@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { closeTestDb, prepareTestDb, resetDatabase, withTestDb } from '@rm/db/testing';
 import type { EmailMessage, EmailProvider } from '@rm/email';
 import { APPLY_IMPORT_JOB, SEND_RECEIPT_JOB } from '@rm/jobs';
@@ -213,5 +213,43 @@ describe('applyImport', () => {
     if (!second.ok) throw new Error(second.error.code);
     expect(second.value.report.rows.map((row) => row.outcome)).toEqual(['EXISTS', 'EXISTS', 'FAILED', 'EXISTS']);
     expect(await db.payment.count()).toBe(3);
+  });
+  describe('a payment dated today', () => {
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    async function importPaymentDatedToday(now: string) {
+      await seedTrip('oaxaca-2026');
+      await seedCustomer('ana@example.com');
+      // Only `Date` is frozen: pg and pg-boss keep their real timers.
+      vi.useFakeTimers({ toFake: ['Date'], now: new Date(now) });
+      const content = ['customer_email,trip_slug,paid_at,amount,method,external_ref,notes', 'ana@example.com,oaxaca-2026,2026-10-07,1000,CASH,TODAY-1,'].join('\n');
+      const batch = await validateAndClaim('PAYMENTS', content);
+      const applied = await applyImport(db, deps, { batchId: batch.id, actorId: staffId });
+      if (!applied.ok) throw new Error(applied.error.code);
+      return applied.value.report.rows[0];
+    }
+
+    it('before noon in the organization time zone is stamped now, never in the future', async () => {
+      // 09:00 in Mexico City (UTC-6) on 2026-10-07.
+      const now = '2026-10-07T15:00:00Z';
+
+      const row = await importPaymentDatedToday(now);
+
+      expect(row?.outcome).toBe('CREATED');
+      const payment = await db.payment.findFirstOrThrow({ where: { externalRef: 'TODAY-1' } });
+      expect(payment.paidAt!.getTime()).toBeLessThanOrEqual(new Date(now).getTime());
+      expect(payment.paidAt!.toISOString()).toBe('2026-10-07T15:00:00.000Z');
+    });
+
+    it('after noon keeps the noon stamp', async () => {
+      // 15:00 in Mexico City.
+      const row = await importPaymentDatedToday('2026-10-07T21:00:00Z');
+
+      expect(row?.outcome).toBe('CREATED');
+      const payment = await db.payment.findFirstOrThrow({ where: { externalRef: 'TODAY-1' } });
+      expect(payment.paidAt!.toISOString()).toBe('2026-10-07T18:00:00.000Z');
+    });
   });
 });

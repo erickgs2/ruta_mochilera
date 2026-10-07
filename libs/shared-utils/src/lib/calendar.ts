@@ -67,3 +67,14 @@ export function endOfCalendarDay(date: Date, timeZone: string): Date {
   if (!day) throw new Error('endOfCalendarDay received an invalid Date');
   return DateTime.fromISO(day, { zone: timeZone }).endOf('day').toJSDate();
 }
+
+/**
+ * True when `value` is a real calendar date written `YYYY-MM-DD` that is not
+ * after `today` (also `YYYY-MM-DD`, already evaluated in the organization's
+ * time zone by the caller). The one rule behind "no birth date or payment
+ * date in the future" for both the counter and the CSV import.
+ */
+export function isCalendarDateNotAfter(value: string, today: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  return DateTime.fromISO(value, { zone: 'utc' }).isValid && value <= today;
+}

@@ -44,6 +44,35 @@ describe('files route', () => {
     expect(response.status).toBe(404);
   });
 
+  // The first segment is compared case-insensitively: on a case-insensitive
+  // filesystem (macOS, Windows) `Receipts/...` would otherwise read the same file.
+  it.each([['Receipts'], ['RECEIPTS'], ['rEcEiPtS']])('never serves a private receipt under the prefix "%s"', async (prefix) => {
+    await storage().put('receipts/2027/RM-2027-000001-x.pdf', Buffer.from('%PDF-'), 'application/pdf');
+
+    const response = await filesRoute(new Request(`http://localhost/api/v1/files/${prefix}/2027/RM-2027-000001-x.pdf`), {
+      params: Promise.resolve({ key: [prefix, '2027', 'RM-2027-000001-x.pdf'] }),
+    });
+
+    expect(response.status).toBe(404);
+  });
+
+  // Next hands the handler the decoded segments, so `%2e%2e` arrives as `..`.
+  it.each([
+    [['.', 'receipts', '2027', 'RM-2027-000001-x.pdf']],
+    [['trips', '..', 'receipts', '2027', 'RM-2027-000001-x.pdf']],
+    [['trips', '.', '..', 'receipts', '2027', 'RM-2027-000001-x.pdf']],
+    [['%2e', 'receipts', '2027', 'RM-2027-000001-x.pdf']],
+    [['trips', '%2e%2e', 'receipts', '2027', 'RM-2027-000001-x.pdf']],
+  ])('cannot reach a receipt through dot segments %j', async (key) => {
+    await storage().put('receipts/2027/RM-2027-000001-x.pdf', Buffer.from('%PDF-'), 'application/pdf');
+
+    const response = await filesRoute(new Request(`http://localhost/api/v1/files/${key.join('/')}`), {
+      params: Promise.resolve({ key }),
+    });
+
+    expect(response.status).toBe(404);
+  });
+
   it('returns 404 for a key that was never stored', async () => {
     const response = await filesRoute(new Request('http://localhost/api/v1/files/trips/a/missing.jpg'), {
       params: Promise.resolve({ key: ['trips', 'a', 'missing.jpg'] }),

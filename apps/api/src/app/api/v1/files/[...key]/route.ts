@@ -32,7 +32,8 @@ export async function GET(
   }
 
   const { key } = await context.params;
-  if (PRIVATE_PREFIXES.has(key[0] ?? '')) return new Response(null, { status: 404 });
+  // Case-insensitive: on a case-insensitive filesystem `Receipts/...` is the same file.
+  if (PRIVATE_PREFIXES.has((key[0] ?? '').toLowerCase())) return new Response(null, { status: 404 });
   try {
     const body = await storage().get(key.join('/'));
     return new Response(new Uint8Array(body), {

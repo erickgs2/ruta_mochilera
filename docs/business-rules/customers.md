@@ -33,14 +33,17 @@ no es UUID, que no existe o que es de un trabajador responde `NOT_FOUND`.
 ## Alta en mostrador
 
 `createBranchCustomer` (`POST /admin/customers`, permiso `customer.manage`):
-nombre completo, correo, teléfono, fecha de nacimiento e idioma opcional.
+nombre completo, correo, teléfono, fecha de nacimiento (una fecha real que
+no sea posterior a hoy en la zona de la organización; si lo es,
+`VALIDATION_FAILED` con `field: birthDate`, la misma regla de la importación)
+e idioma opcional.
 
-- **Validación de la entrada** (esquema de `@rm/contracts`): nombre de 3 a 120
-  caracteres, correo válido, teléfono de 7 a 30 caracteres, `birthDate` una
-  fecha real `YYYY-MM-DD` **que no es futura**. El nombre y el teléfono se
-  guardan sin espacios sobrantes. *(Nota: el rechazo de una fecha futura en el
-  mostrador llega con la corrección de Delta; hoy el esquema sólo exige una fecha
-  válida. La importación ya la rechaza, ver `imports.md`.)*
+- **Validación de la entrada.** El esquema de `@rm/contracts` exige nombre de
+  3 a 120 caracteres, correo válido, teléfono de 7 a 30 caracteres y
+  `birthDate` como fecha real `YYYY-MM-DD`; el dominio rechaza además una fecha
+  de nacimiento futura con `VALIDATION_FAILED` (`field: birthDate`), como la
+  importación (`imports.md`). El nombre y el teléfono se guardan sin espacios
+  sobrantes.
 - El **correo se recorta y se pasa a minúsculas** antes de guardarse, y la
   búsqueda de duplicados no distingue mayúsculas: «Maria@X.com» y «maria@x.com»
   son el mismo correo.
@@ -88,12 +91,14 @@ nombre completo, correo, teléfono, fecha de nacimiento e idioma opcional.
 - Un token desconocido, usado, vencido **o de restablecimiento** es
   `TOKEN_INVALID`; y un token de invitación tampoco sirve para restablecer
   contraseña. Los dos propósitos no se cruzan.
-- **Una invitación no pisa una contraseña existente.** Aceptar una invitación
-  se rechaza (`TOKEN_INVALID`) si la cuenta ya tiene contraseña, y restablecer la
-  contraseña invalida las invitaciones pendientes. *(Nota: esta regla llega con
-  la corrección de Delta; hoy `resetPassword` sólo consume su propio token y
-  `acceptInvitation` no revisa si la cuenta ya tiene contraseña, así que una
-  invitación vigente podría sustituirla.)*
+- Una invitación **nunca sobrescribe una contraseña**: si la cuenta ya tiene
+  una (por ejemplo, el cliente usó «olvidé mi contraseña» después de recibir
+  la invitación), aceptarla es `TOKEN_INVALID`. La escritura es condicional a
+  «sin contraseña» dentro de la transacción, así que también cubre un
+  restablecimiento simultáneo. A su vez, restablecer la contraseña consume las
+  invitaciones pendientes de esa cuenta.
+- Un token de restablecimiento se consume con una escritura condicional: dos
+  usos simultáneos del mismo token no ganan ambos.
 
 ## Clientes importados
 
