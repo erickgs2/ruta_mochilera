@@ -32,8 +32,14 @@ export async function GET(
   }
 
   const { key } = await context.params;
-  // Case-insensitive: on a case-insensitive filesystem `Receipts/...` is the same file.
-  if (PRIVATE_PREFIXES.has((key[0] ?? '').toLowerCase())) return new Response(null, { status: 404 });
+  // Next decodes `%2F` before the handler runs: `receipts%2F2027%2Fx.pdf`
+  // arrives as ONE segment with slashes in it. A real key never has a slash
+  // or a backslash inside a segment, so any such request is refused outright.
+  if (key.some((segment) => /[\\/]/.test(segment))) return new Response(null, { status: 404 });
+  // The private-prefix check runs on the normalized path, case-insensitively:
+  // on a case-insensitive filesystem `Receipts/...` is the same file.
+  const firstSegment = key.join('/').split(/[\\/]/).find((segment) => segment !== '') ?? '';
+  if (PRIVATE_PREFIXES.has(firstSegment.toLowerCase())) return new Response(null, { status: 404 });
   try {
     const body = await storage().get(key.join('/'));
     return new Response(new Uint8Array(body), {
