@@ -6,6 +6,7 @@ import {
   updateCustomerProfileRequestSchema,
   budgetItemRequestSchema as budgetItemRequestSchemaImport,
   cancelReservationRequestSchema as cancelReservationRequestSchemaImport,
+  declineCancellationRequestSchema as declineCancellationRequestSchemaImport,
   changeStatusRequestSchema as changeStatusRequestSchemaImport,
   createPaymentIntentRequestSchema as createPaymentIntentRequestSchemaImport,
   createReservationRequestSchema as createReservationRequestSchemaImport,
@@ -100,6 +101,9 @@ const reservationSchema = reservationSchemaImport.meta({ id: 'Reservation' });
 const reservationDetailSchema = reservationDetailSchemaImport.meta({ id: 'ReservationDetail' });
 const reservationSummarySchema = reservationSummarySchemaImport.meta({ id: 'ReservationSummary' });
 const cancelReservationRequestSchema = cancelReservationRequestSchemaImport.meta({ id: 'CancelReservationRequest' });
+const declineCancellationRequestSchema = declineCancellationRequestSchemaImport.meta({
+  id: 'DeclineCancellationRequest',
+});
 const staffReservationSummarySchema = staffReservationSummarySchemaImport.meta({ id: 'StaffReservationSummary' });
 const staffReservationDetailSchema = staffReservationDetailSchemaImport.meta({ id: 'StaffReservationDetail' });
 const createPaymentIntentRequestSchema = createPaymentIntentRequestSchemaImport.meta({
@@ -1131,6 +1135,26 @@ export function buildOpenApiDocument() {
       403: problem('PERMISSION_DENIED -- requires reservation.cancel'),
       404: problem('NOT_FOUND'),
       409: problem('INVALID_STATUS_TRANSITION -- the reservation already EXPIRED'),
+      422: problem('VALIDATION_FAILED -- the reason is missing or longer than 500 characters'),
+    },
+  });
+
+  registry.registerPath({
+    method: 'post',
+    path: '/api/v1/admin/reservations/{reservationId}/decline-cancellation',
+    tags: ['reservations', 'admin'],
+    security: [{ bearerAuth: [] }],
+    description:
+      'Declines the customer\'s pending cancellation request (spec §5.6): the reservation stays exactly as ' +
+      'it is, the request leaves the pending queue, the customer is notified with CANCELLATION_DECLINED and ' +
+      'can ask again. Idempotent. Requires reservation.cancel.',
+    request: { params: uuidParam('reservationId'), body: requestBody(declineCancellationRequestSchema) },
+    responses: {
+      200: { description: 'Request declined (or already declined)', ...json(staffReservationDetailSchema) },
+      401: problem('Missing or invalid access token'),
+      403: problem('PERMISSION_DENIED -- requires reservation.cancel'),
+      404: problem('NOT_FOUND'),
+      409: problem('NO_CANCELLATION_REQUEST, or INVALID_STATUS_TRANSITION -- already CANCELLED or EXPIRED'),
       422: problem('VALIDATION_FAILED -- the reason is missing or longer than 500 characters'),
     },
   });

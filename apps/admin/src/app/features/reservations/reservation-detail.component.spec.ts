@@ -38,6 +38,9 @@ function detail(overrides: Record<string, unknown> = {}) {
     cancellationPending: true,
     cancelledAt: null,
     cancelledByName: null,
+    cancellationDeclinedAt: null,
+    cancellationDeclinedByName: null,
+    cancellationDeclineReason: null,
     ...overrides,
   };
 }
@@ -205,4 +208,69 @@ describe('ReservationDetailComponent', () => {
 
     expect(fixture.nativeElement.querySelector('.reservation-error')).not.toBeNull();
   });
+
+  describe('declining the request', () => {
+    it('is offered on a pending request to someone holding reservation.cancel, and sends the reason', () => {
+      const { fixture, httpMock, dialogOpen } = configure(['reservation.view', 'reservation.cancel']);
+      httpMock.expectOne(URL).flush(detail());
+      fixture.detectChanges();
+      const button = fixture.nativeElement.querySelector('.reservation-decline-button') as HTMLButtonElement;
+      expect(button.disabled).toBe(true);
+
+      fixture.componentInstance.declineReason.setValue(' El anticipo no es reembolsable ');
+      fixture.detectChanges();
+      expect(button.disabled).toBe(false);
+      fixture.componentInstance.decline();
+
+      expect(dialogOpen.mock.calls[0][1].data.title).toBe('adminReservations.declineTitle');
+      const request = httpMock.expectOne(`${URL}/decline-cancellation`);
+      expect(request.request.body).toEqual({ reason: 'El anticipo no es reembolsable' });
+      request.flush(
+        detail({
+          cancellationPending: false,
+          cancellationDeclinedAt: '2027-01-03T00:00:00.000Z',
+          cancellationDeclinedByName: 'Ana',
+          cancellationDeclineReason: 'El anticipo no es reembolsable',
+        })
+      );
+      fixture.detectChanges();
+
+      expect(fixture.nativeElement.querySelector('.reservation-decline')).toBeNull();
+      expect(fixture.nativeElement.querySelector('.reservation-declined')?.textContent).toContain(
+        'El anticipo no es reembolsable'
+      );
+      // Declining is not cancelling: the reservation can still be cancelled.
+      expect(fixture.nativeElement.querySelector('.reservation-cancel')).not.toBeNull();
+    });
+
+    it('is not offered without reservation.cancel', () => {
+      const { fixture, httpMock } = configure(['reservation.view']);
+      httpMock.expectOne(URL).flush(detail());
+      fixture.detectChanges();
+
+      expect(fixture.nativeElement.querySelector('.reservation-decline')).toBeNull();
+    });
+
+    it('is not offered once the request is no longer pending', () => {
+      const { fixture, httpMock } = configure(['reservation.view', 'reservation.cancel']);
+      httpMock
+        .expectOne(URL)
+        .flush(detail({ cancellationPending: false, cancellationDeclinedAt: '2027-01-03T00:00:00.000Z' }));
+      fixture.detectChanges();
+
+      expect(fixture.nativeElement.querySelector('.reservation-decline')).toBeNull();
+    });
+
+    it('sends nothing when the confirmation is dismissed', () => {
+      const { fixture, httpMock } = configure(['reservation.view', 'reservation.cancel'], false);
+      httpMock.expectOne(URL).flush(detail());
+      fixture.detectChanges();
+      fixture.componentInstance.declineReason.setValue('No');
+
+      fixture.componentInstance.decline();
+
+      httpMock.expectNone(`${URL}/decline-cancellation`);
+    });
+  });
 });
+

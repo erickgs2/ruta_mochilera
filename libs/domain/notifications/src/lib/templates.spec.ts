@@ -71,8 +71,9 @@ describe('renderTemplate', () => {
     // Eight from Task 7, plus the two the Stripe webhook needs (Task 10):
     // an expired OXXO voucher and a payment that landed after its hold had
     // already expired; and Task 19's payment that landed after staff had
-    // cancelled the reservation.
-    expect(DELIVERY_EVENT_TYPES).toHaveLength(11);
+    // cancelled the reservation; and the customer's notice that staff
+    // declined their cancellation request.
+    expect(DELIVERY_EVENT_TYPES).toHaveLength(12);
   });
 
   it('tells the customer their OXXO voucher expired, not that a payment was declined', () => {

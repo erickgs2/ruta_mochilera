@@ -41,6 +41,8 @@ export type DomainErrorCode =
   | 'HOLD_EXPIRED'
   | 'PAYMENT_EXCEEDS_BALANCE'
   | 'DEPOSIT_BELOW_MINIMUM'
+  // Staff declined a cancellation request that does not exist (Phase 2A).
+  | 'NO_CANCELLATION_REQUEST'
   // Notifications (Phase 2)
   // 404 and not 403, same reasoning as `RESERVATION_NOT_OWNED`: a 403 would
   // confirm the delivery exists, which lets a customer walking ids tell

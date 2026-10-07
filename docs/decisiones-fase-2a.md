@@ -52,12 +52,15 @@ por pagar de una reserva que ya no existía.
 Es un endpoint aparte del detalle de la reserva (`reservation.view`), porque el
 catálogo de permisos ya separa quién ve dinero de quién ve reservas.
 
-### 7. Rechazar una solicitud de cancelación queda sin resolver
+### 7. Rechazar una solicitud de cancelación (añadido al cerrar la fase)
 
-El panel puede cancelar, pero no marcar una solicitud como «no procede». La
-solicitud sigue pendiente mientras la reserva esté viva. Hace falta una columna
-o un estado de resolución que ni el plan ni el esquema contemplan; está
-anotado en `docs/business-rules/reservations.md`.
+Primero quedó sin resolver: el panel sólo podía cancelar y una solicitud que no
+procedía seguía pendiente para siempre. El dueño del producto pidió añadirlo
+antes de integrar. Tres columnas nuevas en `reservations` (quién, cuándo y
+por qué), el aviso `CANCELLATION_DECLINED` al cliente, y el cliente puede
+volver a pedir la cancelación, lo que reabre la solicitud. Ver
+`docs/business-rules/reservations.md`, «Rechazar una solicitud de
+cancelación».
 
 ### 8. El cobro con tarjeta de las pruebas de extremo a extremo se hace con OXXO más el webhook
 

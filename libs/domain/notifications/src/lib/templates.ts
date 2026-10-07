@@ -23,6 +23,7 @@ export type DeliveryEventType =
   | 'PAYMENT_AFTER_CANCELLATION'
   | 'RESERVATION_CANCELLED'
   | 'CANCELLATION_REQUESTED'
+  | 'CANCELLATION_DECLINED'
   | 'ORPHAN_PAYMENT'
   | 'PAID_CENTS_MISMATCH';
 
@@ -37,6 +38,7 @@ export const DELIVERY_EVENT_TYPES: readonly DeliveryEventType[] = [
   'PAYMENT_AFTER_CANCELLATION',
   'RESERVATION_CANCELLED',
   'CANCELLATION_REQUESTED',
+  'CANCELLATION_DECLINED',
   'ORPHAN_PAYMENT',
   'PAID_CENTS_MISMATCH',
 ];
@@ -165,6 +167,19 @@ const TEMPLATES: Record<DeliveryEventType, LocaleTemplates> = {
     en: template(
       'Your reservation for {{tripName}} was cancelled',
       'Your reservation for {{tripName}} was cancelled. Reason: {{reason}}.'
+    ),
+  },
+  // Staff decided the reservation goes ahead (§5.6): the customer's request
+  // is closed, nothing about the reservation changed, and the customer can
+  // ask again from the app.
+  CANCELLATION_DECLINED: {
+    es: template(
+      'Tu solicitud de cancelación para {{tripName}} no procedió',
+      'Revisamos tu solicitud de cancelación para {{tripName}} y tu reservación sigue en pie. Motivo: {{reason}}. Si tienes dudas, escríbenos.'
+    ),
+    en: template(
+      'Your cancellation request for {{tripName}} was declined',
+      'We reviewed your cancellation request for {{tripName}} and your reservation stands. Reason: {{reason}}. If you have questions, get in touch.'
     ),
   },
   // The remaining four event types are staff-only alerts, delivered through

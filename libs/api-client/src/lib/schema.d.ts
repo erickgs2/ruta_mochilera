@@ -2886,6 +2886,93 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/reservations/{reservationId}/decline-cancellation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Declines the customer's pending cancellation request (spec §5.6): the reservation stays exactly as it is, the request leaves the pending queue, the customer is notified with CANCELLATION_DECLINED and can ask again. Idempotent. Requires reservation.cancel. */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    reservationId: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["DeclineCancellationRequest"];
+                };
+            };
+            responses: {
+                /** @description Request declined (or already declined) */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["StaffReservationDetail"];
+                    };
+                };
+                /** @description Missing or invalid access token */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description PERMISSION_DENIED -- requires reservation.cancel */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description NOT_FOUND */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description NO_CANCELLATION_REQUEST, or INVALID_STATUS_TRANSITION -- already CANCELLED or EXPIRED */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description VALIDATION_FAILED -- the reason is missing or longer than 500 characters */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/payments": {
         parameters: {
             query?: never;
@@ -3592,6 +3679,10 @@ export interface components {
             /** Format: date-time */
             cancelledAt: string | null;
             cancelledByName: string | null;
+            /** Format: date-time */
+            cancellationDeclinedAt: string | null;
+            cancellationDeclinedByName: string | null;
+            cancellationDeclineReason: string | null;
         };
         Payment: {
             /** Format: uuid */
@@ -3614,6 +3705,9 @@ export interface components {
             voucherExpiresAt: string | null;
         };
         CancelReservationRequest: {
+            reason: string;
+        };
+        DeclineCancellationRequest: {
             reason: string;
         };
         InboxPage: {

@@ -156,6 +156,11 @@ no prosa, y es lo que una persona buscaría en el panel de Stripe.
   escrito en los dos idiomas a la vez. El personal recibe además
   `ORPHAN_PAYMENT`, como en el caso del apartado vencido.
 
+- **`CANCELLATION_DECLINED`** (`DeliveryEventType` pasa a 12): el personal
+  rechazó la solicitud de cancelación del cliente. Le dice que su reservación
+  sigue en pie y por qué (`{{reason}}`, escrito por el personal), dentro de la
+  transacción que registra el rechazo. Rechazar dos veces no lo repite.
+
 ## `notifyAdmins`: tres avisos sin cliente al que ir
 
 Tres avisos de esta fase no tienen un cliente al que notificar porque son

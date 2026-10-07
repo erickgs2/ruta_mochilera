@@ -228,6 +228,14 @@ describe('endpoints', () => {
     req.flush({});
   });
 
+  it('AdminReservationsApi.declineCancellation posts the reason to the decline action', () => {
+    TestBed.inject(AdminReservationsApi).declineCancellation('res1', 'Sigue en pie').subscribe();
+    const req = httpMock.expectOne('https://api.test/api/v1/admin/reservations/res1/decline-cancellation');
+    expect(req.request.method).toBe('POST');
+    expect(req.request.body).toEqual({ reason: 'Sigue en pie' });
+    req.flush({});
+  });
+
   it('CostingApi.addItem posts to the items collection', () => {
     TestBed.inject(CostingApi)
       .addItem('trip1', { concept: 'Bus', quantity: 1, unitAmountCents: 1000 })

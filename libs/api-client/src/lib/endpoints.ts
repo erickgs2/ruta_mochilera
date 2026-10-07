@@ -279,6 +279,14 @@ export class AdminReservationsApi {
   ): Observable<Ok<'/api/v1/admin/reservations/{reservationId}/cancel', 'post'>> {
     return this.api.post(`/api/v1/admin/reservations/${reservationId}/cancel`, { reason });
   }
+
+  /** Closes the customer's pending request without cancelling; the customer is told why and may ask again. */
+  declineCancellation(
+    reservationId: string,
+    reason: string
+  ): Observable<Ok<'/api/v1/admin/reservations/{reservationId}/decline-cancellation', 'post'>> {
+    return this.api.post(`/api/v1/admin/reservations/${reservationId}/decline-cancellation`, { reason });
+  }
 }
 
 /** Trips: catalog CRUD, status transitions and gallery images. */

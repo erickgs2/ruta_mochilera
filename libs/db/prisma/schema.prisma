@@ -114,16 +114,17 @@ model User {
   createdAt       DateTime   @default(now()) @map("created_at") @db.Timestamptz
   updatedAt       DateTime   @updatedAt @map("updated_at") @db.Timestamptz
 
-  staffProfile           StaffProfile?
-  customerProfile        CustomerProfile?
-  authIdentities         AuthIdentity[]
-  refreshTokens          RefreshToken[]
-  roles                  UserRole[]
-  createdTrips           Trip[]                 @relation("TripCreatedBy")
-  createdReservations    Reservation[]          @relation("ReservationCreatedBy")
-  cancelledReservations  Reservation[]          @relation("ReservationCancelledBy")
-  recordedPayments       Payment[]              @relation("PaymentRecordedBy")
-  notificationDeliveries NotificationDelivery[]
+  staffProfile                 StaffProfile?
+  customerProfile              CustomerProfile?
+  authIdentities               AuthIdentity[]
+  refreshTokens                RefreshToken[]
+  roles                        UserRole[]
+  createdTrips                 Trip[]                 @relation("TripCreatedBy")
+  createdReservations          Reservation[]          @relation("ReservationCreatedBy")
+  cancelledReservations        Reservation[]          @relation("ReservationCancelledBy")
+  declinedCancellationRequests Reservation[]          @relation("ReservationCancellationDeclinedBy")
+  recordedPayments             Payment[]              @relation("PaymentRecordedBy")
+  notificationDeliveries       NotificationDelivery[]
 
   @@map("users")
 }
@@ -389,41 +390,48 @@ model SystemSetting {
  * -- which is why the column stays nullable here.
  */
 model Reservation {
-  id                      String            @id @default(uuid()) @db.Uuid
-  code                    String            @unique
-  tripId                  String            @map("trip_id") @db.Uuid
-  customerId              String            @map("customer_id") @db.Uuid
-  status                  ReservationStatus @default(HELD)
+  id                        String            @id @default(uuid()) @db.Uuid
+  code                      String            @unique
+  tripId                    String            @map("trip_id") @db.Uuid
+  customerId                String            @map("customer_id") @db.Uuid
+  status                    ReservationStatus @default(HELD)
   /// Nullable only because ACTIVE clears it. A HELD row without one is
   /// refused by the CHECK constraint named in this model's doc comment.
-  holdExpiresAt           DateTime?         @map("hold_expires_at") @db.Timestamptz
+  holdExpiresAt             DateTime?         @map("hold_expires_at") @db.Timestamptz
   // Frozen at creation: editing the trip's price afterwards never changes an
   // existing reservation. Propagating a price change is an explicit Phase 2B
   // operation, not an automatic side effect of editing the trip.
-  totalPriceCents         Int               @map("total_price_cents")
-  minimumDepositCents     Int               @map("minimum_deposit_cents")
+  totalPriceCents           Int               @map("total_price_cents")
+  minimumDepositCents       Int               @map("minimum_deposit_cents")
   // Denormalized on purpose, updated in the same transaction as the `Payment`
   // row that moves it. `Payment` rows are always the source of truth; the
   // nightly reconciliation job compares this column against them and alerts
   // on drift (see `NotificationDelivery`).
-  paidCents               Int               @default(0) @map("paid_cents")
+  paidCents                 Int               @default(0) @map("paid_cents")
   // Declared now, filled starting Phase 2B.
-  creditCents             Int               @default(0) @map("credit_cents")
-  paymentDeadline         DateTime          @map("payment_deadline") @db.Date
-  source                  ReservationSource
-  createdById             String?           @map("created_by") @db.Uuid
-  cancellationRequestedAt DateTime?         @map("cancellation_requested_at") @db.Timestamptz
-  cancellationReason      String?           @map("cancellation_reason")
-  cancelledAt             DateTime?         @map("cancelled_at") @db.Timestamptz
-  cancelledById           String?           @map("cancelled_by") @db.Uuid
-  isBackfilled            Boolean           @default(false) @map("is_backfilled")
-  createdAt               DateTime          @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt               DateTime          @updatedAt @map("updated_at") @db.Timestamptz
+  creditCents               Int               @default(0) @map("credit_cents")
+  paymentDeadline           DateTime          @map("payment_deadline") @db.Date
+  source                    ReservationSource
+  createdById               String?           @map("created_by") @db.Uuid
+  cancellationRequestedAt   DateTime?         @map("cancellation_requested_at") @db.Timestamptz
+  cancellationReason        String?           @map("cancellation_reason")
+  cancelledAt               DateTime?         @map("cancelled_at") @db.Timestamptz
+  cancelledById             String?           @map("cancelled_by") @db.Uuid
+  /// Staff declined the customer's cancellation request: the reservation
+  /// stays as it was and the request stops being pending. Cleared again if
+  /// the customer asks a second time. See docs/business-rules/reservations.md.
+  cancellationDeclinedAt    DateTime?         @map("cancellation_declined_at") @db.Timestamptz
+  cancellationDeclinedById  String?           @map("cancellation_declined_by") @db.Uuid
+  cancellationDeclineReason String?           @map("cancellation_decline_reason")
+  isBackfilled              Boolean           @default(false) @map("is_backfilled")
+  createdAt                 DateTime          @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt                 DateTime          @updatedAt @map("updated_at") @db.Timestamptz
 
   trip                   Trip                   @relation(fields: [tripId], references: [id])
   customer               CustomerProfile        @relation(fields: [customerId], references: [userId])
   createdBy              User?                  @relation("ReservationCreatedBy", fields: [createdById], references: [id])
   cancelledBy            User?                  @relation("ReservationCancelledBy", fields: [cancelledById], references: [id])
+  cancellationDeclinedBy User?                  @relation("ReservationCancellationDeclinedBy", fields: [cancellationDeclinedById], references: [id])
   payments               Payment[]
   notificationDeliveries NotificationDelivery[]
 

@@ -93,6 +93,12 @@ export class ReservationDetailComponent implements OnInit {
     validators: [Validators.required, Validators.maxLength(REASON_MAX_LENGTH)],
   });
 
+  readonly declineReason = new FormControl('', {
+    nonNullable: true,
+    validators: [Validators.required, Validators.maxLength(REASON_MAX_LENGTH)],
+  });
+  readonly declining = signal(false);
+
   readonly isCancellable = computed(() => {
     const status = this.reservation()?.status;
     return status === 'HELD' || status === 'ACTIVE';
@@ -143,6 +149,47 @@ export class ReservationDetailComponent implements OnInit {
           this.snackBar.open(this.errorCode.transform(error), undefined, { duration: 6000 });
           // The reservation may have changed under us (expired, or someone
           // else cancelled it): show what it is now rather than what it was.
+          this.load();
+        },
+      });
+    });
+  }
+
+  /**
+   * Closes the customer's request without cancelling: the reservation stays as
+   * it is and the customer is told why (`CANCELLATION_DECLINED`). Confirmed
+   * first, like cancelling, because the customer is notified at once.
+   */
+  decline(): void {
+    const reservation = this.reservation();
+    const reason = this.declineReason.value.trim();
+    if (!reservation || !reason) {
+      this.declineReason.markAsTouched();
+      return;
+    }
+
+    const ref = this.dialog.open(ConfirmDialogComponent, {
+      data: {
+        title: this.translate.instant('adminReservations.declineTitle', { code: reservation.code }),
+        message: this.translate.instant('adminReservations.declineMessage'),
+        confirmKey: 'adminReservations.declineConfirm',
+        cancelKey: 'adminReservations.cancelBack',
+      },
+    });
+
+    ref.afterClosed().subscribe((confirmed: boolean) => {
+      if (!confirmed) return;
+      this.declining.set(true);
+      this.reservationsApi.declineCancellation(reservation.id, reason).subscribe({
+        next: (updated) => {
+          this.declining.set(false);
+          this.reservation.set(updated);
+          this.declineReason.reset();
+          this.snackBar.open(this.translate.instant('adminReservations.declined'), undefined, { duration: 4000 });
+        },
+        error: (error: unknown) => {
+          this.declining.set(false);
+          this.snackBar.open(this.errorCode.transform(error), undefined, { duration: 6000 });
           this.load();
         },
       });

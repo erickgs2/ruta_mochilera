@@ -113,6 +113,18 @@ export interface StaffReservationDetailDto extends ReservationDto {
   cancelledAt: Date | null;
   /** The staff member's full name, or `null` while the reservation is not cancelled. */
   cancelledByName: string | null;
+  /** When staff declined the pending request, or `null`. A new request from the customer clears it. */
+  cancellationDeclinedAt: Date | null;
+  cancellationDeclinedByName: string | null;
+  /** What staff told the customer when declining. */
+  cancellationDeclineReason: string | null;
+}
+
+export interface DeclineCancellationRequestInput {
+  reservationId: string;
+  actorId: string;
+  /** Why the request does not go ahead. Goes to the customer's notice and to the audit entry. */
+  reason: string;
 }
 
 export interface CancelReservationInput {
@@ -435,14 +447,23 @@ export async function requestCancellation(
     // The `cancellationRequestedAt: null` filter is what makes the second
     // request a no-op, in one statement rather than in a read followed by a
     // write that another request could interleave with.
+    // A request staff already declined is closed, so asking again opens a
+    // new one (and clears the decline); a request still pending is left
+    // alone, which is what makes asking twice a no-op.
     const sealed = await tx.reservation.updateMany({
       where: {
         id: reservationId,
         customerId,
         status: { in: [...LIVE_STATUSES] },
-        cancellationRequestedAt: null,
+        OR: [{ cancellationRequestedAt: null }, { cancellationDeclinedAt: { not: null } }],
       },
-      data: { cancellationRequestedAt: new Date(), cancellationReason: reason ?? null },
+      data: {
+        cancellationRequestedAt: new Date(),
+        cancellationReason: reason ?? null,
+        cancellationDeclinedAt: null,
+        cancellationDeclinedById: null,
+        cancellationDeclineReason: null,
+      },
     });
 
     if (sealed.count === 1) {
@@ -506,16 +527,22 @@ const STAFF_INCLUDE = {
   trip: { select: SUMMARY_TRIP_SELECT },
   customer: { select: { fullName: true, phone: true, user: { select: { email: true } } } },
   cancelledBy: { select: { staffProfile: { select: { fullName: true } } } },
+  cancellationDeclinedBy: { select: { staffProfile: { select: { fullName: true } } } },
 };
 
 type ReservationForStaff = Reservation & {
   trip: { slug: string; departureDate: Date; translations: { name: string }[] };
   customer: { fullName: string; phone: string; user: { email: string } };
   cancelledBy: { staffProfile: { fullName: string } | null } | null;
+  cancellationDeclinedBy: { staffProfile: { fullName: string } | null } | null;
 };
 
 function isCancellationPending(reservation: Reservation): boolean {
-  return reservation.cancellationRequestedAt !== null && isLive(reservation.status);
+  return (
+    reservation.cancellationRequestedAt !== null &&
+    reservation.cancellationDeclinedAt === null &&
+    isLive(reservation.status)
+  );
 }
 
 function toStaffSummaryDto(reservation: ReservationForStaff): StaffReservationSummaryDto {
@@ -551,6 +578,9 @@ function toStaffDetailDto(reservation: ReservationForStaff): StaffReservationDet
     cancellationPending: isCancellationPending(reservation),
     cancelledAt: reservation.cancelledAt,
     cancelledByName: reservation.cancelledBy?.staffProfile?.fullName ?? null,
+    cancellationDeclinedAt: reservation.cancellationDeclinedAt,
+    cancellationDeclinedByName: reservation.cancellationDeclinedBy?.staffProfile?.fullName ?? null,
+    cancellationDeclineReason: reservation.cancellationDeclineReason,
   };
 }
 
@@ -579,9 +609,17 @@ export async function listReservationsForStaff(
       ...(filter.cancellationPending === undefined
         ? {}
         : filter.cancellationPending
-          ? { cancellationRequestedAt: { not: null }, status: filterLiveStatus(filter.status) }
+          ? {
+              cancellationRequestedAt: { not: null },
+              cancellationDeclinedAt: null,
+              status: filterLiveStatus(filter.status),
+            }
           : {
-              OR: [{ cancellationRequestedAt: null }, { status: { notIn: [...LIVE_STATUSES] } }],
+              OR: [
+                { cancellationRequestedAt: null },
+                { cancellationDeclinedAt: { not: null } },
+                { status: { notIn: [...LIVE_STATUSES] } },
+              ],
             }),
     },
     include: STAFF_INCLUDE,
@@ -699,6 +737,86 @@ export async function cancelReservation(
     });
 
     if (cancelPendingPaymentIntents) await cancelPendingPaymentIntents(tx, reservation.id);
+
+    return ok(null);
+  });
+
+  if (!outcome.ok) return outcome;
+  return getReservationForStaff(db, input.reservationId);
+}
+
+/**
+ * Staff decide a cancellation request does not go ahead (§5.6): the
+ * reservation stays exactly as it is -- status, hold, seat and money -- and
+ * the request leaves the pending queue. The customer is told why
+ * (`CANCELLATION_DECLINED`) and can ask again, which reopens it (see
+ * `requestCancellation`).
+ *
+ * The customer's own reason is never overwritten: staff's goes to its own
+ * column, the notice and the audit entry.
+ *
+ * **Idempotent**, by the same conditional-write idiom as `cancelReservation`:
+ * declining an already declined request answers it as it is, with no second
+ * notice or audit entry, and keeps the first decision. A reservation with no
+ * request is `NO_CANCELLATION_REQUEST`; one already `CANCELLED` or `EXPIRED`
+ * is `INVALID_STATUS_TRANSITION` -- there is nothing left to decide on.
+ */
+export async function declineCancellationRequest(
+  db: Db,
+  queue: NotificationQueue,
+  input: DeclineCancellationRequestInput
+): Promise<Result<StaffReservationDetailDto>> {
+  const outcome = await db.$transaction(async (tx: DbTransactionClient): Promise<Result<null>> => {
+    const reservation = await tx.reservation.findUnique({
+      where: { id: input.reservationId },
+      include: {
+        customer: { select: { user: { select: { locale: true } } } },
+        trip: { select: { slug: true, translations: { select: { locale: true, name: true } } } },
+      },
+    });
+    if (!reservation) return fail('NOT_FOUND');
+
+    const declined = await tx.reservation.updateMany({
+      where: {
+        id: input.reservationId,
+        status: { in: [...LIVE_STATUSES] },
+        cancellationRequestedAt: { not: null },
+        cancellationDeclinedAt: null,
+      },
+      data: {
+        cancellationDeclinedAt: new Date(),
+        cancellationDeclinedById: input.actorId,
+        cancellationDeclineReason: input.reason,
+      },
+    });
+
+    if (declined.count === 0) {
+      // Re-read: another decline, a cancellation or an expiry may have
+      // committed since the first read.
+      const current = await tx.reservation.findUniqueOrThrow({
+        where: { id: input.reservationId },
+        select: { status: true, cancellationRequestedAt: true, cancellationDeclinedAt: true },
+      });
+      if (!isLive(current.status)) return fail('INVALID_STATUS_TRANSITION', { status: current.status });
+      if (current.cancellationRequestedAt === null) return fail('NO_CANCELLATION_REQUEST');
+      return ok(null); // already declined
+    }
+
+    await recordAudit(tx, {
+      actorUserId: input.actorId,
+      action: 'reservation.cancellation_declined',
+      entityType: 'Reservation',
+      entityId: reservation.id,
+      before: { cancellationReason: reservation.cancellationReason },
+      after: { reason: input.reason },
+    });
+
+    await notifyCustomer(tx, queue, {
+      customerId: reservation.customerId,
+      reservationId: reservation.id,
+      eventType: 'CANCELLATION_DECLINED',
+      params: { tripName: tripNameFor(reservation.trip, reservation.customer.user.locale), reason: input.reason },
+    });
 
     return ok(null);
   });

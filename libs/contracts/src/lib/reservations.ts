@@ -86,6 +86,15 @@ export const cancelReservationRequestSchema = z.object({
   reason: z.string().trim().min(1).max(500),
 });
 
+/**
+ * The body of `POST /api/v1/admin/reservations/{reservationId}/decline-cancellation`.
+ * Required for the same reason as a cancellation's: the customer reads it in
+ * their notice.
+ */
+export const declineCancellationRequestSchema = z.object({
+  reason: z.string().trim().min(1).max(500),
+});
+
 /** A row of the panel's reservation list, matching `StaffReservationSummaryDto`. */
 export const staffReservationSummarySchema = z.object({
   id: uuidSchema,
@@ -117,6 +126,9 @@ export const staffReservationDetailSchema = reservationSchema.extend({
   cancellationPending: z.boolean(),
   cancelledAt: z.iso.datetime().nullable(),
   cancelledByName: z.string().nullable(),
+  cancellationDeclinedAt: z.iso.datetime().nullable(),
+  cancellationDeclinedByName: z.string().nullable(),
+  cancellationDeclineReason: z.string().nullable(),
 });
 
 export type CreateReservationRequest = z.infer<typeof createReservationRequestSchema>;
@@ -125,6 +137,7 @@ export type ReservationContract = z.infer<typeof reservationSchema>;
 export type ReservationDetailContract = z.infer<typeof reservationDetailSchema>;
 export type ReservationSummaryContract = z.infer<typeof reservationSummarySchema>;
 export type ListStaffReservationsQuery = z.infer<typeof listStaffReservationsQuerySchema>;
+export type DeclineCancellationRequest = z.infer<typeof declineCancellationRequestSchema>;
 export type CancelReservationRequest = z.infer<typeof cancelReservationRequestSchema>;
 export type StaffReservationSummaryContract = z.infer<typeof staffReservationSummarySchema>;
 export type StaffReservationDetailContract = z.infer<typeof staffReservationDetailSchema>;

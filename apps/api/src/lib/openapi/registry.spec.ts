@@ -46,6 +46,7 @@ const EVERY_ROUTE_FILE_PATH = [
   '/api/v1/admin/reservations/{reservationId}',
   '/api/v1/admin/reservations/{reservationId}/payments',
   '/api/v1/admin/reservations/{reservationId}/cancel',
+  '/api/v1/admin/reservations/{reservationId}/decline-cancellation',
   '/api/v1/payments',
   '/api/v1/notifications',
   '/api/v1/notifications/{deliveryId}/read',

@@ -8,6 +8,7 @@ import { availableSeats, countCommittedSeats } from './capacity';
 import {
   cancelReservation,
   createReservation,
+  declineCancellationRequest,
   getReservationForCustomer,
   getReservationForStaff,
   listReservationsForCustomer,
@@ -1066,6 +1067,135 @@ describe('reservation service', () => {
 
       expect(detail.ok).toBe(false);
       if (!detail.ok) expect(detail.error.code).toBe('NOT_FOUND');
+    });
+  });
+
+  describe('declineCancellationRequest', () => {
+    /** A HELD reservation whose customer has asked to cancel. */
+    async function requested() {
+      const trip = await seedTrip(db);
+      const customerId = await seedCustomer(db);
+      const created = await createReservation(db, { tripId: trip.id, customerId });
+      if (!created.ok) throw new Error(created.error.code);
+      await requestCancellation(db, created.value.id, customerId, queue, 'Me enfermé');
+      return { trip, customerId, reservationId: created.value.id };
+    }
+
+    it('takes the request out of the pending queue and leaves the reservation exactly as it was', async () => {
+      const { reservationId } = await requested();
+
+      const declined = await declineCancellationRequest(db, queue, {
+        reservationId,
+        actorId: staffId,
+        reason: 'El viaje sigue en pie y el anticipo no es reembolsable',
+      });
+
+      expect(declined.ok).toBe(true);
+      if (!declined.ok) return;
+      expect(declined.value.status).toBe('HELD');
+      expect(declined.value.cancellationPending).toBe(false);
+      expect(declined.value.cancellationDeclinedAt).toBeInstanceOf(Date);
+      expect(declined.value.cancellationDeclinedByName).toBe('Staff');
+      expect(declined.value.cancellationDeclineReason).toBe('El viaje sigue en pie y el anticipo no es reembolsable');
+      // The customer's own words stay on record.
+      expect(declined.value.cancellationReason).toBe('Me enfermé');
+      const pending = await listReservationsForStaff(db, { cancellationPending: true });
+      expect(pending.ok && pending.value).toEqual([]);
+      const stored = await db.reservation.findUniqueOrThrow({ where: { id: reservationId } });
+      expect(stored.cancelledAt).toBeNull();
+      expect(stored.holdExpiresAt).not.toBeNull();
+    });
+
+    it('tells the customer, with the reason, and audits the actor', async () => {
+      const { customerId, reservationId } = await requested();
+
+      await declineCancellationRequest(db, queue, { reservationId, actorId: staffId, reason: 'No reembolsable' });
+
+      const notices = await db.notificationDelivery.findMany({
+        where: { userId: customerId, eventType: 'CANCELLATION_DECLINED' },
+      });
+      expect(notices.map((notice) => notice.channel).sort()).toEqual(['EMAIL', 'INBOX']);
+      expect(notices.every((notice) => notice.renderedBody.includes('No reembolsable'))).toBe(true);
+      const entries = await db.auditLog.findMany({
+        where: { entityId: reservationId, action: 'reservation.cancellation_declined' },
+      });
+      expect(entries).toHaveLength(1);
+      expect(entries[0]?.actorUserId).toBe(staffId);
+      expect(entries[0]?.after).toMatchObject({ reason: 'No reembolsable' });
+    });
+
+    it('is idempotent: declining twice notifies and audits once and keeps the first decision', async () => {
+      const { customerId, reservationId } = await requested();
+
+      const first = await declineCancellationRequest(db, queue, { reservationId, actorId: staffId, reason: 'Primera' });
+      const second = await declineCancellationRequest(db, queue, { reservationId, actorId: staffId, reason: 'Segunda' });
+
+      expect(first.ok && second.ok).toBe(true);
+      if (!first.ok || !second.ok) return;
+      expect(second.value.cancellationDeclinedAt).toEqual(first.value.cancellationDeclinedAt);
+      expect(second.value.cancellationDeclineReason).toBe('Primera');
+      expect(await db.notificationDelivery.count({ where: { userId: customerId, eventType: 'CANCELLATION_DECLINED' } })).toBe(2);
+      expect(
+        await db.auditLog.count({ where: { entityId: reservationId, action: 'reservation.cancellation_declined' } })
+      ).toBe(1);
+    });
+
+    it('refuses a reservation with no cancellation request', async () => {
+      const trip = await seedTrip(db);
+      const customerId = await seedCustomer(db);
+      const created = await createReservation(db, { tripId: trip.id, customerId });
+      if (!created.ok) throw new Error(created.error.code);
+
+      const declined = await declineCancellationRequest(db, queue, {
+        reservationId: created.value.id,
+        actorId: staffId,
+        reason: 'x',
+      });
+
+      expect(declined.ok).toBe(false);
+      if (!declined.ok) expect(declined.error.code).toBe('NO_CANCELLATION_REQUEST');
+    });
+
+    it.each(['CANCELLED', 'EXPIRED'] as const)('refuses a request on a reservation already %s', async (status) => {
+      const { reservationId } = await requested();
+      await db.reservation.update({ where: { id: reservationId }, data: { status } });
+
+      const declined = await declineCancellationRequest(db, queue, { reservationId, actorId: staffId, reason: 'x' });
+
+      expect(declined.ok).toBe(false);
+      if (!declined.ok) expect(declined.error.code).toBe('INVALID_STATUS_TRANSITION');
+    });
+
+    it('answers NOT_FOUND for an unknown reservation', async () => {
+      const declined = await declineCancellationRequest(db, queue, {
+        reservationId: '00000000-0000-4000-8000-000000000000',
+        actorId: staffId,
+        reason: 'x',
+      });
+
+      expect(declined.ok).toBe(false);
+      if (!declined.ok) expect(declined.error.code).toBe('NOT_FOUND');
+    });
+
+    it('lets the customer ask again after a decline, which reopens the request with the new reason', async () => {
+      const { customerId, reservationId } = await requested();
+      const adminId = await seedAdmin(db);
+      await declineCancellationRequest(db, queue, { reservationId, actorId: staffId, reason: 'No' });
+
+      const again = await requestCancellation(db, reservationId, customerId, queue, 'Ahora sí es grave');
+
+      expect(again.ok).toBe(true);
+      const stored = await db.reservation.findUniqueOrThrow({ where: { id: reservationId } });
+      expect(stored.cancellationReason).toBe('Ahora sí es grave');
+      expect(stored.cancellationDeclinedAt).toBeNull();
+      expect(stored.cancellationDeclinedById).toBeNull();
+      expect(stored.cancellationDeclineReason).toBeNull();
+      const pending = await listReservationsForStaff(db, { cancellationPending: true });
+      expect(pending.ok && pending.value.map((row) => row.id)).toEqual([reservationId]);
+      // Staff hear about the new request (the first one was before any admin existed).
+      expect(
+        await db.notificationDelivery.count({ where: { userId: adminId, eventType: 'CANCELLATION_REQUESTED' } })
+      ).toBe(2);
     });
   });
 });

@@ -169,7 +169,17 @@
     "cancelMessage": "One seat on {{trip}} will be released. The {{paid}} already paid and the whole payment history are kept: nothing is deleted or refunded automatically. The customer will be notified with the reason.",
     "cancelConfirm": "Yes, cancel",
     "cancelBack": "No, go back",
-    "cancelled": "Reservation cancelled. The seat is free."
+    "cancelled": "Reservation cancelled. The seat is free.",
+    "declineExplanation": "If the cancellation does not go ahead, the reservation stays as it is and the customer is notified with the reason. They can ask again.",
+    "declineReasonLabel": "Reason for the customer",
+    "declineReasonRequired": "Write why the cancellation does not go ahead.",
+    "declineAction": "Decline request",
+    "declineTitle": "Decline the request for {{code}}?",
+    "declineMessage": "The reservation does not change: the seat, the hold and the payments stay as they are. The customer will be notified with the reason.",
+    "declineConfirm": "Yes, decline",
+    "declined": "Request declined. The customer has been notified.",
+    "declinedAt": "Declined by {{by}} on",
+    "declineReasonShown": "Reason"
   },
   "payments": {
     "whatToPay": "What do you want to pay?",
@@ -442,6 +452,7 @@
     "HOLD_EXPIRED": "The hold expired. Please try again.",
     "PAYMENT_EXCEEDS_BALANCE": "The payment exceeds the outstanding balance.",
     "DEPOSIT_BELOW_MINIMUM": "The deposit is below the required minimum.",
+    "NO_CANCELLATION_REQUEST": "This reservation has no pending cancellation request.",
     "DELIVERY_NOT_OWNED": "We could not find that notification in your account.",
     "EMAIL_PROVIDER_ERROR": "We could not send that message. This isn't something you did — please try again shortly.",
     "PAYMENT_PROVIDER_ERROR": "We could not reach the payment provider. This isn't something you did — please try again shortly.",

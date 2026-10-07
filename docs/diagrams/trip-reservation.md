@@ -215,3 +215,26 @@ flowchart LR
     C -- Sí --> D["Pendiente: arriba,<br/>la solicitud más antigua primero"]
     C -- No --> E["Resto: la reserva más reciente primero"]
 ```
+
+## Rechazar la solicitud: la otra decisión
+
+```mermaid
+flowchart TD
+    A["El personal pulsa «Rechazar solicitud»<br/>con un motivo"] --> P{"¿Tiene reservation.cancel<br/>y es STAFF?"}
+    P -- No --> R0["403 PERMISSION_DENIED"]
+    P -- Sí --> B[("BEGIN")]
+    B --> D["UPDATE ... SET cancellation_declined_at, _by, _reason<br/>WHERE status IN (HELD, ACTIVE)<br/>AND cancellation_requested_at IS NOT NULL<br/>AND cancellation_declined_at IS NULL"]
+    D --> E{"¿Escribió la fila?"}
+    E -- No --> F{"Releer"}
+    F -- "ya no está viva" --> R1["INVALID_STATUS_TRANSITION"]
+    F -- "sin solicitud" --> R2["NO_CANCELLATION_REQUEST"]
+    F -- "ya rechazada" --> OK1["Responde la misma decisión<br/>(idempotente)"]
+    E -- Sí --> G["recordAudit: reservation.cancellation_declined"]
+    G --> H["notifyCustomer: CANCELLATION_DECLINED"]
+    H --> I[("COMMIT")]
+    I --> J["La reserva no cambia: mismo estado, apartado, lugar y dinero.<br/>Sale de la bandeja; el cliente puede volver a pedirla"]
+```
+
+Una solicitud nueva del cliente sobre una rechazada limpia el rechazo y vuelve
+a ponerla en la bandeja, con el aviso `CANCELLATION_REQUESTED` al personal.
+

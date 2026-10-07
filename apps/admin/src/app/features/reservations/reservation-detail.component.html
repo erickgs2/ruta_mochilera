@@ -23,6 +23,41 @@
         {{ 'adminReservations.requestReason' | translate }}:
         {{ reservation.cancellationReason || ('adminReservations.noReason' | translate) }}
       </p>
+
+      @if (reservation.cancellationDeclinedAt) {
+        <div class="reservation-declined">
+          <p>
+            {{ 'adminReservations.declinedAt' | translate: { by: reservation.cancellationDeclinedByName ?? '—' } }}
+            {{ reservation.cancellationDeclinedAt | date: 'medium' }}
+          </p>
+          <p class="reservation-request-reason">
+            {{ 'adminReservations.declineReasonShown' | translate }}: {{ reservation.cancellationDeclineReason }}
+          </p>
+        </div>
+      }
+
+      @if (reservation.cancellationPending) {
+        <div class="reservation-decline" *rmHasPermission="'reservation.cancel'">
+          <p>{{ 'adminReservations.declineExplanation' | translate }}</p>
+          <mat-form-field appearance="outline" class="reservation-cancel-reason">
+            <mat-label>{{ 'adminReservations.declineReasonLabel' | translate }}</mat-label>
+            <textarea matInput [formControl]="declineReason" [maxlength]="reasonMaxLength" rows="2"></textarea>
+            <mat-hint align="end">{{ declineReason.value.length }} / {{ reasonMaxLength }}</mat-hint>
+            @if (declineReason.touched && declineReason.hasError('required')) {
+              <mat-error>{{ 'adminReservations.declineReasonRequired' | translate }}</mat-error>
+            }
+          </mat-form-field>
+          <button
+            mat-stroked-button
+            type="button"
+            class="reservation-decline-button"
+            (click)="decline()"
+            [disabled]="declining() || !declineReason.value.trim()"
+          >
+            {{ 'adminReservations.declineAction' | translate }}
+          </button>
+        </div>
+      }
     </section>
   }
 

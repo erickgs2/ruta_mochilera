@@ -50,6 +50,7 @@ const STATUS_BY_CODE: Record<DomainErrorCode, number> = {
   HOLD_EXPIRED: 409,
   PAYMENT_EXCEEDS_BALANCE: 422,
   DEPOSIT_BELOW_MINIMUM: 422,
+  NO_CANCELLATION_REQUEST: 409,
   // Same reasoning as RESERVATION_NOT_OWNED above: a 403 would confirm the
   // delivery exists.
   DELIVERY_NOT_OWNED: 404,

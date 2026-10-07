@@ -350,8 +350,10 @@ piso en cero, recalculado en cada lectura.
 no una cancelación; cancelar es una decisión humana con el permiso
 `reservation.cancel`.
 
-- **Pedirlo dos veces no duplica ni falla.** La primera solicitud es la que
-  queda, con su motivo, y es la única auditada. La idempotencia se consigue
+- **Pedirlo dos veces no duplica ni falla.** Mientras está pendiente, la
+  primera solicitud es la que queda, con su motivo, y es la única auditada.
+  Si el personal la rechazó, pedirla otra vez abre una nueva (ver «Rechazar
+  una solicitud de cancelación»). La idempotencia se consigue
   con un `UPDATE ... WHERE cancellation_requested_at IS NULL` en una sola
   sentencia, no con una lectura seguida de una escritura que otra solicitud
   podría intercalar.
@@ -378,8 +380,8 @@ devuelve las reservas de **todos** los clientes, con el nombre del viaje y
 del cliente en cada fila. Los filtros se combinan con AND.
 
 **Una solicitud está pendiente** (`cancellationPending`) cuando el cliente la
-pidió (`cancellation_requested_at` no nulo) **y** la reserva sigue `HELD` o
-`ACTIVE`. Es un valor derivado, nunca una columna: una solicitud sobre una
+pidió (`cancellation_requested_at` no nulo), el personal **no** la rechazó
+(`cancellation_declined_at` nulo) **y** la reserva sigue `HELD` o `ACTIVE`. Es un valor derivado, nunca una columna: una solicitud sobre una
 reserva que ya se canceló o venció es historia, no trabajo, y deja de
 contarse sola sin que nadie tenga que «cerrarla».
 
@@ -445,12 +447,35 @@ la fila y hace el resto; la otra relee, ve `CANCELLED` y responde igual.
 lugar ya está libre y no hay nada que decidir; reetiquetarla reescribiría lo
 que pasó.
 
-**Pendiente de decidir: rechazar una solicitud.** El panel puede cancelar,
-pero no tiene una acción para «no procede» que saque la solicitud de la
-bandeja sin cancelar la reserva. Mientras la reserva siga viva, la solicitud
-sigue apareciendo como pendiente. Ni el plan ni el esquema lo contemplan
-(haría falta una columna o un estado de resolución), así que queda señalado
-aquí en vez de inventarlo.
+## Rechazar una solicitud de cancelación (§5.6)
+
+La otra decisión posible del personal. `declineCancellationRequest(db, queue,
+{ reservationId, actorId, reason })` cierra la solicitud **sin tocar la
+reserva**: el estado, el apartado, el lugar y el dinero siguen exactamente
+igual. Mismo permiso que cancelar, `reservation.cancel`: quien puede decidir
+una solicitud en un sentido puede decidirla en el otro.
+
+1. **Se registra la decisión** en tres columnas propias:
+   `cancellation_declined_at`, `cancellation_declined_by` y
+   `cancellation_decline_reason`. El motivo del cliente
+   (`cancellation_reason`) no se sobrescribe.
+2. **Se avisa al cliente** con `CANCELLATION_DECLINED` y el motivo, dentro de
+   la misma transacción, y se audita `reservation.cancellation_declined`.
+3. **Deja de estar pendiente**: sale de la bandeja del panel.
+4. **Idempotente**, con el mismo `updateMany` condicionado que cancelar:
+   rechazar dos veces responde la misma decisión, sin segundo aviso ni segunda
+   auditoría, y conserva el primer motivo.
+5. **Sin solicitud no hay nada que rechazar** → `NO_CANCELLATION_REQUEST`. Una
+   reserva ya `CANCELLED` o `EXPIRED` → `INVALID_STATUS_TRANSITION`.
+
+**El cliente puede volver a pedirla.** Una solicitud rechazada está cerrada,
+así que `requestCancellation` sobre ella abre una nueva: sella la fecha y el
+motivo nuevos, limpia el rechazo anterior, audita y avisa al personal otra
+vez. Una solicitud todavía pendiente, en cambio, sigue siendo la que manda
+(pedir dos veces sigue sin efecto).
+
+Rechazar no impide cancelar después: si la situación cambia, el personal puede
+cancelar la reserva aunque haya rechazado antes una solicitud.
 
 ## Errores de este módulo
 
@@ -463,5 +488,6 @@ aquí en vez de inventarlo.
 | `TRIP_SOLD_OUT` | No queda cupo disponible. | 409 |
 | `NOT_FOUND` | El viaje no existe, o el id de cliente no corresponde a un cliente; en el panel, la reserva no existe. | 404 |
 | `RESERVATION_NOT_OWNED` | La reserva no existe **o** es de otro cliente. | 404 |
-| `INVALID_STATUS_TRANSITION` | Se solicita cancelar una reserva ya `CANCELLED` o `EXPIRED`, o el personal intenta cancelar una `EXPIRED`. | 409 |
+| `INVALID_STATUS_TRANSITION` | Se solicita cancelar una reserva ya `CANCELLED` o `EXPIRED`; el personal intenta cancelar una `EXPIRED`, o rechazar la solicitud de una reserva que ya no está viva. | 409 |
+| `NO_CANCELLATION_REQUEST` | El personal intenta rechazar una solicitud que no existe. | 409 |
 | `CONFLICT` | Dos choques seguidos de folio: generador roto, no mala suerte. | 409 |

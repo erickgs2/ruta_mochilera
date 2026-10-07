@@ -6,6 +6,7 @@ import { loginAs, loginAsCustomer, seedPermissionCatalog } from '../../../../../
 import { setPaymentProvider } from '../../../../../lib/payment-provider';
 import { setQueue } from '../../../../../lib/queue';
 import { POST as cancelRoute } from './[reservationId]/cancel/route';
+import { POST as declineRoute } from './[reservationId]/decline-cancellation/route';
 import { GET as listPaymentsRoute } from './[reservationId]/payments/route';
 import { GET as detailRoute } from './[reservationId]/route';
 import { GET as listRoute } from './route';
@@ -393,4 +394,75 @@ describe('admin reservation endpoints', () => {
       expect(response.status).toBe(403);
     });
   });
+
+  describe('POST /api/v1/admin/reservations/{id}/decline-cancellation', () => {
+    function decline(reservationId: string, token: string, reason = 'El viaje sigue en pie') {
+      return declineRoute(
+        request(`/api/v1/admin/reservations/${reservationId}/decline-cancellation`, token, {
+          method: 'POST',
+          body: JSON.stringify({ reason }),
+        }),
+        withId(reservationId)
+      );
+    }
+
+    it('declines a pending request with reservation.cancel: 200, still HELD, no longer pending', async () => {
+      const trip = await seedTrip();
+      const reservation = await seedReservation(trip.id, { cancellationRequestedAt: new Date() });
+      const token = await loginAs(db, 'agent@agency.test', ['reservation.cancel']);
+
+      const response = await decline(reservation.id, token);
+
+      expect(response.status).toBe(200);
+      const body = await response.json();
+      expect(body.status).toBe('HELD');
+      expect(body.cancellationPending).toBe(false);
+      expect(body.cancellationDeclineReason).toBe('El viaje sigue en pie');
+      expect(body.cancellationDeclinedByName).toBe('agent@agency.test');
+    });
+
+    it('returns 403 without reservation.cancel, and changes nothing', async () => {
+      const trip = await seedTrip();
+      const reservation = await seedReservation(trip.id, { cancellationRequestedAt: new Date() });
+      const token = await loginAs(db, 'viewer@agency.test', ['reservation.view']);
+
+      const response = await decline(reservation.id, token);
+
+      expect(response.status).toBe(403);
+      const stored = await db.reservation.findUniqueOrThrow({ where: { id: reservation.id } });
+      expect(stored.cancellationDeclinedAt).toBeNull();
+    });
+
+    it('is out of reach of a CUSTOMER', async () => {
+      const trip = await seedTrip();
+      const reservation = await seedReservation(trip.id, { cancellationRequestedAt: new Date() });
+      const { token } = await loginAsCustomer(db, 'customer-decline@agency.test');
+
+      const response = await decline(reservation.id, token);
+
+      expect(response.status).toBe(403);
+    });
+
+    it('returns 409 NO_CANCELLATION_REQUEST when nothing was requested', async () => {
+      const trip = await seedTrip();
+      const reservation = await seedReservation(trip.id);
+      const token = await loginAs(db, 'agent@agency.test', ['reservation.cancel']);
+
+      const response = await decline(reservation.id, token);
+
+      expect(response.status).toBe(409);
+      expect((await response.json()).code).toBe('NO_CANCELLATION_REQUEST');
+    });
+
+    it('requires a reason', async () => {
+      const trip = await seedTrip();
+      const reservation = await seedReservation(trip.id, { cancellationRequestedAt: new Date() });
+      const token = await loginAs(db, 'agent@agency.test', ['reservation.cancel']);
+
+      const response = await decline(reservation.id, token, ' ');
+
+      expect(response.status).toBe(422);
+    });
+  });
 });
+
