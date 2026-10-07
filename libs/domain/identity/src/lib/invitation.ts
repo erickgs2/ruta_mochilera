@@ -100,7 +100,8 @@ export function invitationEmailMessage(input: {
  * `activated_at` and `accepted_terms_at`.
  *
  * An unknown, used, expired or *reset* token is `TOKEN_INVALID` -- the same
- * answer for every case, as with password resets.
+ * answer for every case, as with password resets. So is an invitation for an
+ * account that already has a password.
  */
 export async function acceptInvitation(
   db: Db,
@@ -120,8 +121,14 @@ export async function acceptInvitation(
     });
     if (consumed.count === 0) return fail('TOKEN_INVALID');
 
+    // Conditional on "no password yet": an invitation never overwrites a
+    // password the customer already chose (say, through a reset that ran
+    // after the invitation was issued, even a concurrent one).
+    const set = await tx.user.updateMany({ where: { id: row.userId, passwordHash: null }, data: { passwordHash } });
+    if (set.count === 0) return fail('TOKEN_INVALID');
+
     const now = new Date();
-    const user = await tx.user.update({ where: { id: row.userId }, data: { passwordHash } });
+    const user = await tx.user.findUniqueOrThrow({ where: { id: row.userId }, select: { email: true } });
     await tx.customerProfile.update({
       where: { userId: row.userId },
       data: { activatedAt: now, acceptedTermsAt: now },

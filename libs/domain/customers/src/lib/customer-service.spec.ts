@@ -1,6 +1,7 @@
+import { createHash } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { closeTestDb, prepareTestDb, resetDatabase, withTestDb } from '@rm/db/testing';
-import { acceptInvitation, resetPassword } from '@rm/domain-identity';
+import { acceptInvitation, resetPassword, verifyPassword } from '@rm/domain-identity';
 import { PROVIDER_REJECTED_TEST_ADDRESS, type EmailMessage, type EmailProvider } from '@rm/email';
 import { fail, ok } from '@rm/shared-utils';
 import { createBranchCustomer, getCustomerForStaff, searchCustomers, sendCustomerInvitation } from './customer-service';
@@ -129,6 +130,32 @@ describe('createBranchCustomer', () => {
     expect(await db.passwordReset.count()).toBe(0);
   });
 
+  it('rejects a birth date after today in the organization time zone and creates nothing', async () => {
+    const tomorrow = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+
+    const result = await createBranchCustomer(
+      db,
+      mail(),
+      { fullName: 'Futura', email: 'futura@example.com', phone: '1234567', birthDate: tomorrow },
+      { sendInvitation: true, actorId: staffId }
+    );
+
+    expect(result).toMatchObject({ ok: false, error: { code: 'VALIDATION_FAILED', details: { field: 'birthDate' } } });
+    expect(await db.user.count({ where: { type: 'CUSTOMER' } })).toBe(0);
+    expect(email.sent).toHaveLength(0);
+  });
+
+  it('rejects an impossible calendar date such as 2020-02-31', async () => {
+    const result = await createBranchCustomer(
+      db,
+      mail(),
+      { fullName: 'Rara', email: 'rara@example.com', phone: '1234567', birthDate: '2020-02-31' },
+      { sendInvitation: false, actorId: staffId }
+    );
+
+    expect(result).toMatchObject({ ok: false, error: { code: 'VALIDATION_FAILED', details: { field: 'birthDate' } } });
+  });
+
   it('answers CUSTOMER_ALREADY_EXISTS with the existing id and creates nothing', async () => {
     const first = await register();
 
@@ -197,6 +224,54 @@ describe('invitations', () => {
     const second = tokenFrom(email.sent[1]);
     expect(await acceptInvitation(db, { token: first, password: 'Correct-Horse-1' })).toMatchObject({ ok: false });
     expect(await acceptInvitation(db, { token: second, password: 'Correct-Horse-1' })).toMatchObject({ ok: true });
+  });
+
+  /** A live reset token for the user, as `requestPasswordReset` would have issued it. */
+  async function issueResetToken(userId: string, token: string) {
+    await db.passwordReset.create({
+      data: {
+        userId,
+        tokenHash: createHash('sha256').update(token).digest('hex'),
+        purpose: 'RESET',
+        expiresAt: new Date(Date.now() + 60 * 60 * 1000),
+      },
+    });
+  }
+
+  it('refuses a stale invitation after the customer set a password with a reset, and keeps that password', async () => {
+    const created = await register();
+    const invitation = tokenFrom(email.sent[0]);
+    await issueResetToken(created.id, 'reset-token-1');
+    expect(await resetPassword(db, 'reset-token-1', 'Chosen-Horse-1')).toMatchObject({ ok: true });
+
+    const stale = await acceptInvitation(db, { token: invitation, password: 'Attacker-Horse-9' });
+
+    expect(stale).toMatchObject({ ok: false, error: { code: 'TOKEN_INVALID' } });
+    const user = await db.user.findUniqueOrThrow({ where: { id: created.id } });
+    expect(await verifyPassword(user.passwordHash!, 'Chosen-Horse-1')).toBe(true);
+    expect(await verifyPassword(user.passwordHash!, 'Attacker-Horse-9')).toBe(false);
+  });
+
+  it('consumes the pending invitations when the customer resets the password', async () => {
+    const created = await register();
+    await issueResetToken(created.id, 'reset-token-2');
+
+    await resetPassword(db, 'reset-token-2', 'Chosen-Horse-1');
+
+    expect(await db.passwordReset.count({ where: { userId: created.id, purpose: 'INVITATION', consumedAt: null } })).toBe(0);
+  });
+
+  it('lets exactly one of two simultaneous uses of the same reset token win', async () => {
+    const created = await register();
+    await issueResetToken(created.id, 'reset-token-3');
+
+    const results = await Promise.all([
+      resetPassword(db, 'reset-token-3', 'First-Horse-1'),
+      resetPassword(db, 'reset-token-3', 'Second-Horse-2'),
+    ]);
+
+    expect(results.filter((result) => result.ok)).toHaveLength(1);
+    expect(results.find((result) => !result.ok)).toMatchObject({ error: { code: 'TOKEN_INVALID' } });
   });
 
   it('refuses to invite a customer who already has a password', async () => {

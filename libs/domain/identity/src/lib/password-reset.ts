@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from 'node:crypto';
-import type { Db } from '@rm/db';
+import type { Db, DbTransactionClient } from '@rm/db';
 import type { EmailProvider } from '@rm/email';
 import { fail, ok, type Result } from '@rm/shared-utils';
 import { hashPassword } from './password';
@@ -148,11 +148,23 @@ export async function resetPassword(db: Db, token: string, newPassword: string):
 
   const passwordHash = await hashPassword(newPassword);
 
-  await db.$transaction([
-    db.passwordReset.update({ where: { id: row.id }, data: { consumedAt: new Date() } }),
-    db.user.update({ where: { id: row.userId }, data: { passwordHash } }),
-    db.refreshToken.updateMany({ where: { userId: row.userId, revokedAt: null }, data: { revokedAt: new Date() } }),
-  ]);
+  return db.$transaction(async (tx: DbTransactionClient): Promise<Result<null>> => {
+    // Conditional: two uses of the same token cannot both win.
+    const consumed = await tx.passwordReset.updateMany({
+      where: { id: row.id, consumedAt: null },
+      data: { consumedAt: new Date() },
+    });
+    if (consumed.count === 0) return fail('TOKEN_INVALID');
 
-  return ok(null);
+    const now = new Date();
+    await tx.user.update({ where: { id: row.userId }, data: { passwordHash } });
+    await tx.refreshToken.updateMany({ where: { userId: row.userId, revokedAt: null }, data: { revokedAt: now } });
+    // The account now has a password: a pending invitation link must not be
+    // able to replace it.
+    await tx.passwordReset.updateMany({
+      where: { userId: row.userId, purpose: 'INVITATION', consumedAt: null },
+      data: { consumedAt: now },
+    });
+    return ok(null);
+  });
 }

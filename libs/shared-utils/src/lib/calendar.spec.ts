@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { endOfCalendarDay, isPastDate, monthStartsBetween } from './calendar';
+import { endOfCalendarDay, isCalendarDateNotAfter, isPastDate, monthStartsBetween } from './calendar';
 
 const TZ = 'America/Mexico_City';
 const at = (iso: string) => new Date(iso);
@@ -72,5 +72,22 @@ describe('endOfCalendarDay', () => {
   it('keys off the UTC calendar day, ignoring any time-of-day component', () => {
     const deadline = at('2026-03-01T12:00:00Z');
     expect(endOfCalendarDay(deadline, TZ).toISOString()).toBe('2026-03-02T05:59:59.999Z');
+  });
+});
+
+describe('isCalendarDateNotAfter', () => {
+  it('accepts today and earlier real dates', () => {
+    expect(isCalendarDateNotAfter('2026-10-07', '2026-10-07')).toBe(true);
+    expect(isCalendarDateNotAfter('1990-05-17', '2026-10-07')).toBe(true);
+  });
+
+  it('rejects a date after today', () => {
+    expect(isCalendarDateNotAfter('2026-10-08', '2026-10-07')).toBe(false);
+  });
+
+  it('rejects text that is not a real YYYY-MM-DD calendar date', () => {
+    expect(isCalendarDateNotAfter('2020-02-31', '2026-10-07')).toBe(false);
+    expect(isCalendarDateNotAfter('17/05/1990', '2026-10-07')).toBe(false);
+    expect(isCalendarDateNotAfter('', '2026-10-07')).toBe(false);
   });
 });
