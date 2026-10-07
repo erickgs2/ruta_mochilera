@@ -149,6 +149,10 @@ describe('admin reservation endpoints', () => {
       expect(body.cancelledByName).toBe('agent@agency.test');
       const committed = await db.reservation.count({ where: { tripId: trip.id, status: { in: ['HELD', 'ACTIVE'] } } });
       expect(committed).toBe(0);
+      // Phase 2B: what was paid becomes the customer's credit, once.
+      await cancel(reservation.id, token, 'Viaje reprogramado');
+      const credit = await db.customerCreditEntry.findMany({ where: { customerId: reservation.customerId } });
+      expect(credit).toMatchObject([{ kind: 'CANCELLATION', amountCents: 50_000, reservationId: reservation.id }]);
     });
 
     it('cancels the pending payment intents at the provider', async () => {

@@ -193,7 +193,8 @@ flowchart TD
     F --> G["Aviso PAYMENT_AFTER_EXPIRY al cliente"]
     F --> H["Aviso ORPHAN_PAYMENT al personal"]
     C -- "CANCELLED (Tarea 19)" --> F2["La reserva NO se reactiva: sigue CANCELLED"]
-    F2 --> G2["Aviso PAYMENT_AFTER_CANCELLATION al cliente"]
+    F2 --> CR["Fase 2B: el monto se vuelve saldo a favor<br/>(CANCELLATION con payment_id, una vez por pago)"]
+    CR --> G2["Aviso PAYMENT_AFTER_CANCELLATION al cliente<br/>(«quedó como saldo a favor»)"]
     F2 --> H
     G --> I["«El dinero existe y debe verse;<br/>devolverlo o moverlo es decisión humana»"]
     G2 --> I
@@ -202,7 +203,10 @@ flowchart TD
 
 Una reserva `CANCELLED` sigue el mismo camino desde la Tarea 19: el panel
 cancela en el proveedor las fichas pendientes al cancelar, pero una pagada en
-ese mismo minuto puede llegar igual.
+ese mismo minuto puede llegar igual. Desde la Fase 2B ese dinero no queda en
+el limbo: se acredita como saldo a favor del cliente en la misma transacción
+del webhook (ver `customer-credit.md`). El de una reserva `EXPIRED` sigue
+siendo decisión humana.
 
 Y el caso en que no hay siquiera reserva a la que atar el dinero —un intento
 creado fuera de la app, sin `metadata.reservationId` o con uno que ni siquiera

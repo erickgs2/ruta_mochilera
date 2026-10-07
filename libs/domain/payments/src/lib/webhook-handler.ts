@@ -9,6 +9,7 @@ import {
 import { notifyAdmins, notifyCustomer, type NotificationQueue } from '@rm/domain-notifications';
 import { OXXO_VOUCHER_EXPIRED_FAILURE_CODE, type WebhookEvent, type WebhookPaymentIntent } from '@rm/payments-stripe';
 import { fail, formatMoney, ok, type DomainError, type DomainErrorCode, type Result } from '@rm/shared-utils';
+import { creditFromCancellation } from './credit-service';
 import { confirmPaymentWithin } from './payment-service';
 
 /**
@@ -246,6 +247,14 @@ async function applySucceeded(
     // provider outage, can still land here). Same treatment as an expired
     // hold -- money recorded, reservation left as it is, a person decides --
     // in words that say "cancelled" rather than "your hold expired".
+    // Phase 2B: the money is not left in limbo -- it becomes the customer's
+    // credit, like everything the reservation had received when cancelled.
+    await creditFromCancellation(tx, {
+      customerId: context.customerId,
+      reservationId: context.reservation.id,
+      amountCents: confirmed.value.amountCents,
+      paymentId: confirmed.value.id,
+    });
     await notifyCustomer(tx, queue, {
       customerId: context.customerId,
       reservationId: context.reservation.id,

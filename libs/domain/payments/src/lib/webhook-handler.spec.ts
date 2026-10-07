@@ -443,6 +443,16 @@ describe('handleStripeEvent', () => {
       expect(after.paidCents).toBe(150_000);
     });
 
+    it('turns the late money into the customer credit, tied to that payment (Phase 2B)', async () => {
+      const reservation = await arrange();
+
+      const payment = await db.payment.findUniqueOrThrow({ where: { providerIntentId: 'pi_after_cancel' } });
+      const entries = await db.customerCreditEntry.findMany({ where: { customerId: reservation.customerId } });
+      expect(entries).toMatchObject([
+        { kind: 'CANCELLATION', amountCents: 150_000, reservationId: reservation.id, paymentId: payment.id },
+      ]);
+    });
+
     it('tells the customer their reservation was cancelled, never that the payment confirmed a seat, and alerts staff', async () => {
       const reservation = await arrange();
 

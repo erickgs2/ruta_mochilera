@@ -43,6 +43,12 @@ export type DomainErrorCode =
   | 'DEPOSIT_BELOW_MINIMUM'
   // Staff declined a cancellation request that does not exist (Phase 2A).
   | 'NO_CANCELLATION_REQUEST'
+  // The counter (Phase 2B)
+  | 'CUSTOMER_ALREADY_EXISTS'
+  | 'CREDIT_INSUFFICIENT'
+  | 'NO_PRICE_CHANGE'
+  | 'IMPORT_TOO_LARGE'
+  | 'IMPORT_ALREADY_APPLIED'
   // Notifications (Phase 2)
   // 404 and not 403, same reasoning as `RESERVATION_NOT_OWNED`: a 403 would
   // confirm the delivery exists, which lets a customer walking ids tell

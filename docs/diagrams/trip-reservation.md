@@ -196,12 +196,20 @@ flowchart TD
     E -- No --> F{"Estado actual"}
     F -- "CANCELLED" --> OK1["Responde la reserva como está:<br/>sin aviso ni auditoría (idempotente)"]
     F -- "EXPIRED" --> R2["INVALID_STATUS_TRANSITION"]
-    E -- Sí --> G["recordAudit: reservation.cancelled<br/>(actor, motivo, paid_cents)"]
-    G --> H["notifyCustomer: RESERVATION_CANCELLED"]
-    H --> I["cancelPendingPaymentIntents<br/>(un fallo del proveedor sólo se registra)"]
-    I --> J[("COMMIT")]
-    J --> K["El lugar vuelve al cupo: countCommittedSeats<br/>ya no cuenta la fila. paid_cents y los pagos intactos"]
+    E -- Sí --> G0["Relee paid_cents bajo el candado<br/>que tomó el UPDATE"]
+    G0 --> G["recordAudit: reservation.cancelled<br/>(actor, motivo, paid_cents)"]
+    G --> CR{"¿paid_cents > 0?"}
+    CR -- Sí --> CF["creditFromCancellation (inyectado):<br/>movimiento CANCELLATION por paid_cents"]
+    CR -- No --> H
+    CF --> H["notifyCustomer: RESERVATION_CANCELLED"]
+    H --> J[("COMMIT")]
+    J --> I["cancelPendingPaymentIntents, después del COMMIT<br/>(un fallo del proveedor sólo se registra)"]
+    I --> K["El lugar vuelve al cupo: countCommittedSeats<br/>ya no cuenta la fila. paid_cents y los pagos intactos;<br/>lo pagado ya es saldo a favor del cliente"]
 ```
+
+El saldo a favor nace **en la misma transacción** que cancela (Fase 2B): la
+reserva cancelada y su dinero disponible son un solo hecho. Si el gancho
+falla, la cancelación entera se revierte.
 
 Ningún contador cambia en el nodo `K`: el cupo se deriva de las filas (ver
 «Qué ocupa lugar y qué no»).

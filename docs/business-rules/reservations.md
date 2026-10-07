@@ -417,7 +417,7 @@ oráculo que proteger. El historial de pagos **no** viene aquí: lo sirve
 ## Cancelar una reserva (§5.6, Tarea 19)
 
 `cancelReservation(db, queue, { reservationId, actorId, reason },
-cancelPendingPaymentIntents?)` es la decisión humana que la solicitud del
+cancelPendingPaymentIntents?, creditFromCancellation?)` es la decisión humana que la solicitud del
 cliente sólo pide. La ruta exige `reservation.cancel` y nada más (un único
 permiso, así que `permission` y no `anyPermission`); un actor `CUSTOMER` no
 la alcanza aunque un rol le diera ese permiso, porque `requirePermission`
@@ -428,8 +428,17 @@ rechaza a todo actor que no sea `STAFF`.
    y el lugar vuelve al catálogo. Ninguna columna del viaje cambia. Si algún
    día cancelar resta de un contador almacenado, el modelo se rompió.
 2. **El dinero se queda donde está.** `paid_cents` y todas las filas
-   `Payment` se conservan intactas. Aplicar ese dinero a otro viaje o
-   devolverlo es Fase 2B; borrarlo aquí destruiría el registro contable.
+   `Payment` se conservan intactas: borrarlas destruiría el registro
+   contable.
+2b. **Lo pagado se vuelve saldo a favor del cliente (Fase 2B).** Cuando la
+   reserva tenía `paid_cents > 0`, el gancho `creditFromCancellation`
+   escribe un movimiento `CANCELLATION` por ese monto **dentro de la misma
+   transacción**. `paid_cents` se relee después del `updateMany`, con la
+   fila ya bloqueada: un pago confirmado un instante antes cuenta, y uno
+   confirmado un instante después cae sobre una reserva `CANCELLED` y lo
+   acredita el webhook (ver `payments.md`). El gancho lo implementa
+   `@rm/domain-payments` y la ruta lo inyecta: `reservations` y `payments`
+   no se importan entre sí. Si el gancho falla, la cancelación se revierte.
 3. **Se registra quién y cuándo.** `cancelled_at` y `cancelled_by`.
    `cancellation_requested_at` y `cancellation_reason` —lo que escribió el
    cliente— **no** se sobrescriben: el motivo del personal va al aviso del
@@ -448,8 +457,8 @@ rechaza a todo actor que no sea `STAFF`.
    caso límite de §5.3; ver `payments.md`.
 
 **Idempotente.** Cancelar una reserva ya `CANCELLED` responde la reserva
-como está: sin segundo aviso, sin segunda entrada de auditoría y sin volver a
-cancelar intents. La escritura es un `updateMany` condicionado a `status IN
+como está: sin segundo aviso, sin segunda entrada de auditoría, sin segundo
+saldo a favor y sin volver a cancelar intents. La escritura es un `updateMany` condicionado a `status IN
 ('HELD', 'ACTIVE')`, así que dos personas pulsando a la vez —o un pago que
 activa la reserva en medio— se resuelven en la base: exactamente una voltea
 la fila y hace el resto; la otra relee, ve `CANCELLED` y responde igual.

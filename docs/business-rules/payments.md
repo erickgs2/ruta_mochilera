@@ -507,7 +507,67 @@ Es motivacional: se muestra en la app y se usa en los recordatorios.
 `ADJUSTMENT` negativo restan. **El saldo de un cliente es la suma de sus
 movimientos**, nunca una columna editable. La base rechaza un movimiento de
 monto cero (CHECK `customer_credit_entries_amount_not_zero`): no mueve dinero
-y sólo ensucia el historial. Las reglas que lo escriben llegan en la Tarea 3.
+y sólo ensucia el historial.
+
+## Saldo a favor: las reglas (Fase 2B, Tarea 3, §5.5)
+
+`credit-service.ts`. Diagrama: `docs/diagrams/customer-credit.md`.
+
+**Nunca mueve dinero solo.** El cliente lo ve en «Mi cuenta» (sólo lectura,
+`GET /me/credit`); el personal lo ve con `payment.view` y lo cambia con
+`payment.credit.apply`. Cada movimiento queda en `AuditLog`
+(`credit.entry_created`) con el actor, el motivo y el saldo antes y después.
+
+| Movimiento | Signo | Quién | Cuándo |
+|---|---|---|---|
+| `CANCELLATION` | + | Automático | Al cancelar una reserva con `paid_cents > 0`, y cuando llega dinero para una reserva ya cancelada |
+| `PRICE_DECREASE` | + | Automático | Al bajar el precio por debajo de lo pagado (Tarea 8) |
+| `APPLIED` | − | Personal | Aplicar saldo a una reserva viva del mismo cliente |
+| `REFUND` | − | Personal | Se devolvió el dinero **fuera del sistema**; motivo obligatorio |
+| `ADJUSTMENT` | ± | Personal | Corrección o cortesía; motivo obligatorio |
+
+**Decisión del dueño del producto (2026-10-07), con interpretación.** «El
+dinero de una reserva cancelada se vuelve saldo a favor; la devolución se
+hace fuera del sistema y después se puede aumentar o disminuir el saldo a
+voluntad». Lo interpretamos como: **quien modifica el saldo es el personal de
+la agencia**, nunca el viajero desde la app — `REFUND` registra la devolución
+y `ADJUSTMENT` cubre el «aumentar o disminuir a voluntad», siempre con motivo.
+
+### Bajo bloqueo, nunca negativo
+
+`addCreditEntry` bloquea la fila del cliente (`customer_profiles ... FOR
+UPDATE`), suma sus movimientos bajo ese bloqueo y rechaza con
+`CREDIT_INSUFFICIENT` (409, con `balanceCents`) el movimiento que dejaría la
+suma bajo cero. Dos aplicaciones simultáneas de $1,000 sobre un saldo de
+$1,500: la segunda espera el bloqueo, ve $500 y se rechaza.
+
+**Orden de bloqueo: reserva primero, cliente después**, en toda operación que
+toque ambos (aplicar saldo, cancelar, cambiar precio). Un solo orden es lo
+que impide que dos de ellas se bloqueen mutuamente.
+
+### Aplicar saldo a una reserva
+
+`applyCreditToReservation` en una transacción: bloquea la reserva, verifica
+que sea del cliente (`RESERVATION_NOT_OWNED`), que esté viva
+(`INVALID_STATUS_TRANSITION`) y que su apartado no haya vencido
+(`HOLD_EXPIRED`: activarla tomaría un lugar que el cupo ya devolvió);
+bloquea al cliente y verifica su saldo; crea el `Payment` `CREDIT` con
+`recordPayment` —con folio, mueve `paid_cents` y activa una `HELD` que cubre
+el anticipo, igual que el efectivo— y escribe el `APPLIED` con el
+`payment_id`. Nunca más que el saldo del cliente ni más que el saldo
+pendiente de la reserva (`PAYMENT_EXCEEDS_BALANCE`).
+
+Como es un pago más, `paid_cents` sigue siendo la suma de pagos `SUCCEEDED`
+y la conciliación nocturna no necesita caso especial. Para la Fase 3: un pago
+`CREDIT` es un **traslado**, no un ingreso; los reportes de ingresos deben
+excluirlo para no contar dos veces el mismo dinero.
+
+### Dinero que llega después de cancelar
+
+El webhook, en la rama de reserva `CANCELLED`, ahora también acredita el pago
+como `CANCELLATION` con su `payment_id` (idempotente por pago), además del
+aviso `PAYMENT_AFTER_CANCELLATION` —que ya dice que quedó como saldo a favor—
+y la alerta al personal.
 
 ## Folio de recibo: el modelo (Fase 2B, Tarea 1)
 

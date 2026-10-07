@@ -38,6 +38,11 @@ export interface RecordPaymentInput {
    */
   providerVoucherUrl?: string;
   voucherExpiresAt?: Date;
+  /** The staff member who took the money (counter, credit, backfill). */
+  recordedById?: string;
+  notes?: string;
+  /** Historical capture (Phase 2B): the payment happened before the system. */
+  isBackfilled?: boolean;
 }
 
 export interface ConfirmPaymentInput {
@@ -282,6 +287,9 @@ export async function recordPayment(
           input.status === 'SUCCEEDED' && paidAt ? await assignReceiptNumber(tx, paidAt) : null,
         providerVoucherUrl: input.providerVoucherUrl ?? null,
         voucherExpiresAt: input.voucherExpiresAt ?? null,
+        recordedById: input.recordedById ?? null,
+        notes: input.notes ?? '',
+        isBackfilled: input.isBackfilled ?? false,
       },
     });
   } catch (error) {
@@ -311,6 +319,7 @@ export async function recordPayment(
   }
 
   await recordAudit(tx, {
+    actorUserId: input.recordedById,
     action: 'payment.recorded',
     entityType: 'Payment',
     entityId: payment.id,

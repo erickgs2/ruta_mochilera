@@ -1,3 +1,4 @@
+export * from './lib/credit-service';
 export * from './lib/instalment';
 export * from './lib/payment-intent-cancellation';
 export * from './lib/payment-intent-service';

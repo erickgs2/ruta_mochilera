@@ -1,5 +1,5 @@
 import { cancelReservationRequestSchema, type CancelReservationRequest } from '@rm/contracts';
-import { createCancelPendingPaymentIntents } from '@rm/domain-payments';
+import { createCancelPendingPaymentIntents, creditFromCancellation } from '@rm/domain-payments';
 import { cancelReservation } from '@rm/domain-reservations';
 import { db } from '../../../../../../../lib/db';
 import { paymentProvider } from '../../../../../../../lib/payment-provider';
@@ -13,7 +13,9 @@ import { queue } from '../../../../../../../lib/queue';
  *
  * Wires the same `createCancelPendingPaymentIntents` hook `apps/worker`
  * gives `expireHolds`, so an OXXO voucher still outstanding stops being
- * payable once the seat is gone. Idempotent: a second call answers the
+ * payable once the seat is gone, and `creditFromCancellation`, so what was
+ * already paid becomes the customer's credit in the same transaction
+ * (Phase 2B). Idempotent: a second call answers the
  * already-cancelled reservation with 200 and changes nothing.
  */
 export const POST = route<CancelReservationRequest, unknown>({
@@ -24,6 +26,7 @@ export const POST = route<CancelReservationRequest, unknown>({
       db(),
       await queue(),
       { reservationId: params['reservationId'] as string, actorId: actor.userId, reason: body.reason },
-      createCancelPendingPaymentIntents(paymentProvider())
+      createCancelPendingPaymentIntents(paymentProvider()),
+      creditFromCancellation
     ),
 });

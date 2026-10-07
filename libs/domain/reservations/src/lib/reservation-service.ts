@@ -144,6 +144,19 @@ export interface CancelReservationInput {
  */
 export type CancelPendingPaymentIntents = (client: Db | DbTransactionClient, reservationId: string) => Promise<void>;
 
+/**
+ * Turns what a cancelled reservation had received into the customer's credit
+ * (Phase 2B, business rule 5.5), **inside** the cancellation's transaction:
+ * the reservation turning CANCELLED and its money becoming available are one
+ * fact, never two. Implemented by `@rm/domain-payments`'
+ * `creditFromCancellation` and typed here structurally, for the same reason
+ * as `CancelPendingPaymentIntents`.
+ */
+export type CreditFromCancellation = (
+  tx: DbTransactionClient,
+  input: { customerId: string; reservationId: string; amountCents: number; actorId?: string }
+) => Promise<void>;
+
 const HOUR_MS = 60 * 60 * 1000;
 
 /** The unique index behind `Reservation.code` (see the `reservations_payments_notifications` migration). */
@@ -666,8 +679,13 @@ export async function getReservationForStaff(
  * counting it. Nothing here touches the trip.
  *
  * **Money stays exactly where it is.** `paid_cents` and every `Payment` row
- * are left untouched: applying that money elsewhere or refunding it is Phase
- * 2B, and erasing it here would destroy the accounting record.
+ * are left untouched: erasing them would destroy the accounting record.
+ * What changes is that the money becomes the customer's credit: when the
+ * caller provides `creditFromCancellation`, it runs in this same transaction,
+ * once, with the `paid_cents` read after the row was locked by the
+ * conditional update -- so a payment confirmed a moment earlier is counted
+ * and one confirmed a moment later lands on a CANCELLED row (the webhook
+ * credits that one itself).
  *
  * **Idempotent.** Cancelling an already `CANCELLED` reservation answers it as
  * it is, with no second notice, audit entry or intent cancellation. The
@@ -689,7 +707,8 @@ export async function cancelReservation(
   db: Db,
   queue: NotificationQueue,
   input: CancelReservationInput,
-  cancelPendingPaymentIntents?: CancelPendingPaymentIntents
+  cancelPendingPaymentIntents?: CancelPendingPaymentIntents,
+  creditFromCancellation?: CreditFromCancellation
 ): Promise<Result<StaffReservationDetailDto>> {
   const outcome = await db.$transaction(async (tx: DbTransactionClient): Promise<Result<boolean>> => {
     const reservation = await tx.reservation.findUnique({
@@ -717,14 +736,31 @@ export async function cancelReservation(
       return fail('INVALID_STATUS_TRANSITION', { status: current.status });
     }
 
+    // Re-read under the lock the update above now holds: `paid_cents` may
+    // have moved since the first read, and the credit must be what the
+    // reservation really received.
+    const { paidCents } = await tx.reservation.findUniqueOrThrow({
+      where: { id: input.reservationId },
+      select: { paidCents: true },
+    });
+
     await recordAudit(tx, {
       actorUserId: input.actorId,
       action: 'reservation.cancelled',
       entityType: 'Reservation',
       entityId: reservation.id,
-      before: { status: reservation.status, paidCents: reservation.paidCents },
-      after: { status: 'CANCELLED', reason: input.reason, paidCents: reservation.paidCents },
+      before: { status: reservation.status, paidCents },
+      after: { status: 'CANCELLED', reason: input.reason, paidCents },
     });
+
+    if (creditFromCancellation && paidCents > 0) {
+      await creditFromCancellation(tx, {
+        customerId: reservation.customerId,
+        reservationId: reservation.id,
+        amountCents: paidCents,
+        actorId: input.actorId,
+      });
+    }
 
     const locale = reservation.customer.user.locale;
     await notifyCustomer(tx, queue, {

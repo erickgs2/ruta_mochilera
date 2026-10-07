@@ -14,6 +14,7 @@ import {
   listReservationsForCustomer,
   listReservationsForStaff,
   requestCancellation,
+  type CreditFromCancellation,
 } from './reservation-service';
 
 const db = withTestDb();
@@ -744,7 +745,7 @@ describe('reservation service', () => {
       expect(await seatsLeft(trip.id)).toBe(1);
     });
 
-    it('keeps paid_cents and every recorded payment: applying or refunding that money is Phase 2B', async () => {
+    it('keeps paid_cents and every recorded payment', async () => {
       const { reservation } = await heldReservation();
       await db.payment.create({
         data: {
@@ -777,6 +778,77 @@ describe('reservation service', () => {
       expect(payments).toHaveLength(1);
       expect(payments[0]?.status).toBe('SUCCEEDED');
       expect(payments[0]?.amountCents).toBe(150_000);
+    });
+
+    it('hands what was paid to the injected credit hook, inside the cancelling transaction, once', async () => {
+      const { reservation, customerId } = await heldReservation();
+      await db.reservation.update({
+        where: { id: reservation.id },
+        data: { status: 'ACTIVE', holdExpiresAt: null, paidCents: 150_000 },
+      });
+      const calls: { customerId: string; reservationId: string; amountCents: number; actorId?: string }[] = [];
+      const statusSeenByHook: string[] = [];
+      const hook: CreditFromCancellation = async (tx, input) => {
+        calls.push(input);
+        // Same transaction: the hook already sees the row as CANCELLED.
+        const row = await tx.reservation.findUniqueOrThrow({ where: { id: input.reservationId } });
+        statusSeenByHook.push(row.status);
+      };
+
+      for (let i = 0; i < 2; i++) {
+        await cancelReservation(
+          db,
+          queue,
+          { reservationId: reservation.id, actorId: staffId, reason: 'Solicitud del cliente' },
+          undefined,
+          hook
+        );
+      }
+
+      expect(calls).toEqual([
+        { customerId, reservationId: reservation.id, amountCents: 150_000, actorId: staffId },
+      ]);
+      expect(statusSeenByHook).toEqual(['CANCELLED']);
+    });
+
+    it('does not call the credit hook when nothing was paid', async () => {
+      const { reservation } = await heldReservation();
+      let called = false;
+
+      await cancelReservation(
+        db,
+        queue,
+        { reservationId: reservation.id, actorId: staffId, reason: 'Solicitud del cliente' },
+        undefined,
+        async () => {
+          called = true;
+        }
+      );
+
+      expect(called).toBe(false);
+    });
+
+    it('rolls the cancellation back when the credit hook fails', async () => {
+      const { reservation } = await heldReservation();
+      await db.reservation.update({
+        where: { id: reservation.id },
+        data: { status: 'ACTIVE', holdExpiresAt: null, paidCents: 150_000 },
+      });
+
+      await expect(
+        cancelReservation(
+          db,
+          queue,
+          { reservationId: reservation.id, actorId: staffId, reason: 'Solicitud del cliente' },
+          undefined,
+          async () => {
+            throw new Error('ledger down');
+          }
+        )
+      ).rejects.toThrow('ledger down');
+
+      const stored = await db.reservation.findUniqueOrThrow({ where: { id: reservation.id } });
+      expect(stored.status).toBe('ACTIVE');
     });
 
     it('records who cancelled and when, and keeps the customer request and its reason', async () => {

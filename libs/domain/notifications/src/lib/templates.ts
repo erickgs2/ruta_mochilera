@@ -152,11 +152,11 @@ const TEMPLATES: Record<DeliveryEventType, LocaleTemplates> = {
   PAYMENT_AFTER_CANCELLATION: {
     es: template(
       'Recibimos tu pago para {{tripName}}, pero tu reservación ya estaba cancelada',
-      'Recibimos tu pago de {{amount}} para {{tripName}}, pero tu reservación ya estaba cancelada. Tu pago está registrado y nadie lo va a perder: un asesor te contactará para resolverlo contigo.'
+      'Recibimos tu pago de {{amount}} para {{tripName}}, pero tu reservación ya estaba cancelada. Tu pago está registrado y quedó como saldo a favor en tu cuenta: puedes verlo en «Mi cuenta» y un asesor te contactará para decidir contigo cómo usarlo.'
     ),
     en: template(
       'We received your payment for {{tripName}}, but your reservation had already been cancelled',
-      'We received your payment of {{amount}} for {{tripName}}, but your reservation had already been cancelled. Your payment is on record and will not be lost: someone from the team will contact you to sort it out.'
+      'We received your payment of {{amount}} for {{tripName}}, but your reservation had already been cancelled. Your payment is on record and is now account credit: you can see it under My account, and someone from the team will contact you to decide how to use it.'
     ),
   },
   RESERVATION_CANCELLED: {

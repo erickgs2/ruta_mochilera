@@ -1,6 +1,7 @@
 export * from './lib/auth';
 export * from './lib/common';
 export * from './lib/costing';
+export * from './lib/credit';
 export * from './lib/notifications';
 export * from './lib/payments';
 export * from './lib/profile';

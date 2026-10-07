@@ -7,6 +7,11 @@ import {
   budgetItemRequestSchema as budgetItemRequestSchemaImport,
   cancelReservationRequestSchema as cancelReservationRequestSchemaImport,
   declineCancellationRequestSchema as declineCancellationRequestSchemaImport,
+  adjustCreditRequestSchema as adjustCreditRequestSchemaImport,
+  applyCreditRequestSchema as applyCreditRequestSchemaImport,
+  creditEntrySchema as creditEntrySchemaImport,
+  customerCreditSchema as customerCreditSchemaImport,
+  refundCreditRequestSchema as refundCreditRequestSchemaImport,
   changeStatusRequestSchema as changeStatusRequestSchemaImport,
   createPaymentIntentRequestSchema as createPaymentIntentRequestSchemaImport,
   createReservationRequestSchema as createReservationRequestSchemaImport,
@@ -110,6 +115,11 @@ const createPaymentIntentRequestSchema = createPaymentIntentRequestSchemaImport.
   id: 'CreatePaymentIntentRequest',
 });
 const paymentSchema = paymentSchemaImport.meta({ id: 'Payment' });
+const creditEntrySchema = creditEntrySchemaImport.meta({ id: 'CreditEntry' });
+const customerCreditSchema = customerCreditSchemaImport.meta({ id: 'CustomerCredit' });
+const refundCreditRequestSchema = refundCreditRequestSchemaImport.meta({ id: 'RefundCreditRequest' });
+const adjustCreditRequestSchema = adjustCreditRequestSchemaImport.meta({ id: 'AdjustCreditRequest' });
+const applyCreditRequestSchema = applyCreditRequestSchemaImport.meta({ id: 'ApplyCreditRequest' });
 const createdPaymentIntentSchema = createdPaymentIntentSchemaImport.meta({ id: 'CreatedPaymentIntent' });
 const inboxPageSchema = inboxPageSchemaImport.meta({ id: 'InboxPage' });
 const publicTripSummarySchema = publicTripSummarySchemaImport.meta({ id: 'PublicTripSummary' });
@@ -1156,6 +1166,95 @@ export function buildOpenApiDocument() {
       404: problem('NOT_FOUND'),
       409: problem('NO_CANCELLATION_REQUEST, or INVALID_STATUS_TRANSITION -- already CANCELLED or EXPIRED'),
       422: problem('VALIDATION_FAILED -- the reason is missing or longer than 500 characters'),
+    },
+  });
+
+  registry.registerPath({
+    method: 'post',
+    path: '/api/v1/admin/reservations/{reservationId}/apply-credit',
+    tags: ['payments', 'admin'],
+    security: [{ bearerAuth: [] }],
+    description:
+      "Pays part of a live reservation with its customer's credit (Phase 2B, spec §5.5): a numbered CREDIT " +
+      'payment that moves paid_cents (and activates a HELD reservation covering its deposit) plus the matching ' +
+      'APPLIED movement, in one transaction. Requires payment.credit.apply.',
+    request: { params: uuidParam('reservationId'), body: requestBody(applyCreditRequestSchema) },
+    responses: {
+      201: { description: 'The CREDIT payment', ...json(paymentSchema) },
+      401: problem('Missing or invalid access token'),
+      403: problem('PERMISSION_DENIED -- requires payment.credit.apply'),
+      404: problem('NOT_FOUND'),
+      409: problem(
+        'CREDIT_INSUFFICIENT, HOLD_EXPIRED, or INVALID_STATUS_TRANSITION -- the reservation is not live'
+      ),
+      422: problem('VALIDATION_FAILED, or PAYMENT_EXCEEDS_BALANCE -- more than the reservation still owes'),
+    },
+  });
+
+  // --- customer credit (Phase 2B) --------------------------------------------
+  registry.registerPath({
+    method: 'get',
+    path: '/api/v1/admin/customers/{customerId}/credit',
+    tags: ['payments', 'admin'],
+    security: [{ bearerAuth: [] }],
+    description: "A customer's credit balance and every movement behind it, newest first. Requires payment.view.",
+    request: { params: uuidParam('customerId') },
+    responses: {
+      200: { description: 'Credit', ...json(customerCreditSchema) },
+      401: problem('Missing or invalid access token'),
+      403: problem('PERMISSION_DENIED -- requires payment.view'),
+      404: problem('NOT_FOUND'),
+    },
+  });
+
+  registry.registerPath({
+    method: 'post',
+    path: '/api/v1/admin/customers/{customerId}/credit/refund',
+    tags: ['payments', 'admin'],
+    security: [{ bearerAuth: [] }],
+    description:
+      'Records credit given back to the customer outside the system (cash, a transfer). The reason is ' +
+      'mandatory and the balance never goes below zero. Requires payment.credit.apply.',
+    request: { params: uuidParam('customerId'), body: requestBody(refundCreditRequestSchema) },
+    responses: {
+      201: { description: 'The REFUND movement', ...json(creditEntrySchema) },
+      401: problem('Missing or invalid access token'),
+      403: problem('PERMISSION_DENIED -- requires payment.credit.apply'),
+      404: problem('NOT_FOUND'),
+      409: problem('CREDIT_INSUFFICIENT'),
+      422: problem('VALIDATION_FAILED'),
+    },
+  });
+
+  registry.registerPath({
+    method: 'post',
+    path: '/api/v1/admin/customers/{customerId}/credit/adjust',
+    tags: ['payments', 'admin'],
+    security: [{ bearerAuth: [] }],
+    description:
+      "A correction or courtesy to a customer's credit, positive or negative, with a mandatory reason. The " +
+      'balance never goes below zero. Requires payment.credit.apply.',
+    request: { params: uuidParam('customerId'), body: requestBody(adjustCreditRequestSchema) },
+    responses: {
+      201: { description: 'The ADJUSTMENT movement', ...json(creditEntrySchema) },
+      401: problem('Missing or invalid access token'),
+      403: problem('PERMISSION_DENIED -- requires payment.credit.apply'),
+      404: problem('NOT_FOUND'),
+      409: problem('CREDIT_INSUFFICIENT'),
+      422: problem('VALIDATION_FAILED'),
+    },
+  });
+
+  registry.registerPath({
+    method: 'get',
+    path: '/api/v1/me/credit',
+    tags: ['payments'],
+    security: [{ bearerAuth: [] }],
+    description: "The authenticated customer's own credit balance and movements. Read-only.",
+    responses: {
+      200: { description: 'Credit', ...json(customerCreditSchema) },
+      401: problem('Missing or invalid access token'),
+      404: problem('NOT_FOUND -- the caller is not a customer'),
     },
   });
 
