@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { uuidSchema } from './common';
 
-export const creditEntryKindSchema = z.enum(['CANCELLATION', 'PRICE_DECREASE', 'APPLIED', 'REFUND', 'ADJUSTMENT']);
+export const creditEntryKindSchema = z.enum(['CANCELLATION', 'PRICE_DECREASE', 'APPLIED', 'REFUND', 'ADJUSTMENT', 'EXPIRATION', 'REVIVAL']);
 
 /** One ledger movement, matching `@rm/domain-payments`' `CreditEntryDto`. Signed cents. */
 export const creditEntrySchema = z.object({

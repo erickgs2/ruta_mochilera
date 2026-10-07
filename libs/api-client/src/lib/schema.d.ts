@@ -5763,7 +5763,7 @@ export interface components {
                 id: string;
                 amountCents: number;
                 /** @enum {string} */
-                kind: "CANCELLATION" | "PRICE_DECREASE" | "APPLIED" | "REFUND" | "ADJUSTMENT";
+                kind: "CANCELLATION" | "PRICE_DECREASE" | "APPLIED" | "REFUND" | "ADJUSTMENT" | "EXPIRATION" | "REVIVAL";
                 /** Format: uuid */
                 reservationId: string | null;
                 /** Format: uuid */
@@ -5778,7 +5778,7 @@ export interface components {
             id: string;
             amountCents: number;
             /** @enum {string} */
-            kind: "CANCELLATION" | "PRICE_DECREASE" | "APPLIED" | "REFUND" | "ADJUSTMENT";
+            kind: "CANCELLATION" | "PRICE_DECREASE" | "APPLIED" | "REFUND" | "ADJUSTMENT" | "EXPIRATION" | "REVIVAL";
             /** Format: uuid */
             reservationId: string | null;
             /** Format: uuid */
