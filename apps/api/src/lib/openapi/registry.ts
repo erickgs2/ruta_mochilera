@@ -8,6 +8,13 @@ import {
   cancelReservationRequestSchema as cancelReservationRequestSchemaImport,
   declineCancellationRequestSchema as declineCancellationRequestSchemaImport,
   adjustCreditRequestSchema as adjustCreditRequestSchemaImport,
+  acceptInvitationRequestSchema as acceptInvitationRequestSchemaImport,
+  acceptedInvitationSchema as acceptedInvitationSchemaImport,
+  createBranchCustomerRequestSchema as createBranchCustomerRequestSchemaImport,
+  createdCustomerSchema as createdCustomerSchemaImport,
+  customerDetailSchema as customerDetailSchemaImport,
+  customerPageSchema as customerPageSchemaImport,
+  searchCustomersQuerySchema,
   applyCreditRequestSchema as applyCreditRequestSchemaImport,
   creditEntrySchema as creditEntrySchemaImport,
   customerCreditSchema as customerCreditSchemaImport,
@@ -116,6 +123,14 @@ const createPaymentIntentRequestSchema = createPaymentIntentRequestSchemaImport.
 });
 const paymentSchema = paymentSchemaImport.meta({ id: 'Payment' });
 const creditEntrySchema = creditEntrySchemaImport.meta({ id: 'CreditEntry' });
+const customerPageSchema = customerPageSchemaImport.meta({ id: 'CustomerPage' });
+const customerDetailSchema = customerDetailSchemaImport.meta({ id: 'CustomerDetail' });
+const createdCustomerSchema = createdCustomerSchemaImport.meta({ id: 'CreatedCustomer' });
+const createBranchCustomerRequestSchema = createBranchCustomerRequestSchemaImport.meta({
+  id: 'CreateBranchCustomerRequest',
+});
+const acceptInvitationRequestSchema = acceptInvitationRequestSchemaImport.meta({ id: 'AcceptInvitationRequest' });
+const acceptedInvitationSchema = acceptedInvitationSchemaImport.meta({ id: 'AcceptedInvitation' });
 const customerCreditSchema = customerCreditSchemaImport.meta({ id: 'CustomerCredit' });
 const refundCreditRequestSchema = refundCreditRequestSchemaImport.meta({ id: 'RefundCreditRequest' });
 const adjustCreditRequestSchema = adjustCreditRequestSchemaImport.meta({ id: 'AdjustCreditRequest' });
@@ -499,6 +514,22 @@ export function buildOpenApiDocument() {
     responses: {
       200: { description: 'Password changed and every session revoked', ...json(z.null()) },
       401: problem('Unknown, expired or already-used token (TOKEN_INVALID)'),
+      422: problem('Validation failed'),
+    },
+  });
+
+  registry.registerPath({
+    method: 'post',
+    path: '/api/v1/auth/invitation/accept',
+    tags: ['auth'],
+    description:
+      'A customer registered at the counter activates their account from the invitation link (Phase 2B, ' +
+      'spec §5.1): sets a password and accepts the terms. The token is single-use; a reset token is not ' +
+      'accepted here.',
+    request: { body: requestBody(acceptInvitationRequestSchema) },
+    responses: {
+      200: { description: 'Account activated', ...json(acceptedInvitationSchema) },
+      401: problem('Unknown, expired, already-used or non-invitation token (TOKEN_INVALID)'),
       422: problem('Validation failed'),
     },
   });
@@ -1188,6 +1219,80 @@ export function buildOpenApiDocument() {
         'CREDIT_INSUFFICIENT, HOLD_EXPIRED, or INVALID_STATUS_TRANSITION -- the reservation is not live'
       ),
       422: problem('VALIDATION_FAILED, or PAYMENT_EXCEEDS_BALANCE -- more than the reservation still owes'),
+    },
+  });
+
+  // --- customers at the counter (Phase 2B) ----------------------------------
+  registry.registerPath({
+    method: 'get',
+    path: '/api/v1/admin/customers',
+    tags: ['customers', 'admin'],
+    security: [{ bearerAuth: [] }],
+    description:
+      'Searches customers by name, email or phone, accent- and case-insensitive, paginated (spec §5.1). ' +
+      'Without a search, every customer, newest first. Never returns staff. Requires customer.view.',
+    request: { query: searchCustomersQuerySchema },
+    responses: {
+      200: { description: 'A page of customers', ...json(customerPageSchema) },
+      401: problem('Missing or invalid access token'),
+      403: problem('PERMISSION_DENIED -- requires customer.view'),
+      422: problem('VALIDATION_FAILED'),
+    },
+  });
+
+  registry.registerPath({
+    method: 'post',
+    path: '/api/v1/admin/customers',
+    tags: ['customers', 'admin'],
+    security: [{ bearerAuth: [] }],
+    description:
+      'Registers a customer at the counter: email already verified, no password, origin BRANCH. Sends the ' +
+      'activation invitation unless sendInvitation is false; invitationSent says whether the email went out. ' +
+      'Requires customer.manage.',
+    request: { body: requestBody(createBranchCustomerRequestSchema) },
+    responses: {
+      201: { description: 'Customer registered', ...json(createdCustomerSchema) },
+      401: problem('Missing or invalid access token'),
+      403: problem('PERMISSION_DENIED -- requires customer.manage'),
+      409: problem(
+        'CUSTOMER_ALREADY_EXISTS (details.customerId is the existing customer), or EMAIL_ALREADY_REGISTERED ' +
+          '-- the email belongs to staff'
+      ),
+      422: problem('VALIDATION_FAILED'),
+    },
+  });
+
+  registry.registerPath({
+    method: 'get',
+    path: '/api/v1/admin/customers/{customerId}',
+    tags: ['customers', 'admin'],
+    security: [{ bearerAuth: [] }],
+    description: 'One customer with their reservations, newest first. Requires customer.view.',
+    request: { params: uuidParam('customerId') },
+    responses: {
+      200: { description: 'Customer', ...json(customerDetailSchema) },
+      401: problem('Missing or invalid access token'),
+      403: problem('PERMISSION_DENIED -- requires customer.view'),
+      404: problem('NOT_FOUND'),
+    },
+  });
+
+  registry.registerPath({
+    method: 'post',
+    path: '/api/v1/admin/customers/{customerId}/invitation',
+    tags: ['customers', 'admin'],
+    security: [{ bearerAuth: [] }],
+    description:
+      'Sends (or re-sends) the activation invitation. Each new invitation invalidates the previous one. ' +
+      'Requires customer.manage.',
+    request: { params: uuidParam('customerId') },
+    responses: {
+      200: { description: 'Invitation sent', ...json(customerDetailSchema) },
+      401: problem('Missing or invalid access token'),
+      403: problem('PERMISSION_DENIED -- requires customer.manage'),
+      404: problem('NOT_FOUND'),
+      409: problem('CONFLICT -- the customer already has a password'),
+      502: problem('EMAIL_PROVIDER_ERROR -- the invitation was stored but the email did not go out'),
     },
   });
 

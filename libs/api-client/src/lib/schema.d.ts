@@ -362,6 +362,64 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/auth/invitation/accept": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description A customer registered at the counter activates their account from the invitation link (Phase 2B, spec §5.1): sets a password and accepts the terms. The token is single-use; a reset token is not accepted here. */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["AcceptInvitationRequest"];
+                };
+            };
+            responses: {
+                /** @description Account activated */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["AcceptedInvitation"];
+                    };
+                };
+                /** @description Unknown, expired, already-used or non-invitation token (TOKEN_INVALID) */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description Validation failed */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/auth/oauth/google": {
         parameters: {
             query?: never;
@@ -3060,6 +3118,281 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/customers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Searches customers by name, email or phone, accent- and case-insensitive, paginated (spec §5.1). Without a search, every customer, newest first. Never returns staff. Requires customer.view. */
+        get: {
+            parameters: {
+                query?: {
+                    search?: string;
+                    page?: number;
+                    pageSize?: number;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description A page of customers */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["CustomerPage"];
+                    };
+                };
+                /** @description Missing or invalid access token */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description PERMISSION_DENIED -- requires customer.view */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description VALIDATION_FAILED */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        /** @description Registers a customer at the counter: email already verified, no password, origin BRANCH. Sends the activation invitation unless sendInvitation is false; invitationSent says whether the email went out. Requires customer.manage. */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["CreateBranchCustomerRequest"];
+                };
+            };
+            responses: {
+                /** @description Customer registered */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["CreatedCustomer"];
+                    };
+                };
+                /** @description Missing or invalid access token */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description PERMISSION_DENIED -- requires customer.manage */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description CUSTOMER_ALREADY_EXISTS (details.customerId is the existing customer), or EMAIL_ALREADY_REGISTERED -- the email belongs to staff */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description VALIDATION_FAILED */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/customers/{customerId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description One customer with their reservations, newest first. Requires customer.view. */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    customerId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Customer */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["CustomerDetail"];
+                    };
+                };
+                /** @description Missing or invalid access token */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description PERMISSION_DENIED -- requires customer.view */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description NOT_FOUND */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/customers/{customerId}/invitation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Sends (or re-sends) the activation invitation. Each new invitation invalidates the previous one. Requires customer.manage. */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    customerId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Invitation sent */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["CustomerDetail"];
+                    };
+                };
+                /** @description Missing or invalid access token */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description PERMISSION_DENIED -- requires customer.manage */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description NOT_FOUND */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description CONFLICT -- the customer already has a password */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description EMAIL_PROVIDER_ERROR -- the invitation was stored but the email did not go out */
+                502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/customers/{customerId}/credit": {
         parameters: {
             query?: never;
@@ -3797,6 +4130,15 @@ export interface components {
             token: string;
             newPassword: string;
         };
+        AcceptedInvitation: {
+            email: string;
+        };
+        AcceptInvitationRequest: {
+            token: string;
+            password: string;
+            /** @enum {boolean} */
+            acceptTerms: true;
+        };
         SocialLoginRequest: {
             idToken: string;
             deviceId?: string;
@@ -4274,6 +4616,116 @@ export interface components {
         };
         ApplyCreditRequest: {
             amountCents: number;
+        };
+        CustomerPage: {
+            items: {
+                /** Format: uuid */
+                id: string;
+                fullName: string;
+                email: string;
+                phone: string;
+                /** @enum {string} */
+                origin: "SELF_SIGNUP" | "BRANCH" | "IMPORT";
+                /** Format: date-time */
+                activatedAt: string | null;
+                /** Format: date-time */
+                invitedAt: string | null;
+                hasPassword: boolean;
+                /** Format: date-time */
+                createdAt: string;
+            }[];
+            total: number;
+            page: number;
+            pageSize: number;
+        };
+        CreatedCustomer: {
+            /** Format: uuid */
+            id: string;
+            fullName: string;
+            email: string;
+            phone: string;
+            /** @enum {string} */
+            origin: "SELF_SIGNUP" | "BRANCH" | "IMPORT";
+            /** Format: date-time */
+            activatedAt: string | null;
+            /** Format: date-time */
+            invitedAt: string | null;
+            hasPassword: boolean;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            birthDate: string;
+            /** @enum {string} */
+            locale: "es" | "en";
+            /** Format: date-time */
+            emailVerifiedAt: string | null;
+            /** Format: date-time */
+            acceptedTermsAt: string | null;
+            reservations: {
+                /** Format: uuid */
+                id: string;
+                code: string;
+                /** @enum {string} */
+                status: "HELD" | "ACTIVE" | "CANCELLED" | "EXPIRED";
+                tripName: string;
+                /** Format: date-time */
+                departureDate: string;
+                totalPriceCents: number;
+                paidCents: number;
+                /** Format: date-time */
+                createdAt: string;
+            }[];
+            invitationSent: boolean;
+        };
+        CreateBranchCustomerRequest: {
+            fullName: string;
+            /** Format: email */
+            email: string;
+            phone: string;
+            /** Format: date */
+            birthDate: string;
+            /** @enum {string} */
+            locale?: "es" | "en";
+            /** @default true */
+            sendInvitation: boolean;
+        };
+        CustomerDetail: {
+            /** Format: uuid */
+            id: string;
+            fullName: string;
+            email: string;
+            phone: string;
+            /** @enum {string} */
+            origin: "SELF_SIGNUP" | "BRANCH" | "IMPORT";
+            /** Format: date-time */
+            activatedAt: string | null;
+            /** Format: date-time */
+            invitedAt: string | null;
+            hasPassword: boolean;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            birthDate: string;
+            /** @enum {string} */
+            locale: "es" | "en";
+            /** Format: date-time */
+            emailVerifiedAt: string | null;
+            /** Format: date-time */
+            acceptedTermsAt: string | null;
+            reservations: {
+                /** Format: uuid */
+                id: string;
+                code: string;
+                /** @enum {string} */
+                status: "HELD" | "ACTIVE" | "CANCELLED" | "EXPIRED";
+                tripName: string;
+                /** Format: date-time */
+                departureDate: string;
+                totalPriceCents: number;
+                paidCents: number;
+                /** Format: date-time */
+                createdAt: string;
+            }[];
         };
         CustomerCredit: {
             balanceCents: number;

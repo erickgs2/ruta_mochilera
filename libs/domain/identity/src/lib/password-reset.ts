@@ -139,7 +139,10 @@ export async function resetPassword(db: Db, token: string, newPassword: string):
   const tokenHash = hashResetToken(token);
   const row = await db.passwordReset.findUnique({ where: { tokenHash } });
 
-  if (!row || row.consumedAt || row.expiresAt <= new Date()) {
+  // An invitation token (Phase 2B) lives in the same table but is not a
+  // reset: it is only accepted by `acceptInvitation`, which also activates
+  // the account and records the terms.
+  if (!row || row.purpose !== 'RESET' || row.consumedAt || row.expiresAt <= new Date()) {
     return fail('TOKEN_INVALID');
   }
 

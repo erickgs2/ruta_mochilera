@@ -20,6 +20,7 @@ esté actualizado **en el mismo commit**.
 | `libs/domain/payments/**` | `docs/business-rules/payments.md` y `docs/diagrams/payment-flow.md` |
 | `libs/domain/notifications/**` | `docs/business-rules/notifications.md` |
 | `libs/domain/rbac/**` | `docs/business-rules/rbac.md` |
+| `libs/domain/customers/**` | `docs/business-rules/customers.md` y `docs/diagrams/counter-sale.md` |
 
 Los diagramas se escriben en **Mermaid dentro de archivos Markdown**, nunca como
 imágenes: se versionan como texto y un diff muestra qué cambió en la regla.

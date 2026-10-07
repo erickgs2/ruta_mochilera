@@ -11,6 +11,7 @@ valores y fórmulas exactos que implementa `libs/domain`.
 | `payments.md` | Métodos, recibos, saldo a favor, retroactivos | `libs/domain/payments` |
 | `notifications.md` | Audiencias, variables, calendarización | `libs/domain/notifications` |
 | `rbac.md` | Catálogo de permisos y roles | `libs/domain/rbac` |
+| `customers.md` | Clientes en mostrador: búsqueda, alta, invitación | `libs/domain/customers` |
 
 ## Convenciones
 
@@ -23,10 +24,10 @@ valores y fórmulas exactos que implementa `libs/domain`.
 
 `.github/workflows/docs-guard.yml` hace cumplir la tabla de arriba en cada
 pull request: si el diff toca `libs/domain/<módulo>/src/**` para alguno de
-`trips`, `costing`, `reservations`, `payments`, `notifications` o `rbac`,
-exige que el mismo PR también toque el archivo de `docs/business-rules/`
-correspondiente (y, para `trips`, `costing`, `reservations` y `payments`, su diagrama en
-`docs/diagrams/`). El mensaje de error nombra el archivo exacto que falta, no
+`trips`, `costing`, `reservations`, `payments`, `notifications`, `rbac` o
+`customers`, exige que el mismo PR también toque el archivo de
+`docs/business-rules/` correspondiente (y, para `trips`, `costing`,
+`reservations`, `payments` y `customers`, su diagrama en `docs/diagrams/`). El mensaje de error nombra el archivo exacto que falta, no
 sólo que la regla se incumplió. Un módulo de dominio sin fila en la tabla
 (por ahora `identity`, `staff`, `audit`) no dispara el requisito, pero sí una
 advertencia no bloqueante que invita a revisar si necesita una entrada aquí.

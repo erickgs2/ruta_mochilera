@@ -44,6 +44,7 @@ jobs:
           payments:docs/business-rules/payments.md:docs/diagrams/payment-flow.md
           notifications:docs/business-rules/notifications.md:
           rbac:docs/business-rules/rbac.md:
+          customers:docs/business-rules/customers.md:docs/diagrams/counter-sale.md
           "
 
           fail=0
@@ -69,7 +70,7 @@ jobs:
           # cannot know whether it needs a docs file, so this only asks the
           # author to check, rather than failing the build over a judgment
           # call the guard cannot make.
-          KNOWN_MODULES="trips costing reservations payments notifications rbac"
+          KNOWN_MODULES="trips costing reservations payments notifications rbac customers"
           for dir in $(printf '%s\n' "$CHANGED" | grep -oE '^libs/domain/[^/]+' | sort -u); do
             mod=$(basename "$dir")
             case " $KNOWN_MODULES " in
