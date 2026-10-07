@@ -4,7 +4,8 @@ import { formatMoney } from '@rm/shared-utils';
 
 /**
  * Compares every reservation's denormalized `paid_cents` against the real
- * sum of its `SUCCEEDED` payments (business rule, §6 of the spec) and alerts
+ * sum of its `SUCCEEDED` payments, minus what a price decrease moved to the
+ * customer's credit, (business rule, §6 of the spec) and alerts
  * the administrators who hold `reservation.cancel` when the two disagree.
  *
  * **Deliberately does not self-heal.** A drift is a bug somewhere upstream
@@ -28,13 +29,21 @@ export async function reconcilePaidCents(db: Db, queue: NotificationQueue): Prom
   // be read on either side of a webhook that lands in between -- which, with
   // two independent reads, raised a false PAID_CENTS_MISMATCH. It also
   // returns only the drifting rows instead of every reservation.
+  //
+  // Phase 2B: money a price decrease moved from a reservation to its
+  // customer's credit (`PRICE_DECREASE` entries) left the reservation, so it
+  // is subtracted -- `paid_cents` is SUCCEEDED payments minus those.
   const drifting = await db.$queryRaw<{ id: string; code: string; paidCents: number; actualCents: bigint }[]>`
-    SELECT r.id, r.code, r.paid_cents AS "paidCents",
-           COALESCE(SUM(p.amount_cents) FILTER (WHERE p.status = 'SUCCEEDED'), 0) AS "actualCents"
+    SELECT r.id, r.code, r.paid_cents AS "paidCents", x.actual AS "actualCents"
     FROM reservations r
-    LEFT JOIN payments p ON p.reservation_id = r.id
-    GROUP BY r.id
-    HAVING r.paid_cents <> COALESCE(SUM(p.amount_cents) FILTER (WHERE p.status = 'SUCCEEDED'), 0)
+    CROSS JOIN LATERAL (
+      SELECT
+        COALESCE((SELECT SUM(p.amount_cents) FROM payments p
+                  WHERE p.reservation_id = r.id AND p.status = 'SUCCEEDED'), 0)
+        - COALESCE((SELECT SUM(c.amount_cents) FROM customer_credit_entries c
+                    WHERE c.reservation_id = r.id AND c.kind = 'PRICE_DECREASE'), 0) AS actual
+    ) x
+    WHERE r.paid_cents <> x.actual
   `;
 
   for (const reservation of drifting) {

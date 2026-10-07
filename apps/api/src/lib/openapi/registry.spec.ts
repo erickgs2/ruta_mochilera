@@ -38,6 +38,7 @@ const EVERY_ROUTE_FILE_PATH = [
   '/api/v1/trips/{tripId}/costing',
   '/api/v1/trips/{tripId}/costing/items',
   '/api/v1/trips/{tripId}/costing/items/{itemId}',
+  '/api/v1/trips/{tripId}/price-change',
   '/api/v1/files/{key}',
   '/api/v1/webhooks/stripe',
   '/api/v1/public/trips',

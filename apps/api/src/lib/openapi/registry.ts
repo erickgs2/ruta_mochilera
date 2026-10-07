@@ -8,6 +8,8 @@ import {
   cancelReservationRequestSchema as cancelReservationRequestSchemaImport,
   declineCancellationRequestSchema as declineCancellationRequestSchemaImport,
   adjustCreditRequestSchema as adjustCreditRequestSchemaImport,
+  applyPriceChangeRequestSchema as applyPriceChangeRequestSchemaImport,
+  priceChangePreviewSchema as priceChangePreviewSchemaImport,
   createBranchReservationRequestSchema as createBranchReservationRequestSchemaImport,
   registerCashPaymentRequestSchema as registerCashPaymentRequestSchemaImport,
   acceptInvitationRequestSchema as acceptInvitationRequestSchemaImport,
@@ -112,6 +114,8 @@ const requestCancellationRequestSchema = requestCancellationRequestSchemaImport.
   id: 'RequestCancellationRequest',
 });
 const reservationSchema = reservationSchemaImport.meta({ id: 'Reservation' });
+const priceChangePreviewSchema = priceChangePreviewSchemaImport.meta({ id: 'PriceChangePreview' });
+const applyPriceChangeRequestSchema = applyPriceChangeRequestSchemaImport.meta({ id: 'ApplyPriceChangeRequest' });
 const createBranchReservationRequestSchema = createBranchReservationRequestSchemaImport.meta({
   id: 'CreateBranchReservationRequest',
 });
@@ -1269,6 +1273,47 @@ export function buildOpenApiDocument() {
         'CREDIT_INSUFFICIENT, HOLD_EXPIRED, or INVALID_STATUS_TRANSITION -- the reservation is not live'
       ),
       422: problem('VALIDATION_FAILED, or PAYMENT_EXCEEDS_BALANCE -- more than the reservation still owes'),
+    },
+  });
+
+  // --- price change to existing reservations (Phase 2B) ---------------------
+  registry.registerPath({
+    method: 'get',
+    path: '/api/v1/trips/{tripId}/price-change',
+    tags: ['trips', 'reservations'],
+    security: [{ bearerAuth: [] }],
+    description:
+      "Previews bringing the trip's current price to its HELD and ACTIVE reservations whose frozen total differs " +
+      '(spec §5.6): previous and new total, paid, new balance and credit created, per reservation. ' +
+      'Requires trip.change_price.',
+    request: { params: uuidParam('tripId') },
+    responses: {
+      200: { description: 'Preview', ...json(priceChangePreviewSchema) },
+      401: problem('Missing or invalid access token'),
+      403: problem('PERMISSION_DENIED -- requires trip.change_price'),
+      404: problem('NOT_FOUND'),
+      409: problem('NO_PRICE_CHANGE -- every live reservation already has the current price'),
+    },
+  });
+
+  registry.registerPath({
+    method: 'post',
+    path: '/api/v1/trips/{tripId}/price-change',
+    tags: ['trips', 'reservations'],
+    security: [{ bearerAuth: [] }],
+    description:
+      "Applies the trip's current price to the affected reservations in one transaction under the trip lock: " +
+      'records each change, moves what was paid above a lower total to the customer credit (PRICE_DECREASE), ' +
+      'never changes the status, and sends PRICE_CHANGED with the notice. noticeEs is mandatory. ' +
+      'Requires trip.change_price.',
+    request: { params: uuidParam('tripId'), body: requestBody(applyPriceChangeRequestSchema) },
+    responses: {
+      200: { description: 'Applied', ...json(priceChangePreviewSchema) },
+      401: problem('Missing or invalid access token'),
+      403: problem('PERMISSION_DENIED -- requires trip.change_price'),
+      404: problem('NOT_FOUND'),
+      409: problem('NO_PRICE_CHANGE'),
+      422: problem('VALIDATION_FAILED -- the Spanish notice is missing'),
     },
   });
 

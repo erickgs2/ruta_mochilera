@@ -72,8 +72,30 @@ describe('renderTemplate', () => {
     // an expired OXXO voucher and a payment that landed after its hold had
     // already expired; and Task 19's payment that landed after staff had
     // cancelled the reservation; and the customer's notice that staff
-    // declined their cancellation request.
-    expect(DELIVERY_EVENT_TYPES).toHaveLength(12);
+    // declined their cancellation request; and Phase 2B's price change.
+    expect(DELIVERY_EVENT_TYPES).toHaveLength(13);
+  });
+
+  it('puts the staff notice first and mentions credit only when the change created some (Phase 2B)', () => {
+    const params = {
+      tripName: 'Oaxaca',
+      reservationCode: 'RM-1',
+      notice: 'Subió el hospedaje.',
+      previousTotal: '$5,000.00 MXN',
+      newTotal: '$4,000.00 MXN',
+      balance: '$0.00 MXN',
+    };
+
+    const withoutCredit = renderTemplate('PRICE_CHANGED', 'es', params);
+    const withCredit = renderTemplate('PRICE_CHANGED', 'es', { ...params, credit: '$1,000.00 MXN' });
+    const english = renderTemplate('PRICE_CHANGED', 'en', { ...params, credit: '$1,000.00 MXN' });
+
+    expect(withoutCredit.body.startsWith('Subió el hospedaje.')).toBe(true);
+    expect(withoutCredit.body).toContain('de $5,000.00 MXN a $4,000.00 MXN');
+    expect(withoutCredit.body).not.toContain('saldo a favor');
+    expect(withCredit.body).toContain('$1,000.00 MXN, quedó como saldo a favor');
+    expect(english.body).toContain('is now account credit');
+    expect(english.subject).toContain('Oaxaca');
   });
 
   it('tells the customer their OXXO voucher expired, not that a payment was declined', () => {

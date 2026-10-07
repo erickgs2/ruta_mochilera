@@ -3258,6 +3258,151 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/trips/{tripId}/price-change": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Previews bringing the trip's current price to its HELD and ACTIVE reservations whose frozen total differs (spec §5.6): previous and new total, paid, new balance and credit created, per reservation. Requires trip.change_price. */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    tripId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Preview */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["PriceChangePreview"];
+                    };
+                };
+                /** @description Missing or invalid access token */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description PERMISSION_DENIED -- requires trip.change_price */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description NOT_FOUND */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description NO_PRICE_CHANGE -- every live reservation already has the current price */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        /** @description Applies the trip's current price to the affected reservations in one transaction under the trip lock: records each change, moves what was paid above a lower total to the customer credit (PRICE_DECREASE), never changes the status, and sends PRICE_CHANGED with the notice. noticeEs is mandatory. Requires trip.change_price. */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    tripId: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["ApplyPriceChangeRequest"];
+                };
+            };
+            responses: {
+                /** @description Applied */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["PriceChangePreview"];
+                    };
+                };
+                /** @description Missing or invalid access token */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description PERMISSION_DENIED -- requires trip.change_price */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description NOT_FOUND */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description NO_PRICE_CHANGE */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description VALIDATION_FAILED -- the Spanish notice is missing */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/customers": {
         parameters: {
             query?: never;
@@ -4766,6 +4911,28 @@ export interface components {
         };
         ApplyCreditRequest: {
             amountCents: number;
+        };
+        PriceChangePreview: {
+            /** Format: uuid */
+            tripId: string;
+            priceCents: number;
+            reservations: {
+                /** Format: uuid */
+                reservationId: string;
+                code: string;
+                customerName: string;
+                /** @enum {string} */
+                status: "HELD" | "ACTIVE";
+                previousTotalCents: number;
+                newTotalCents: number;
+                paidCents: number;
+                newBalanceCents: number;
+                creditCents: number;
+            }[];
+        };
+        ApplyPriceChangeRequest: {
+            noticeEs: string;
+            noticeEn?: string;
         };
         CustomerPage: {
             items: {

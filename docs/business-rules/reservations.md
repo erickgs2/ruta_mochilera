@@ -183,7 +183,8 @@ nunca un efecto automático de editar el viaje.
 
 `paid_cents` está desnormalizado a propósito: se actualiza en la misma
 transacción que el `Payment` que lo mueve, pero la verdad siempre son los
-registros `Payment`. Un job nocturno de conciliación (Fase 2A, §6 de la spec,
+registros `Payment` (menos lo que una bajada de precio pasó a saldo a favor,
+ver «Cambio de precio a reservas existentes»). Un job nocturno de conciliación (Fase 2A, §6 de la spec,
 `reconcilePaidCents` — Tarea 8) compara `paid_cents` contra la suma real de
 pagos y avisa si divergen; ver la sección dedicada en `payments.md` y la
 frontera transaccional del aviso en `notifications.md`.
@@ -195,7 +196,46 @@ su `paid_cents` y sus pagos; lo pagado se vuelve saldo a favor del cliente.
 
 Cada cambio de precio explícito que se lleva a una reserva existente queda en
 `reservation_price_changes` (total anterior, total nuevo, aviso y quién lo
-hizo); la regla llega en la Tarea 8 de la Fase 2B.
+hizo).
+
+## Cambio de precio a reservas existentes (Fase 2B, §5.6)
+
+`previewPriceChange` y `applyPriceChange` (`price-change.ts`;
+`GET`/`POST /trips/{tripId}/price-change`, permiso `trip.change_price`).
+Editar el precio en el costeo sigue afectando sólo reservas nuevas; esta
+operación lleva **el precio vigente del viaje** (`price_per_seat_cents`) a sus
+reservas `HELD` y `ACTIVE` cuyo `total_price_cents` congelado es distinto.
+
+- **Vista previa** antes de confirmar: por cada reserva afectada, total
+  anterior, total nuevo, pagado, saldo nuevo y saldo a favor que nacería. Sin
+  ninguna afectada → `NO_PRICE_CHANGE` (409) y no se pide aviso.
+- **Aviso obligatorio**: texto en español (`VALIDATION_FAILED` sin él), inglés
+  opcional. Cada cliente lo recibe en su idioma; un cliente en inglés sin
+  texto en inglés recibe el español.
+- **Una sola transacción**: bloqueo del viaje, luego de cada reserva afectada
+  en orden de `id`, y se vuelven a leer bajo el bloqueo. Un pago simultáneo
+  se aplica completo antes o después, nunca a medias.
+- Por cada reserva:
+  1. `ReservationPriceChange` con el total anterior, el nuevo y el aviso.
+  2. `total_price_cents` toma el precio vigente. **El estado no cambia** (una
+     `ACTIVE` sigue `ACTIVE` aunque ahora deba más) y el anticipo mínimo
+     congelado tampoco.
+  3. Si `paid_cents` supera el nuevo total, **la diferencia sale de la
+     reserva y se vuelve saldo a favor**: `paid_cents` baja en esa cantidad y
+     se escribe un `PRICE_DECREASE` con ese monto (gancho inyectado desde
+     `@rm/domain-payments`). El saldo pendiente queda en cero.
+  4. `AuditLog` `reservation.price_changed` y aviso `PRICE_CHANGED` con el
+     texto del administrador y los números de esa reserva.
+
+**Por qué `paid_cents` baja en el paso 3.** Si se quedara en lo pagado, el
+mismo dinero viviría dos veces: como saldo a favor y como pago de la reserva.
+Una subida de precio posterior calcularía un saldo pendiente menor al real, y
+cancelar la reserva acreditaría también la parte ya acreditada. Con la resta,
+`paid_cents` es siempre lo que la reserva conserva, la cancelación acredita
+exactamente eso, y la conciliación nocturna compara `paid_cents` contra los
+pagos `SUCCEEDED` **menos** los `PRICE_DECREASE` de la reserva. El historial
+de pagos sigue mostrando todos los pagos; el panel muestra el movimiento de
+saldo a favor junto a ellos.
 
 ## Reserva en mostrador (Fase 2B, §5.2)
 

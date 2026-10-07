@@ -330,3 +330,24 @@ export async function creditFromCancellation(
   // which a reservation pointing at them rules out.
   if (!entry.ok) throw new Error(`Cancellation credit refused: ${entry.error.code}`);
 }
+
+/**
+ * The hook `applyPriceChange` (`@rm/domain-reservations`) receives: what a
+ * reservation had paid above its new, lower total becomes the customer's
+ * credit (`PRICE_DECREASE`), in the price change's own transaction. The
+ * caller has already taken that amount off the reservation's `paid_cents`.
+ */
+export async function creditFromPriceDecrease(
+  tx: DbTransactionClient,
+  input: { customerId: string; reservationId: string; amountCents: number; actorId: string }
+): Promise<void> {
+  if (input.amountCents <= 0) return;
+  const entry = await addCreditEntry(tx, {
+    customerId: input.customerId,
+    amountCents: input.amountCents,
+    kind: 'PRICE_DECREASE',
+    reservationId: input.reservationId,
+    actorId: input.actorId,
+  });
+  if (!entry.ok) throw new Error(`Price decrease credit refused: ${entry.error.code}`);
+}

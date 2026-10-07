@@ -130,6 +130,17 @@ A diferencia de `deliverQueuedEmail`, un fallo del proveedor hace fallar el
 job para que pg-boss lo reintente. Reglas completas en `payments.md`,
 «Recibos en PDF».
 
+## `PRICE_CHANGED` (Fase 2B)
+
+Al llevar el precio vigente a reservas existentes (`reservations.md`), cada
+cliente afectado recibe `PRICE_CHANGED` dentro de la misma transacción: el
+**texto que escribió el administrador** primero (en inglés si el cliente usa
+inglés y hay texto en inglés; si no, en español) y después sus propios
+números — folio, total anterior, total nuevo y saldo pendiente. La frase del
+saldo a favor sólo aparece cuando el cambio lo creó: una línea de «$0.00 a
+favor» se leería como error. Es la primera plantilla que se arma con una
+función propia en lugar de `template()`, por esa frase condicional.
+
 ## Un fallo de envío no debe perder la copia de bandeja
 
 Si `EmailProvider.send` falla (dirección mal formada, proveedor caído), la

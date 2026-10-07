@@ -25,7 +25,8 @@ export type DeliveryEventType =
   | 'CANCELLATION_REQUESTED'
   | 'CANCELLATION_DECLINED'
   | 'ORPHAN_PAYMENT'
-  | 'PAID_CENTS_MISMATCH';
+  | 'PAID_CENTS_MISMATCH'
+  | 'PRICE_CHANGED';
 
 /** Iterable form of the union above, for tests and for anything that needs every member at runtime. */
 export const DELIVERY_EVENT_TYPES: readonly DeliveryEventType[] = [
@@ -41,6 +42,7 @@ export const DELIVERY_EVENT_TYPES: readonly DeliveryEventType[] = [
   'CANCELLATION_DECLINED',
   'ORPHAN_PAYMENT',
   'PAID_CENTS_MISMATCH',
+  'PRICE_CHANGED',
 ];
 
 export interface RenderedNotification {
@@ -74,7 +76,32 @@ function template(subject: string, body: string): TemplateFn {
  * member to `DeliveryEventType` without adding its entry here fails to
  * compile, the same mechanism `STATUS_BY_CODE` uses for `DomainErrorCode`.
  */
+/**
+ * `PRICE_CHANGED` (Phase 2B, §5.6): the staff notice first, then the
+ * customer's own numbers. The credit sentence only appears when the change
+ * created credit (`params.credit` present) -- an empty "$0.00 credit" line
+ * would read as a mistake.
+ */
+function priceChanged(locale: Locale): TemplateFn {
+  return (params) => {
+    const es = locale === 'es';
+    const numbers = es
+      ? `Tu reservación {{reservationCode}}: el total pasa de {{previousTotal}} a {{newTotal}}. Tu saldo pendiente ahora es de {{balance}}.`
+      : `Your reservation {{reservationCode}}: the total goes from {{previousTotal}} to {{newTotal}}. Your balance due is now {{balance}}.`;
+    const credit = params['credit']
+      ? es
+        ? ' Lo que ya habías pagado de más, {{credit}}, quedó como saldo a favor en tu cuenta.'
+        : ' What you had already paid above it, {{credit}}, is now account credit.'
+      : '';
+    return {
+      subject: interpolate(es ? 'Cambió el precio de tu viaje a {{tripName}}' : 'The price of your {{tripName}} trip changed', params),
+      body: interpolate(`{{notice}}\n\n${numbers}${credit}`, params),
+    };
+  };
+}
+
 const TEMPLATES: Record<DeliveryEventType, LocaleTemplates> = {
+  PRICE_CHANGED: { es: priceChanged('es'), en: priceChanged('en') },
   HOLD_EXPIRING: {
     es: template(
       'Tu apartado para {{tripName}} está por expirar',

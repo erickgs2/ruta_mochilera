@@ -226,7 +226,9 @@ congelado es distinto.
   1. `ReservationPriceChange` con el total anterior, el nuevo y el aviso.
   2. `total_price_cents` toma el precio vigente.
   3. Si `paid_cents > nuevo total`, la diferencia es saldo a favor (`PRICE_DECREASE`) y el saldo
-     pendiente queda en cero.
+     pendiente queda en cero. **Corrección al implementar (Tarea 8):** esa diferencia también se
+     resta de `paid_cents`, y la conciliación nocturna resta los `PRICE_DECREASE` de la reserva.
+     Sin esa resta, una subida posterior o una cancelación entregarían el mismo dinero dos veces.
   4. Aviso `PRICE_CHANGED` al cliente: el texto del administrador más los datos de su reserva (total
      anterior, total nuevo, saldo nuevo y saldo a favor si nació).
 - El estado de la reserva no cambia: una `ACTIVE` sigue `ACTIVE` aunque ahora deba más. El anticipo

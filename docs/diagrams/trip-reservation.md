@@ -193,6 +193,24 @@ La solicitud del cliente (`requestCancellation`) **no** es una transición: no
 aparece en este diagrama porque no cambia el estado. Sólo pone la reserva en
 la bandeja del personal (sección anterior).
 
+## Cambio de precio a reservas existentes (Fase 2B)
+
+```mermaid
+flowchart TD
+    A["GET /trips/{id}/price-change<br/>(vista previa)"] --> B{"¿Reservas HELD o ACTIVE<br/>con total distinto al precio vigente?"}
+    B -- No --> R0["409 NO_PRICE_CHANGE"]
+    B -- Sí --> C["El administrador escribe el aviso<br/>(español obligatorio, inglés opcional)"]
+    C --> D[("BEGIN")]
+    D --> E["Candado del viaje, luego de cada reserva<br/>en orden de id, y relectura"]
+    E --> F["Por cada reserva: ReservationPriceChange"]
+    F --> G["total_price_cents = precio vigente<br/>(estado y anticipo no cambian)"]
+    G --> H{"¿paid_cents > nuevo total?"}
+    H -- Sí --> I["paid_cents -= diferencia<br/>PRICE_DECREASE por la diferencia (gancho)"]
+    H -- No --> J
+    I --> J["AuditLog + aviso PRICE_CHANGED<br/>en el idioma del cliente"]
+    J --> K[("COMMIT")]
+```
+
 ## Cancelar desde el panel (Tarea 19)
 
 ```mermaid

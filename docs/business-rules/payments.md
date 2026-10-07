@@ -451,6 +451,11 @@ vuelve a alertar. El silencio después del primer aviso se leería como "ya se
 arregló", que es justo lo que no se puede asumir de un bug que nadie ha
 tocado todavía.
 
+
+**Fase 2B.** Lo que una bajada de precio pasó a saldo a favor salió de la
+reserva: la consulta resta los movimientos `PRICE_DECREASE` con su
+`reservation_id`, en la misma sentencia. Ningún otro tipo de movimiento toca
+`paid_cents`.
 ## Mensualidad sugerida
 
 No existe mensualidad obligatoria. El único monto exigible es el anticipo
@@ -541,7 +546,7 @@ y sólo ensucia el historial.
 | Movimiento | Signo | Quién | Cuándo |
 |---|---|---|---|
 | `CANCELLATION` | + | Automático | Al cancelar una reserva con `paid_cents > 0`, y cuando llega dinero para una reserva ya cancelada |
-| `PRICE_DECREASE` | + | Automático | Al bajar el precio por debajo de lo pagado (Tarea 8) |
+| `PRICE_DECREASE` | + | Automático | Al bajar el precio por debajo de lo pagado; ese monto **sale** de `paid_cents` de la reserva (ver `reservations.md`) |
 | `APPLIED` | − | Personal | Aplicar saldo a una reserva viva del mismo cliente |
 | `REFUND` | − | Personal | Se devolvió el dinero **fuera del sistema**; motivo obligatorio |
 | `ADJUSTMENT` | ± | Personal | Corrección o cortesía; motivo obligatorio |

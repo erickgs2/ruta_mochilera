@@ -99,6 +99,11 @@ congelado. Propagar un precio nuevo a reservas ya existentes es una operación
 explícita y distinta (Fase 2), que además exige notificar a las personas
 afectadas — no un efecto secundario silencioso de editar una partida de gasto.
 
+Esa operación existe desde la Fase 2B: «Cambio de precio a reservas
+existentes» en `reservations.md` (`GET`/`POST /trips/{tripId}/price-change`,
+permiso `trip.change_price`). Lleva el `price_per_seat_cents` vigente a las
+reservas vivas, con vista previa y aviso obligatorio.
+
 ## Auditoría
 
 Cada mutación queda registrada en `audit_logs` dentro de la misma transacción

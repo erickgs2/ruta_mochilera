@@ -139,6 +139,26 @@ describe('reconcilePaidCents', () => {
     expect(inboxRow?.renderedBody).toContain(reservation.code);
   });
 
+  it('subtracts what a price decrease moved to the customer credit (Phase 2B)', async () => {
+    const admin = await seedStaffWithPermission(db, 'reservation.cancel');
+    // Paid 150,000; a price decrease moved 50,000 of it to the customer's
+    // credit, so the reservation now holds 100,000.
+    const reservation = await seedReservation(db, { paidCents: 100_000 });
+    await seedSucceededPayment(db, reservation.id, 150_000);
+    await db.customerCreditEntry.create({
+      data: { customerId: reservation.customerId, reservationId: reservation.id, amountCents: 50_000, kind: 'PRICE_DECREASE' },
+    });
+    // Other kinds tied to the reservation do not move its paid_cents.
+    await db.customerCreditEntry.create({
+      data: { customerId: reservation.customerId, reservationId: reservation.id, amountCents: 7_000, kind: 'ADJUSTMENT', reason: 'x' },
+    });
+    const boss = await withTestQueue();
+
+    await reconcilePaidCents(db, boss);
+
+    expect(await db.notificationDelivery.count({ where: { userId: admin } })).toBe(0);
+  });
+
   it('does not correct paid_cents itself -- alerts and stops', async () => {
     const reservation = await seedReservation(db, { paidCents: 150_000 });
     await seedSucceededPayment(db, reservation.id, 100_000);

@@ -154,3 +154,34 @@ export type DeclineCancellationRequest = z.infer<typeof declineCancellationReque
 export type CancelReservationRequest = z.infer<typeof cancelReservationRequestSchema>;
 export type StaffReservationSummaryContract = z.infer<typeof staffReservationSummarySchema>;
 export type StaffReservationDetailContract = z.infer<typeof staffReservationDetailSchema>;
+
+/** One reservation in a price change preview or result, matching `PriceChangeRowDto`. */
+export const priceChangeRowSchema = z.object({
+  reservationId: uuidSchema,
+  code: z.string(),
+  customerName: z.string(),
+  status: z.enum(['HELD', 'ACTIVE']),
+  previousTotalCents: z.number().int(),
+  newTotalCents: z.number().int(),
+  paidCents: z.number().int(),
+  newBalanceCents: z.number().int(),
+  creditCents: z.number().int(),
+});
+
+export const priceChangePreviewSchema = z.object({
+  tripId: uuidSchema,
+  priceCents: z.number().int(),
+  reservations: z.array(priceChangeRowSchema),
+});
+
+/**
+ * The body of `POST /api/v1/trips/{tripId}/price-change` (Phase 2B): the
+ * notice every affected customer reads. Spanish is mandatory.
+ */
+export const applyPriceChangeRequestSchema = z.object({
+  noticeEs: z.string().trim().min(1).max(2000),
+  noticeEn: z.string().trim().max(2000).optional(),
+});
+
+export type PriceChangePreviewContract = z.infer<typeof priceChangePreviewSchema>;
+export type ApplyPriceChangeRequest = z.infer<typeof applyPriceChangeRequestSchema>;
