@@ -163,6 +163,13 @@ no prosa, y es lo que una persona buscaría en el panel de Stripe.
   escrito en los dos idiomas a la vez. El personal recibe además
   `ORPHAN_PAYMENT`, como en el caso del apartado vencido.
 
+  **Fase 2B:** el dinero ya no queda pendiente de decisión: el webhook lo
+  acredita como saldo a favor del cliente en la misma transacción, y el texto
+  de `PAYMENT_AFTER_CANCELLATION` lo dice («quedó como saldo a favor en tu
+  cuenta… puedes verlo en Mi cuenta»). Sigue sin citar saldo pendiente de la
+  reserva. `PAYMENT_AFTER_EXPIRY` no cambia: el dinero de un apartado vencido
+  sigue siendo decisión humana.
+
 - **`CANCELLATION_DECLINED`** (`DeliveryEventType` pasa a 12): el personal
   rechazó la solicitud de cancelación del cliente. Le dice que su reservación
   sigue en pie y por qué (`{{reason}}`, escrito por el personal), dentro de la
