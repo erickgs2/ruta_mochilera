@@ -102,3 +102,15 @@ export function classifyTestSchema(name: string, scope: string): TestSchemaOwner
   if (/^test_.+_w\d+(_jobs)?$/.test(name)) return 'legacy';
   return 'unrelated';
 }
+
+/**
+ * Whether `name` is something the cleanup script may put inside a
+ * `DROP SCHEMA "<name>"`: a test schema (`test_` prefix), a plain
+ * `[a-z0-9_]+` identifier, within PostgreSQL's 63-byte limit. The names come
+ * out of `pg_namespace`, where anything -- a quote included -- can sit, so
+ * this is checked on every name right before its drop, not trusted from the
+ * `LIKE` that listed it.
+ */
+export function isDroppableTestSchema(name: string): boolean {
+  return name.startsWith('test_') && /^[a-z0-9_]+$/.test(name) && Buffer.byteLength(name) <= MAX_IDENTIFIER_BYTES;
+}

@@ -4,6 +4,7 @@ import { createPrismaClient } from '../src/lib/client';
 import {
   classifyTestSchema,
   findWorkspaceRoot,
+  isDroppableTestSchema,
   schemaScope,
   type TestSchemaOwner,
 } from '../src/testing/schema-name';
@@ -77,8 +78,14 @@ async function main(): Promise<void> {
     let dropped = 0;
     const skipped: string[] = [];
     for (const name of doomed) {
+      // `name` is interpolated into the DROP, so it is checked here, name by
+      // name, whatever the listing query matched.
+      if (!isDroppableTestSchema(name)) {
+        console.warn(`Skipping ${JSON.stringify(name)}: not a plain test_[a-z0-9_]+ identifier of at most 63 bytes.`);
+        skipped.push(name);
+        continue;
+      }
       try {
-        // `name` came from pg_namespace and matched a `[a-z0-9_]` pattern.
         await db.$transaction([
           db.$executeRawUnsafe(`SET LOCAL lock_timeout = '${LOCK_TIMEOUT}'`),
           db.$executeRawUnsafe(`DROP SCHEMA IF EXISTS "${name}" CASCADE`),

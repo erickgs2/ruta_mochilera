@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { classifyTestSchema, composeSchemaName, schemaScope, workspaceFingerprint } from './schema-name';
+import { classifyTestSchema, composeSchemaName, isDroppableTestSchema, schemaScope, workspaceFingerprint } from './schema-name';
 
 const MAIN = '/work/ruta_mochilera';
 const WORKTREE = '/work/ruta_mochilera/.worktrees/phase-2b-fixes';
@@ -74,5 +74,15 @@ describe('test schema names', () => {
     expect(classifyTestSchema('test_domain_reservations_w12_jobs', scope)).toBe('legacy');
     expect(classifyTestSchema('test_database_backup', scope)).toBe('unrelated');
     expect(classifyTestSchema('public', scope)).toBe('unrelated');
+  });
+
+  it('are only dropped when they are plain, short test identifiers', () => {
+    expect(isDroppableTestSchema('test_2f4276_api_w0_jobs')).toBe(true);
+    expect(isDroppableTestSchema('test_api_w0')).toBe(true);
+    expect(isDroppableTestSchema('public')).toBe(false);
+    expect(isDroppableTestSchema('test_x"; DROP SCHEMA public; --_w0')).toBe(false);
+    expect(isDroppableTestSchema('test_Upper_w0')).toBe(false);
+    expect(isDroppableTestSchema('test_with space_w0')).toBe(false);
+    expect(isDroppableTestSchema(`test_${'a'.repeat(60)}_w0`)).toBe(false);
   });
 });
