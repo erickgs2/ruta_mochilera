@@ -299,7 +299,9 @@
         "PRICE_DECREASE": "Bajada de precio",
         "APPLIED": "Aplicado a una reserva",
         "REFUND": "Devolución",
-        "ADJUSTMENT": "Ajuste"
+        "ADJUSTMENT": "Ajuste",
+        "EXPIRATION": "Apartado vencido",
+        "REVIVAL": "Reserva reactivada"
       }
     }
   },
@@ -765,7 +767,9 @@
         "PRICE_DECREASE": "Bajada de precio",
         "APPLIED": "Aplicado a una reserva",
         "REFUND": "Devolución",
-        "ADJUSTMENT": "Ajuste"
+        "ADJUSTMENT": "Ajuste",
+        "EXPIRATION": "Apartado vencido",
+        "REVIVAL": "Reserva reactivada"
       },
       "refund": "Registrar devolución",
       "adjust": "Ajustar saldo",

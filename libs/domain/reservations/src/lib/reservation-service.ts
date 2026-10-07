@@ -8,7 +8,7 @@ import {
 import { recordAudit } from '@rm/domain-audit';
 import { notifyAdmins, notifyCustomer, type NotificationQueue } from '@rm/domain-notifications';
 import { organizationTimeZone } from '@rm/domain-settings';
-import { fail, isPastDate, ok, type Result } from '@rm/shared-utils';
+import { fail, isPastDate, ok, resolveBackfillMoments, type Result } from '@rm/shared-utils';
 import { availableSeats, countCommittedSeats, lockTripForCapacity } from './capacity';
 import { generateReservationCode } from './reservation-code';
 
@@ -54,8 +54,13 @@ export interface CreateBackfilledReservationInput {
   tripId: string;
   customerId: string;
   actorId: string;
-  /** When the reservation really happened. */
-  createdAt: Date;
+  /**
+   * When the reservation really happened. A `YYYY-MM-DD` string is a calendar
+   * day as staff picked it: the domain stamps it at noon in the organization's
+   * zone, never after now, and refuses a day after today in that zone
+   * (`resolveBackfillMoments`). A `Date` is an instant already decided.
+   */
+  createdAt: Date | string;
   /** The price agreed back then, when it differs from the trip's current one. */
   totalPriceCents?: number;
   recordPayments?: RecordBackfilledPayments;
@@ -516,7 +521,18 @@ export async function createBackfilledReservation(
   db: Db,
   input: CreateBackfilledReservationInput
 ): Promise<Result<ReservationDto>> {
-  if (input.createdAt.getTime() > Date.now()) return fail('VALIDATION_FAILED', { field: 'createdAt' });
+  let createdAt: Date;
+  if (typeof input.createdAt === 'string') {
+    const stamped = resolveBackfillMoments(
+      [{ field: 'createdAt', date: input.createdAt }],
+      await organizationTimeZone(db)
+    );
+    if (!stamped.ok) return stamped;
+    createdAt = stamped.value[0] as Date;
+  } else {
+    createdAt = input.createdAt;
+  }
+  if (createdAt.getTime() > Date.now()) return fail('VALIDATION_FAILED', { field: 'createdAt' });
   if (input.totalPriceCents !== undefined && (!Number.isInteger(input.totalPriceCents) || input.totalPriceCents < 0)) {
     return fail('VALIDATION_FAILED', { field: 'totalPriceCents' });
   }
@@ -527,7 +543,7 @@ export async function createBackfilledReservation(
       source: 'BRANCH',
       actorId: input.actorId,
       recordPayments: input.recordPayments,
-      backfill: { createdAt: input.createdAt, totalPriceCents: input.totalPriceCents },
+      backfill: { createdAt, totalPriceCents: input.totalPriceCents },
     }
   );
 }

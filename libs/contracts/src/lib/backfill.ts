@@ -4,7 +4,8 @@ import { uuidSchema } from './common';
 /** One historical payment (Phase 2B, §5.7). */
 export const backfilledPaymentSchema = z.object({
   amountCents: z.number().int().positive(),
-  paidAt: z.iso.datetime(),
+  /** A calendar date `YYYY-MM-DD`; the server stamps noon of that day in the organization's time zone. */
+  paidAt: z.iso.date(),
   method: z.enum(['LEGACY', 'CASH']).default('LEGACY'),
   notes: z.string().trim().max(500).optional(),
 });
@@ -13,7 +14,8 @@ export const backfilledPaymentSchema = z.object({
 export const backfillReservationRequestSchema = z.object({
   tripId: uuidSchema,
   customerId: uuidSchema,
-  createdAt: z.iso.datetime(),
+  /** A calendar date `YYYY-MM-DD`, read in the organization's time zone. */
+  createdAt: z.iso.date(),
   totalPriceCents: z.number().int().nonnegative().optional(),
   payments: z.array(backfilledPaymentSchema).max(200).default([]),
   sendReceipts: z.boolean().default(false),

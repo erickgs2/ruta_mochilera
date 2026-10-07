@@ -299,7 +299,9 @@
         "PRICE_DECREASE": "Price decrease",
         "APPLIED": "Applied to a reservation",
         "REFUND": "Refund",
-        "ADJUSTMENT": "Adjustment"
+        "ADJUSTMENT": "Adjustment",
+        "EXPIRATION": "Hold expired",
+        "REVIVAL": "Reservation reactivated"
       }
     }
   },
@@ -765,7 +767,9 @@
         "PRICE_DECREASE": "Price decrease",
         "APPLIED": "Applied to a reservation",
         "REFUND": "Refund",
-        "ADJUSTMENT": "Adjustment"
+        "ADJUSTMENT": "Adjustment",
+        "EXPIRATION": "Hold expired",
+        "REVIVAL": "Reservation reactivated"
       },
       "refund": "Record a refund",
       "adjust": "Adjust credit",

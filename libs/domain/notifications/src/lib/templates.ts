@@ -16,6 +16,7 @@ import type { Locale } from '@rm/db';
 export type DeliveryEventType =
   | 'HOLD_EXPIRING'
   | 'HOLD_EXPIRED'
+  | 'HOLD_EXPIRED_CREDIT'
   | 'PAYMENT_CONFIRMED'
   | 'PAYMENT_FAILED'
   | 'VOUCHER_EXPIRED'
@@ -32,6 +33,7 @@ export type DeliveryEventType =
 export const DELIVERY_EVENT_TYPES: readonly DeliveryEventType[] = [
   'HOLD_EXPIRING',
   'HOLD_EXPIRED',
+  'HOLD_EXPIRED_CREDIT',
   'PAYMENT_CONFIRMED',
   'PAYMENT_FAILED',
   'VOUCHER_EXPIRED',
@@ -120,6 +122,18 @@ const TEMPLATES: Record<DeliveryEventType, LocaleTemplates> = {
     en: template(
       'Your hold for {{tripName}} expired',
       'Your hold for {{tripName}} expired and your seat was released. If you still want to go, create a new reservation.'
+    ),
+  },
+  // Decision 16: the variant of `HOLD_EXPIRED` for a hold that had already
+  // received money -- it says where that money went.
+  HOLD_EXPIRED_CREDIT: {
+    es: template(
+      'Tu apartado para {{tripName}} expiró',
+      'Tu apartado para {{tripName}} expiró y tu lugar fue liberado. Lo que ya habías pagado, {{amount}}, quedó como saldo a favor en tu cuenta: la agencia puede aplicarlo a una nueva reservación o devolvértelo.'
+    ),
+    en: template(
+      'Your hold for {{tripName}} expired',
+      'Your hold for {{tripName}} expired and your seat was released. What you had already paid, {{amount}}, is now credit on your account: the agency can apply it to a new reservation or give it back to you.'
     ),
   },
   PAYMENT_CONFIRMED: {

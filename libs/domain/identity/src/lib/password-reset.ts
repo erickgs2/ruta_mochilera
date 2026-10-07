@@ -1,9 +1,10 @@
 import { createHash, randomBytes } from 'node:crypto';
-import type { Db } from '@rm/db';
+import type { Db, DbTransactionClient } from '@rm/db';
 import type { EmailProvider } from '@rm/email';
 import { fail, ok, type Result } from '@rm/shared-utils';
 import { hashPassword } from './password';
 import { isRateLimited, recordFailedAttempt } from './rate-limiter';
+import { isWriteConflict, lockUser } from './user-lock';
 
 /** Opaque reset token. Only its SHA-256 hash is ever persisted -- same shape as `generateRefreshToken` in `./tokens.ts`. */
 function generateResetToken(): { token: string; tokenHash: string } {
@@ -148,11 +149,35 @@ export async function resetPassword(db: Db, token: string, newPassword: string):
 
   const passwordHash = await hashPassword(newPassword);
 
-  await db.$transaction([
-    db.passwordReset.update({ where: { id: row.id }, data: { consumedAt: new Date() } }),
-    db.user.update({ where: { id: row.userId }, data: { passwordHash } }),
-    db.refreshToken.updateMany({ where: { userId: row.userId, revokedAt: null }, data: { revokedAt: new Date() } }),
-  ]);
+  try {
+    return await db.$transaction(async (tx: DbTransactionClient): Promise<Result<null>> => {
+      // The user row first, like `acceptInvitation`: one lock order, no deadlock.
+      await lockUser(tx, row.userId);
+      // Conditional: two uses of the same token cannot both win.
+      const consumed = await tx.passwordReset.updateMany({
+        where: { id: row.id, consumedAt: null },
+        data: { consumedAt: new Date() },
+      });
+      if (consumed.count === 0) return fail('TOKEN_INVALID');
 
-  return ok(null);
+      const now = new Date();
+      await tx.user.update({ where: { id: row.userId }, data: { passwordHash } });
+      await tx.refreshToken.updateMany({ where: { userId: row.userId, revokedAt: null }, data: { revokedAt: now } });
+      // A counter customer who chooses a password this way has activated the
+      // account (`accepted_terms_at` is NOT stamped: they accepted nothing).
+      // Staff have no customer profile, so this matches no row for them.
+      await tx.customerProfile.updateMany({ where: { userId: row.userId, activatedAt: null }, data: { activatedAt: now } });
+      // The account now has a password: a pending invitation link must not be
+      // able to replace it.
+      await tx.passwordReset.updateMany({
+        where: { userId: row.userId, purpose: 'INVITATION', consumedAt: null },
+        data: { consumedAt: now },
+      });
+      return ok(null);
+    });
+  } catch (error) {
+    // A residual write conflict means someone else used the token first.
+    if (isWriteConflict(error)) return fail('TOKEN_INVALID');
+    throw error;
+  }
 }

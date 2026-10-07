@@ -5540,13 +5540,13 @@ export interface components {
             tripId: string;
             /** Format: uuid */
             customerId: string;
-            /** Format: date-time */
+            /** Format: date */
             createdAt: string;
             totalPriceCents?: number;
             /** @default [] */
             payments: {
                 amountCents: number;
-                /** Format: date-time */
+                /** Format: date */
                 paidAt: string;
                 /**
                  * @default LEGACY
@@ -5563,7 +5563,7 @@ export interface components {
             reservationId: string;
             payments: {
                 amountCents: number;
-                /** Format: date-time */
+                /** Format: date */
                 paidAt: string;
                 /**
                  * @default LEGACY
@@ -5763,7 +5763,7 @@ export interface components {
                 id: string;
                 amountCents: number;
                 /** @enum {string} */
-                kind: "CANCELLATION" | "PRICE_DECREASE" | "APPLIED" | "REFUND" | "ADJUSTMENT";
+                kind: "CANCELLATION" | "PRICE_DECREASE" | "APPLIED" | "REFUND" | "ADJUSTMENT" | "EXPIRATION" | "REVIVAL";
                 /** Format: uuid */
                 reservationId: string | null;
                 /** Format: uuid */
@@ -5778,7 +5778,7 @@ export interface components {
             id: string;
             amountCents: number;
             /** @enum {string} */
-            kind: "CANCELLATION" | "PRICE_DECREASE" | "APPLIED" | "REFUND" | "ADJUSTMENT";
+            kind: "CANCELLATION" | "PRICE_DECREASE" | "APPLIED" | "REFUND" | "ADJUSTMENT" | "EXPIRATION" | "REVIVAL";
             /** Format: uuid */
             reservationId: string | null;
             /** Format: uuid */

@@ -101,6 +101,10 @@ enum CreditEntryKind {
   APPLIED
   REFUND
   ADJUSTMENT
+  /// What a reservation had paid when its hold expired.
+  EXPIRATION
+  /// Taken back from the credit when an expired reservation is revived.
+  REVIVAL
 }
 
 enum PasswordResetPurpose {

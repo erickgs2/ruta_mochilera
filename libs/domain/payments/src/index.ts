@@ -8,3 +8,4 @@ export * from './lib/webhook-handler';
 export * from './lib/receipt-service';
 export * from './lib/counter-payment';
 export * from './lib/backfill';
+export * from './lib/revival';

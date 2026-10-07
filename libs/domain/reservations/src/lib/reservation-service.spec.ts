@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DateTime } from 'luxon';
 import { closeTestDb, prepareTestDb, resetDatabase, withTestDb } from '@rm/db/testing';
 import type { Db, DbTransactionClient } from '@rm/db';
@@ -572,6 +572,57 @@ describe('reservation service', () => {
       });
 
       expect(created).toMatchObject({ ok: false, error: { code: 'VALIDATION_FAILED', details: { field: 'createdAt' } } });
+    });
+
+    it('takes the creation date as a calendar day and stamps it at noon in the organization zone, in the domain', async () => {
+      const trip = await seedTrip(db, { status: 'COMPLETED', paymentDeadline: new Date('2020-01-01') });
+
+      const created = await createBackfilledReservation(db, {
+        tripId: trip.id,
+        customerId: await seedCustomer(db),
+        actorId: staffId,
+        createdAt: '2025-11-03',
+      });
+
+      expect(created.ok).toBe(true);
+      const stored = await db.reservation.findFirstOrThrow({ where: { tripId: trip.id } });
+      expect(stored.createdAt.toISOString()).toBe('2025-11-03T18:00:00.000Z');
+    });
+
+    it('caps a creation date of today, captured before local noon, at the moment of capture', async () => {
+      const trip = await seedTrip(db, { status: 'COMPLETED', paymentDeadline: new Date('2020-01-01') });
+      // 09:00 on 7 October in Mexico City, fixed: the cap only shows before
+      // local noon, so the test must not depend on the hour it runs at.
+      const now = new Date('2026-10-07T15:00:00Z');
+      vi.useFakeTimers({ toFake: ['Date'], now });
+      try {
+        const created = await createBackfilledReservation(db, {
+          tripId: trip.id,
+          customerId: await seedCustomer(db),
+          actorId: staffId,
+          createdAt: '2026-10-07',
+        });
+        expect(created.ok).toBe(true);
+      } finally {
+        vi.useRealTimers();
+      }
+      expect((await db.reservation.findFirstOrThrow({ where: { tripId: trip.id } })).createdAt.toISOString()).toBe(now.toISOString());
+    });
+
+    it('refuses a calendar day after today and text that is not a date, creating nothing', async () => {
+      const trip = await seedTrip(db);
+
+      for (const createdAt of ['2999-01-01', '2026-02-31', 'ayer']) {
+        expect(
+          await createBackfilledReservation(db, {
+            tripId: trip.id,
+            customerId: await seedCustomer(db),
+            actorId: staffId,
+            createdAt,
+          })
+        ).toMatchObject({ ok: false, error: { code: 'VALIDATION_FAILED', details: { field: 'createdAt' } } });
+      }
+      expect(await db.reservation.count({ where: { tripId: trip.id } })).toBe(0);
     });
   });
 

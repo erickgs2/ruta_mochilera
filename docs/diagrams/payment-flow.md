@@ -2,8 +2,11 @@
 
 Diagramas de `libs/domain/payments` y del webhook
 `apps/api/src/app/api/v1/webhooks/stripe`. Las reglas en prosa están en
-`docs/business-rules/payments.md`; la spec correspondiente es §5.3, §5.5 y §7
-de `docs/superpowers/specs/2026-10-03-fase-2a-reservas-y-pagos-diseno.md`.
+`docs/business-rules/payments.md`. Las specs correspondientes son §5.3, §5.5 y
+§7 de `docs/superpowers/specs/2026-10-03-fase-2a-reservas-y-pagos-diseno.md`
+(Fase 2A) y §4.2 y §5.3 a §5.7 de
+`docs/superpowers/specs/2026-10-07-fase-2b-mostrador-diseno.md` (Fase 2B:
+efectivo, recibos, saldo a favor y captura histórica).
 
 Todo el dinero de este flujo es `Int` en centavos MXN.
 
@@ -111,8 +114,9 @@ sequenceDiagram
 
 ```mermaid
 flowchart LR
-    A["Captura histórica<br/>(data.backfill)"] --> B["Ordena los pagos<br/>por paid_at"]
-    B --> C["recordPayment por cada uno:<br/>LEGACY o CASH, SUCCEEDED,<br/>is_backfilled, folio del año de paid_at"]
+    A["Captura histórica<br/>(data.backfill)<br/>fechas YYYY-MM-DD"] --> A2["El dominio fecha cada una (resolveBackfillMoments):<br/>mediodía en la zona de la organización,<br/>sin pasar de ahora; futura = VALIDATION_FAILED"]
+    A2 --> B["Ordena los pagos<br/>por paid_at"]
+    B --> C["recordPayment por cada uno:<br/>LEGACY o CASH (CARD, OXXO o SPEI sólo desde la importación CSV,<br/>provider MANUAL), SUCCEEDED, is_backfilled,<br/>folio del año de paid_at"]
     C --> D{"¿sendReceipts?"}
     D -- No --> E["Sin correo: el PDF se genera<br/>al descargarlo o reenviarlo"]
     D -- Sí --> F["encola SEND_RECEIPT<br/>(misma transacción)"]
@@ -120,6 +124,70 @@ flowchart LR
 
 La importación CSV de pagos (`imports.md`) entra por este mismo camino, con
 `external_ref` único para no importar dos veces el mismo pago.
+
+Los pagos de una misma captura entran **todos o ninguno** (una sola
+transacción), y sobre una reserva ya existente sólo si está viva: sobre una
+`CANCELLED` o `EXPIRED` es `INVALID_STATUS_TRANSITION`. Un `paid_at` en el
+futuro es `VALIDATION_FAILED`.
+
+**El folio sigue el año de `paid_at`, no el orden de captura.** Un pago de
+2025 capturado hoy toma el siguiente número del contador de 2025, que ya estaba
+cerrado: queda fuera del orden de fechas de ese año. Ver
+`docs/decisiones-fase-2b.md`, «por confirmar».
+
+## Efectivo en el mostrador y saldo a favor (Fase 2B)
+
+Son los dos caminos de pago que **no pasan por Stripe**: no hay intento, ni
+ficha, ni webhook. Los confirma la propia acción del personal, que escribe el
+pago ya en `SUCCEEDED` dentro de su transacción (la regla «la verdad del pago
+llega por webhook» es de los pagos en línea). Los dos recorren el mismo
+`recordPayment` que usa el webhook: mismo candado de la reserva, misma
+validación del saldo, mismo folio, misma activación.
+
+```mermaid
+flowchart TD
+    A["Efectivo: POST /admin/reservations/{id}/payments<br/>(payment.register)"] --> L
+    A2["Saldo: POST /admin/reservations/{id}/apply-credit<br/>(payment.credit.apply)"] --> L
+    L[("BEGIN + viaje y reserva FOR UPDATE")] --> S{"¿HELD o ACTIVE?"}
+    S -- No --> E1["INVALID_STATUS_TRANSITION"]
+    S -- Sí --> H{"¿HELD con el apartado vencido o EXPIRED?"}
+    H -- Sí --> E2["Se revive si queda lugar (decisión 13),<br/>si no TRIP_SOLD_OUT"]
+    E2 --> K
+    H -- No --> K{"¿Es saldo a favor?"}
+    K -- Sí --> K2["Candado del cliente + SUM del saldo:<br/>monto > saldo → CREDIT_INSUFFICIENT"]
+    K -- No --> B
+    K2 --> B{"¿monto ≤ saldo pendiente<br/>de la reserva?"}
+    B -- No --> E3["PAYMENT_EXCEEDS_BALANCE"]
+    B -- Sí --> P["recordPayment: Payment SUCCEEDED, provider MANUAL,<br/>método CASH o CREDIT, recorded_by, paid_at = ahora,<br/>folio + foto del saldo, paid_cents += monto"]
+    P --> A3{"¿HELD y paid_cents ≥ anticipo?"}
+    A3 -- Sí --> A4["HELD → ACTIVE, sin apartado<br/>(el mismo updateMany condicionado del webhook)"]
+    A3 -- No --> Q
+    A4 --> Q
+    Q["Saldo: además el movimiento APPLIED (−monto)"] --> R["encola SEND_RECEIPT"]
+    R --> C[("COMMIT")]
+    E1 --> X[("ROLLBACK, nada escrito")]
+    E2 --> X
+    E3 --> X
+```
+
+Un pago `CREDIT` es un **traslado**, no dinero nuevo: el dinero ya entró cuando
+se pagó la reserva que se canceló. Los reportes de ingresos de la Fase 3 deben
+excluirlo para no contarlo dos veces. Ver `customer-credit.md`.
+
+## La conciliación nocturna y el cambio de precio (Fase 2B)
+
+`paid_cents` es desnormalizado a propósito; `reconcilePaidCents` lo compara
+con la verdad. Desde la 2B esa verdad descuenta lo que una bajada de precio
+sacó de la reserva para volverlo saldo a favor.
+
+```mermaid
+flowchart LR
+    A["paid_cents de la reserva"] --> D{"¿Es igual a<br/>pagos SUCCEEDED − PRICE_DECREASE<br/>de esa reserva?"}
+    B["Σ pagos SUCCEEDED<br/>(efectivo, tarjeta, OXXO, SPEI,<br/>saldo, históricos)"] --> D
+    C["Σ movimientos PRICE_DECREASE<br/>de esa reserva"] --> D
+    D -- Sí --> OK["Sin desviación"]
+    D -- No --> M["Aviso PAID_CENTS_MISMATCH<br/>al personal (no se corrige solo)"]
+```
 
 ## Tres métodos, tres tiempos (Tarea 20)
 
@@ -216,7 +284,7 @@ flowchart TD
     E --> F["Aviso PAYMENT_FAILED con el código del proveedor"]
 
     G["payment_intent.canceled"] --> H["Payment → EXPIRED"]
-    H --> I["Sin aviso: lo provocó expireHolds,<br/>que ya mandó HOLD_EXPIRED"]
+    H --> I["Sin aviso: lo provocó expireHolds,<br/>que ya mandó HOLD_EXPIRED o HOLD_EXPIRED_CREDIT"]
 
     J["Cualquier otro tipo de evento"] --> K["Nada, y 200"]
 
@@ -276,3 +344,35 @@ El aviso al personal va **enlazado a la reserva** siempre que se sabe cuál es
 (un segundo pago que excede el saldo, un pago que llegó sobre uno ya dado por
 perdido): es justo cuando alguien tiene que actuar a mano. Antes el aviso
 salía sin enlace aunque el intento la nombrara.
+
+## Cobro en el mostrador sobre un apartado vencido (decisión 13)
+
+```mermaid
+flowchart TD
+    A["Cobro en efectivo o saldo<br/>sobre una reserva"] --> B{"Estado"}
+    B -- "ACTIVE o HELD vigente" --> P["recordPayment (como siempre)"]
+    B -- "CANCELLED" --> X["INVALID_STATUS_TRANSITION"]
+    B -- "HELD vencida o EXPIRED" --> C["Candado del viaje, luego de la reserva"]
+    C --> D{"¿Viaje publicado, sin otra reserva viva del cliente<br/>y con lugar?"}
+    D -- No --> Y["TRIP_NOT_PUBLISHED, DUPLICATE_RESERVATION o TRIP_SOLD_OUT<br/>(no se escribe nada)"]
+    D -- Sí --> E["Reserva → HELD con apartado nuevo"]
+    E --> F{"¿Era EXPIRED?"}
+    F -- Sí --> G["REVIVAL: el saldo que dejó el vencimiento<br/>vuelve a la reserva (CREDIT_INSUFFICIENT si ya se gastó)"]
+    F -- No --> P
+    G --> P
+    P --> H{"¿Cubre el anticipo?"}
+    H -- Sí --> I["ACTIVE"]
+    H -- No --> J["HELD con el apartado nuevo"]
+```
+
+Si cualquier paso falla después de revivir, la transacción entera se revierte.
+
+## El dinero de un apartado que vence (decisión 16)
+
+```mermaid
+flowchart LR
+    A["expireHolds:<br/>HELD vencido → EXPIRED<br/>(UPDATE condicional)"] --> B{"¿paid_cents > 0?"}
+    B -- No --> C["Sólo el aviso HOLD_EXPIRED"]
+    B -- Sí --> D["EXPIRATION al saldo del cliente<br/>por lo que aún no está acreditado<br/>(misma transacción)"]
+    D --> E["La reserva conserva paid_cents y sus pagos;<br/>revivirla en el mostrador toma el saldo de vuelta<br/>con un REVIVAL (ver customer-credit.md)"]
+```

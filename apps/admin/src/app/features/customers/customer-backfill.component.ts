@@ -21,22 +21,15 @@ type TripSummary = components['schemas']['TripSummary'];
 /** A trip a reservation can be captured on: anything but a draft or a cancelled one (spec §5.7). */
 const CAPTURABLE = (trip: TripSummary) => trip.status !== 'DRAFT' && trip.status !== 'CANCELLED';
 
-/** `YYYY-MM-DD` today in the viewer's calendar, the upper bound of every date here. */
-function today(): string {
-  const now = new Date();
-  return new Date(now.getTime() - now.getTimezoneOffset() * 60_000).toISOString().slice(0, 10);
-}
-
-/** A calendar date at local noon, as an ISO instant: never the day before or after. */
-function noonOf(date: string): string {
-  return new Date(`${date}T12:00:00`).toISOString();
-}
-
 /**
  * Historical capture for this customer (Phase 2B, §5.7, `data.backfill`): a
  * reservation as it happened before the system, with its payments, on any
  * trip but a draft or a cancelled one. Receipts stay silent unless staff
  * tick the box -- unticked by default.
+ *
+ * Dates travel as calendar dates (`YYYY-MM-DD`): the API stamps noon of the
+ * day in the organization's time zone and refuses a date after today there,
+ * so the browser's own time zone plays no part.
  */
 @Component({
   selector: 'rm-customer-backfill',
@@ -67,7 +60,6 @@ export class CustomerBackfillComponent {
 
   readonly customerId = input.required<string>();
 
-  readonly maxDate = today();
   readonly saving = signal(false);
 
   readonly trips = toSignal(
@@ -109,14 +101,8 @@ export class CustomerBackfillComponent {
     this.payments.removeAt(index);
   }
 
-  /** Dates after today are refused here as they are by the API. */
-  private hasFutureDate(): boolean {
-    const { createdAt, payments } = this.form.getRawValue();
-    return createdAt > this.maxDate || payments.some((payment) => payment.paidAt > this.maxDate);
-  }
-
   submit(): void {
-    if (this.form.invalid || this.hasFutureDate()) {
+    if (this.form.invalid) {
       this.form.markAllAsTouched();
       return;
     }
@@ -126,11 +112,11 @@ export class CustomerBackfillComponent {
       .reservation({
         tripId: value.tripId,
         customerId: this.customerId(),
-        createdAt: noonOf(value.createdAt),
+        createdAt: value.createdAt,
         ...(value.totalPriceCents > 0 ? { totalPriceCents: value.totalPriceCents } : {}),
         payments: value.payments.map((payment) => ({
           amountCents: payment.amountCents,
-          paidAt: noonOf(payment.paidAt),
+          paidAt: payment.paidAt,
           method: payment.method,
           ...(payment.notes.trim() ? { notes: payment.notes.trim() } : {}),
         })),

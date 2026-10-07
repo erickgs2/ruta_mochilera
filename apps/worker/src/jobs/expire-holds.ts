@@ -1,6 +1,7 @@
 import type { Db, DbTransactionClient } from '@rm/db';
 import { notifyCustomer, type NotificationQueue } from '@rm/domain-notifications';
-import type { CancelPendingPaymentIntents } from '@rm/domain-payments';
+import type { CancelPendingPaymentIntents, CreditFromExpiration } from '@rm/domain-payments';
+import { formatMoney } from '@rm/shared-utils';
 
 /**
  * Expires every `HELD` reservation whose `hold_expires_at` has passed
@@ -24,6 +25,15 @@ import type { CancelPendingPaymentIntents } from '@rm/domain-payments';
  * forces exactly that interleaving, and `payment-service.ts`'s matching
  * hardening on the other side of the same row.
  *
+ * **What the hold had received becomes the customer's credit** (business
+ * rule 5.3, decision 16). When the caller provides `creditFromExpiration` and
+ * the reservation has `paid_cents > 0`, it runs in this same transaction, on
+ * the call that actually expired the reservation, with the `paid_cents` read
+ * after the conditional write took the row lock -- so a payment confirmed a
+ * moment earlier is counted and one a moment later finds an `EXPIRED` row.
+ * Lock order: reservation (the write above), then the customer. The customer
+ * is told the money is now credit (`HOLD_EXPIRED_CREDIT`).
+ *
  * Available seats are derived, never stored (`@rm/domain-reservations`'s
  * `availableSeats`), so flipping the status is the only write this job owes
  * the trip's capacity count -- nothing else reads or writes a counter.
@@ -31,7 +41,8 @@ import type { CancelPendingPaymentIntents } from '@rm/domain-payments';
 export async function expireHolds(
   db: Db,
   queue: NotificationQueue,
-  cancelPendingPaymentIntents?: CancelPendingPaymentIntents
+  cancelPendingPaymentIntents?: CancelPendingPaymentIntents,
+  creditFromExpiration?: CreditFromExpiration
 ): Promise<void> {
   const now = new Date();
   const candidates = await db.reservation.findMany({
@@ -56,13 +67,23 @@ export async function expireHolds(
         },
       });
 
-      const tripName = tripNameFor(reservation.trip, reservation.customer.user.locale);
+      const locale = reservation.customer.user.locale;
+      const tripName = tripNameFor(reservation.trip, locale);
+
+      const credited = Boolean(creditFromExpiration) && reservation.paidCents > 0;
+      if (creditFromExpiration && credited) {
+        await creditFromExpiration(tx, {
+          customerId: reservation.customerId,
+          reservationId: reservation.id,
+          paidCents: reservation.paidCents,
+        });
+      }
 
       await notifyCustomer(tx, queue, {
         customerId: reservation.customerId,
         reservationId: reservation.id,
-        eventType: 'HOLD_EXPIRED',
-        params: { tripName },
+        eventType: credited ? 'HOLD_EXPIRED_CREDIT' : 'HOLD_EXPIRED',
+        params: credited ? { tripName, amount: formatMoney(reservation.paidCents, locale) } : { tripName },
       });
       return true;
     });

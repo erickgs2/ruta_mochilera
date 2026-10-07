@@ -4,7 +4,11 @@ import { db } from '../../../../../../lib/db';
 import { route } from '../../../../../../lib/http/route';
 import { queue } from '../../../../../../lib/queue';
 
-/** Historical payments for a reservation already in the system: all or none (Phase 2B, §5.7). */
+/**
+ * Historical payments for a reservation already in the system: all or none
+ * (Phase 2B, §5.7). The calendar days go to the domain as they came; dating
+ * them (noon in the organization's zone, never in the future) is its rule.
+ */
 export const POST = route<BackfillPaymentsRequest, unknown>({
   permission: 'data.backfill',
   body: backfillPaymentsRequestSchema,
@@ -13,7 +17,7 @@ export const POST = route<BackfillPaymentsRequest, unknown>({
     recordBackfilledPayments(db(), await queue(), {
       reservationId: body.reservationId,
       actorId: actor.userId,
-      payments: body.payments.map((payment) => ({ ...payment, paidAt: new Date(payment.paidAt) })),
+      payments: body.payments,
       sendReceipts: body.sendReceipts,
     }),
 });

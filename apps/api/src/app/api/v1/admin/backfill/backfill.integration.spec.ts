@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { closeTestDb, prepareTestDb, resetDatabase, withTestDb } from '@rm/db/testing';
 import type { TripStatus } from '@rm/db';
 import { SEND_RECEIPT_JOB } from '@rm/jobs';
@@ -82,7 +82,7 @@ describe('historical capture', () => {
       post('/api/v1/admin/backfill/reservations', token, {
         tripId: trip.id,
         customerId,
-        createdAt: '2025-11-03T17:00:00.000Z',
+        createdAt: '2025-11-03',
         totalPriceCents: 450_000,
       }),
       noParams
@@ -97,14 +97,14 @@ describe('historical capture', () => {
       isBackfilled: true,
       source: 'BRANCH',
       totalPriceCents: 450_000,
-      createdAt: new Date('2025-11-03T17:00:00.000Z'),
+      createdAt: new Date('2025-11-03T18:00:00.000Z'),
     });
     const audit = await db.auditLog.findFirst({ where: { action: 'reservation.backfilled', entityId: stored.id } });
     expect(audit).not.toBeNull();
 
     // The one seat is now taken.
     const second = await reservationsRoute(
-      post('/api/v1/admin/backfill/reservations', token, { tripId: trip.id, customerId: await seedCustomer(), createdAt: '2025-11-04T17:00:00.000Z' }),
+      post('/api/v1/admin/backfill/reservations', token, { tripId: trip.id, customerId: await seedCustomer(), createdAt: '2025-11-04' }),
       noParams
     );
     expect(second.status).toBe(409);
@@ -115,7 +115,7 @@ describe('historical capture', () => {
     for (const status of ['DRAFT', 'CANCELLED'] as const) {
       const trip = await seedTrip(status);
       const response = await reservationsRoute(
-        post('/api/v1/admin/backfill/reservations', token, { tripId: trip.id, customerId: await seedCustomer(), createdAt: '2025-11-03T17:00:00.000Z' }),
+        post('/api/v1/admin/backfill/reservations', token, { tripId: trip.id, customerId: await seedCustomer(), createdAt: '2025-11-03' }),
         noParams
       );
       expect(response.status).toBe(409);
@@ -131,10 +131,10 @@ describe('historical capture', () => {
       post('/api/v1/admin/backfill/reservations', token, {
         tripId: trip.id,
         customerId,
-        createdAt: '2025-11-03T17:00:00.000Z',
+        createdAt: '2025-11-03',
         payments: [
-          { amountCents: 200_000, paidAt: '2026-01-15T17:00:00.000Z', method: 'CASH' },
-          { amountCents: 100_000, paidAt: '2025-11-03T17:00:00.000Z' },
+          { amountCents: 200_000, paidAt: '2026-01-15', method: 'CASH' },
+          { amountCents: 100_000, paidAt: '2025-11-03' },
         ],
       }),
       noParams
@@ -156,7 +156,7 @@ describe('historical capture', () => {
     const customerId = await seedCustomer();
     const reservation = await (
       await reservationsRoute(
-        post('/api/v1/admin/backfill/reservations', token, { tripId: trip.id, customerId, createdAt: '2025-11-03T17:00:00.000Z' }),
+        post('/api/v1/admin/backfill/reservations', token, { tripId: trip.id, customerId, createdAt: '2025-11-03' }),
         noParams
       )
     ).json();
@@ -165,8 +165,8 @@ describe('historical capture', () => {
       post('/api/v1/admin/backfill/payments', token, {
         reservationId: reservation.id,
         payments: [
-          { amountCents: 300_000, paidAt: '2025-12-01T17:00:00.000Z' },
-          { amountCents: 300_000, paidAt: '2025-12-02T17:00:00.000Z' },
+          { amountCents: 300_000, paidAt: '2025-12-01' },
+          { amountCents: 300_000, paidAt: '2025-12-02' },
         ],
       }),
       noParams
@@ -177,7 +177,7 @@ describe('historical capture', () => {
     const ok = await paymentsRoute(
       post('/api/v1/admin/backfill/payments', token, {
         reservationId: reservation.id,
-        payments: [{ amountCents: 300_000, paidAt: '2025-12-01T17:00:00.000Z' }],
+        payments: [{ amountCents: 300_000, paidAt: '2025-12-01' }],
         sendReceipts: true,
       }),
       noParams
@@ -186,12 +186,72 @@ describe('historical capture', () => {
     expect(await queue.findJobs(SEND_RECEIPT_JOB, {})).toHaveLength(1);
   });
 
+  describe('dates are calendar dates in the organization time zone', () => {
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it('stamps a record dated today, captured before noon, at the moment of capture and not in the future', async () => {
+      const trip = await seedTrip('IN_PROGRESS');
+      const customerId = await seedCustomer();
+      // 09:00 in Mexico City on 2026-10-07. Only `Date` is frozen.
+      const now = new Date('2026-10-07T15:00:00.000Z');
+      vi.useFakeTimers({ toFake: ['Date'], now });
+
+      const response = await reservationsRoute(
+        post('/api/v1/admin/backfill/reservations', token, {
+          tripId: trip.id,
+          customerId,
+          createdAt: '2026-10-07',
+          payments: [{ amountCents: 100_000, paidAt: '2026-10-07', method: 'CASH' }],
+        }),
+        noParams
+      );
+
+      expect(response.status).toBe(201);
+      const reservation = await response.json();
+      const stored = await db.reservation.findUniqueOrThrow({ where: { id: reservation.id } });
+      const payment = await db.payment.findFirstOrThrow({ where: { reservationId: reservation.id } });
+      expect(stored.createdAt.getTime()).toBeLessThanOrEqual(now.getTime());
+      expect(payment.paidAt!.getTime()).toBeLessThanOrEqual(now.getTime());
+    });
+
+    it('refuses a date after today in the organization time zone', async () => {
+      const trip = await seedTrip('IN_PROGRESS');
+      vi.useFakeTimers({ toFake: ['Date'], now: new Date('2026-10-07T15:00:00.000Z') });
+
+      const response = await reservationsRoute(
+        post('/api/v1/admin/backfill/reservations', token, { tripId: trip.id, customerId: await seedCustomer(), createdAt: '2026-10-08' }),
+        noParams
+      );
+
+      expect(response.status).toBe(422);
+      expect((await response.json()).code).toBe('VALIDATION_FAILED');
+      expect(await db.reservation.count()).toBe(0);
+    });
+
+    it('does not accept an instant where a calendar date is expected', async () => {
+      const trip = await seedTrip('IN_PROGRESS');
+
+      const response = await reservationsRoute(
+        post('/api/v1/admin/backfill/reservations', token, {
+          tripId: trip.id,
+          customerId: await seedCustomer(),
+          createdAt: '2025-11-03T17:00:00.000Z',
+        }),
+        noParams
+      );
+
+      expect(response.status).toBe(422);
+    });
+  });
+
   it('requires data.backfill', async () => {
     const trip = await seedTrip('COMPLETED');
     const other = await loginAs(db, 'desk@agency.test', ['reservation.create', 'payment.register']);
 
     const response = await reservationsRoute(
-      post('/api/v1/admin/backfill/reservations', other, { tripId: trip.id, customerId: await seedCustomer(), createdAt: '2025-11-03T17:00:00.000Z' }),
+      post('/api/v1/admin/backfill/reservations', other, { tripId: trip.id, customerId: await seedCustomer(), createdAt: '2025-11-03' }),
       noParams
     );
 

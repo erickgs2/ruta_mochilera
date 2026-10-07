@@ -6,8 +6,10 @@
 `HELD` (un apartado cuyo `hold_expires_at` pasó sin que se cubriera el depósito
 mínimo, lo dispara el job `expireHolds`). `CANCELLED` se alcanza desde `HELD` o
 desde `ACTIVE`, y sólo por decisión de una persona con `reservation.cancel`
-desde el panel (Tarea 19, ver «Cancelar una reserva»). `CANCELLED` y `EXPIRED`
-son terminales. El diagrama de estados completo está en
+desde el panel (Tarea 19, ver «Cancelar una reserva»). `CANCELLED` es
+terminal. **`EXPIRED` ya no lo es del todo** (Fase 2B, decisión 13): el
+mostrador puede revivir una reserva vencida si queda lugar (ver «Revivir una
+reserva vencida»); sólo `CANCELLED` no revive. El diagrama de estados completo está en
 `docs/diagrams/trip-reservation.md`.
 
 Implementado en el modelo `Reservation` (`libs/db/prisma/schema.prisma`).
@@ -270,6 +272,18 @@ saldo a favor junto a ellos.
 - Con su `created_at` **retroactivo** (nunca futuro), `is_backfilled`,
   `source = BRANCH`, y precio opcional cuando el pactado entonces difiere del
   vigente.
+- **La fecha la interpreta el dominio**: `createdAt` acepta una cadena
+  `YYYY-MM-DD` o un `Date` ya decidido. Con una cadena, `createBackfilledReservation`
+  la fecha a mediodía de ese día en la zona horaria de la organización, sin
+  pasar de ahora; un día posterior a hoy en esa zona, o un texto que no es una
+  fecha, es `VALIDATION_FAILED` (`field: createdAt`) y no se crea nada. Es la
+  misma función que las fechas de los pagos históricos
+  (`resolveBackfillMoments`, ver `payments.md`); la ruta sólo valida la forma.
+  **Prioridad de errores aceptada:** la fecha del `createdAt` se refusa antes de
+  abrir la transacción, pero la de los pagos del gancho se detecta *dentro* de
+  ella, después de las comprobaciones de viaje y cupo. Una captura con un viaje
+  lleno y una fecha de pago inválida responde `TRIP_SOLD_OUT`, no
+  `VALIDATION_FAILED`; en ambos casos no se escribe nada.
 - Nace **`ACTIVE` sin apartado**: es historia, no un apartado que vence. No
   se valida anticipo, fecha límite ni verificación del correo (el cliente
   pudo llegar por importación).
@@ -281,6 +295,42 @@ saldo a favor junto a ellos.
   históricos»). Todo o nada.
 - Se audita `reservation.backfilled` con el actor.
 
+## Revivir una reserva vencida (Fase 2B, decisión 13)
+
+Un cobro en efectivo, o saldo a favor aplicado, en el mostrador sobre una
+reserva con el apartado vencido —un `HELD` pasado de su hora o un `EXPIRED`—
+**ya no responde `HOLD_EXPIRED`**: la reserva revive si queda lugar.
+`reviveReservationSeat` (`libs/domain/reservations/src/lib/revival.ts`) es la
+mitad del lugar; la del dinero vive en `@rm/domain-payments` (`payments.md`) y
+recibe esta función **inyectada**: los dos dominios no se importan.
+
+- `ACTIVE`, o `HELD` con su apartado vigente → no hay nada que revivir; no
+  escribe.
+- `CANCELLED` **no revive** → `INVALID_STATUS_TRANSITION`.
+- `EXPIRED` o `HELD` vencido, bajo el candado del viaje y en este orden de
+  comprobaciones, todas **antes** de escribir: viaje `PUBLISHED`
+  (`TRIP_NOT_PUBLISHED`; el plazo de pago **no** se exige), el cliente sin otra
+  reserva viva en ese viaje (`DUPLICATE_RESERVATION`: el índice parcial
+  permite una sola) y un lugar libre (`TRIP_SOLD_OUT`, sin escribir nada).
+- La reserva queda `HELD` con un apartado nuevo de `hold_ttl_hours` del viaje
+  desde ahora, y se audita `reservation.revived`. El pago que sigue la pasa a
+  `ACTIVE` si cubre el anticipo; si no, el apartado nuevo es lo que el
+  cliente tiene.
+- Los pagos por webhook **no** reviven nada: un pago tardío sobre una `EXPIRED`
+  sigue registrándose sin mover el estado (§5.3).
+
+**Orden de bloqueo: viaje, reserva, cliente**, el mismo de `createReservation`
+y `applyPriceChange`. Por eso el cobro del mostrador toma el candado del viaje
+antes que el de la reserva (el id del viaje no cambia, así que se lee sin
+bloqueo para saber cuál tomar). Dos reservas vencidas que se disputan el último
+lugar, o una revivida contra una reserva nueva, se serializan en ese candado:
+gana una (`revival.spec.ts`, 30 repeticiones cada una).
+
+**Quien llama deshace la revivida.** `reviveReservationSeat` no escribe hasta
+haber pasado todas sus comprobaciones, pero el pago que sigue puede fallar
+(saldo ya gastado, monto mayor al pendiente): el llamador lanza para que la
+transacción entera, revivida incluida, se revierta.
+
 ## Los jobs de fondo: `expireHolds` y `warnExpiringHolds` (Tarea 8)
 
 Implementados en `apps/worker/src/jobs/`, no en `libs/domain/reservations`:
@@ -291,7 +341,7 @@ que existe pg-boss; registra ambas con su cadencia y nada más.
 
 | Job | Cadencia | Qué hace |
 |---|---|---|
-| `expireHolds` | cada 5 minutos | Pasa a `EXPIRED` cada `HELD` con `hold_expires_at` vencido, cancela sus Payment Intents pendientes (ver abajo) y avisa `HOLD_EXPIRED` al cliente. |
+| `expireHolds` | cada 5 minutos | Pasa a `EXPIRED` cada `HELD` con `hold_expires_at` vencido, cancela sus Payment Intents pendientes (ver abajo), pasa lo ya pagado al saldo del cliente (ver abajo) y avisa `HOLD_EXPIRED` —o `HOLD_EXPIRED_CREDIT` si había pagos— al cliente. |
 | `warnExpiringHolds` | cada hora | Avisa `HOLD_EXPIRING` a quien le quede menos de un cuarto del plazo de su apartado. |
 
 ### `expireHolds`: por qué la escritura es condicional, no por `id`
@@ -324,6 +374,32 @@ tercer parámetro opcional, `cancelPendingPaymentIntents`, sin invocarlo aquí
 más que como un hueco inyectado: el mismo stub honesto que la Fase 1 dejó en
 `committedSeats` en vez de inventar una dependencia que esta tarea no puede
 probar de verdad.
+
+**Lo pagado pasa al saldo del cliente (decisión 16, Fase 2B).** `expireHolds`
+recibe un cuarto parámetro opcional, `creditFromExpiration`
+(`@rm/domain-payments`, inyectado por `main.ts`: los dos dominios no se
+importan). Corre **dentro de la transacción de la reserva que sí expiró** —la
+llamada que ganó el `UPDATE` condicional—, con el `paid_cents` leído después de
+que ese `UPDATE` tomó el bloqueo de la fila, y antes del aviso:
+
+- Una reserva con `paid_cents > 0` deja su dinero como saldo a favor
+  (`EXPIRATION`), igual que al cancelar (decisión 6). La reserva `EXPIRED`
+  **conserva** `paid_cents` y sus pagos: es historia contable.
+- El aviso es `HOLD_EXPIRED_CREDIT` —la misma noticia que `HOLD_EXPIRED` más
+  la frase de que el dinero quedó como saldo— y sólo cuando de verdad se
+  acreditó algo.
+- Es **idempotente**: lo que se acredita es `paid_cents` menos el neto de los
+  `EXPIRATION`/`REVIVAL` de esa reserva, así que repetir la pasada, o dos
+  pasadas a la vez, no duplican el crédito (`payments.md`, «Lo pagado de un
+  apartado vencido»).
+- **Una carrera con un pago** se resuelve en la base: si el pago activó la
+  reserva antes, el `UPDATE` condicional no encuentra `HELD` y no se acredita
+  nada; si el job ganó, acredita sólo lo que la reserva había recibido hasta
+  ahí (el pago tardío se registra como siempre, `payments.md`).
+- **Orden de bloqueo: viaje, reserva, cliente** en toda operación que toque
+  más de uno. `expireHolds` toma reserva y luego cliente; nunca el viaje.
+- Sin llamada de red dentro de la transacción: cancelar los Payment Intents
+  sigue ocurriendo después del commit.
 
 ### `warnExpiringHolds`: el umbral es relativo al apartado, no fijo
 

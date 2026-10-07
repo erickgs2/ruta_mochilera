@@ -3,10 +3,13 @@ import { hash } from '@node-rs/argon2';
 import { createPrismaClient, type Db } from '@rm/db';
 import { PgBoss } from 'pg-boss';
 // The plan asks for the expiry to be forced "by running expireHolds directly":
-// the job function itself, not a copy of its query. It lives in apps/worker
-// because it is the worker's job; the E2E suite is the one place outside
-// that app allowed to reach for it.
-import { expireHolds } from '../../../worker/src/jobs/expire-holds';
+// the job itself, not a copy of its query. It lives in apps/worker because it
+// is the worker's job; the E2E suite is the one place outside that app allowed
+// to reach for it. It runs `runExpireHolds`, the composition `main.ts` uses --
+// with the credit of an expired hold's payments injected -- so the E2E world
+// expires holds exactly as production does (omitting the credit here would
+// test a job the worker never runs).
+import { runExpireHolds } from '../../../worker/src/jobs/run-expire-holds';
 import { API_URL, E2E_DATABASE_URL, FAKE_WEBHOOK_SECRET } from './e2e-env';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -172,7 +175,7 @@ export async function expireHoldNow(reservationId: string): Promise<void> {
   const boss = new PgBoss({ connectionString: E2E_DATABASE_URL });
   await boss.start();
   try {
-    await expireHolds(db(), boss);
+    await runExpireHolds(db(), boss);
   } finally {
     await boss.stop({ graceful: false });
   }

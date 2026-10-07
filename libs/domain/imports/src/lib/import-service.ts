@@ -5,7 +5,7 @@ import { createBackfilledPaymentsHook, recordBackfilledPayments, type ReceiptQue
 import { createBackfilledReservation } from '@rm/domain-reservations';
 import { organizationTimeZone } from '@rm/domain-settings';
 import { APPLY_IMPORT_JOB, type ApplyImportPayload } from '@rm/jobs';
-import { fail, ok, type DomainError, type Result } from '@rm/shared-utils';
+import { fail, noonOrNow, ok, type DomainError, type Result } from '@rm/shared-utils';
 import { DateTime } from 'luxon';
 import { fromPrisma } from 'pg-boss';
 import { parseCsv } from './csv';
@@ -191,11 +191,6 @@ function isDuplicateRef(error: DomainError): boolean {
   return error.code === 'CONFLICT' && error.details?.['field'] === 'externalRef';
 }
 
-/** Noon of a calendar date in the organization's timezone: never the day before or after. */
-function paidAtFor(date: string, timeZone: string): Date {
-  return DateTime.fromISO(date, { zone: timeZone }).set({ hour: 12 }).toJSDate();
-}
-
 async function applyCustomerRow(db: Db, deps: ApplyImportDeps, row: ImportRowReport, sendEmails: boolean, actorId: string) {
   const values = row.values;
   const created = await createImportedCustomer(
@@ -224,7 +219,7 @@ async function applyPaymentRow(
   const values = row.values;
   const customerId = lookups.customersByEmail.get((values['customer_email'] ?? '').toLowerCase()) as string;
   const trip = lookups.tripsBySlug.get(values['trip_slug'] ?? '') as { id: string };
-  const paidAt = paidAtFor(values['paid_at'] ?? '', context.timeZone);
+  const paidAt = noonOrNow(values['paid_at'] ?? '', context.timeZone);
   const payment = {
     amountCents: parsePesosToCents(values['amount'] ?? '') as number,
     paidAt,

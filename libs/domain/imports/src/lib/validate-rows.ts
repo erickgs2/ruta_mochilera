@@ -1,4 +1,4 @@
-import { DateTime } from 'luxon';
+import { isCalendarDateNotAfter } from '@rm/shared-utils';
 import { parsePesosToCents } from './money';
 import { IMPORT_COLUMNS, OPTIONAL_COLUMNS, type ImportType } from './templates';
 
@@ -70,13 +70,6 @@ const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const PAYMENT_METHODS = ['CASH', 'LEGACY', 'CARD', 'OXXO', 'SPEI'];
 const NOT_ALLOWED_TRIP_STATUSES = ['DRAFT', 'CANCELLED'];
 
-/** A real calendar date written `YYYY-MM-DD`, not after `today`. */
-function validPastDate(value: string, today: string): boolean {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
-  const date = DateTime.fromISO(value, { zone: 'utc' });
-  return date.isValid && value <= today;
-}
-
 /** Splits the file into its header map and data rows, or explains why it cannot. */
 export function readTable(
   type: ImportType,
@@ -114,7 +107,7 @@ function validateCustomer(values: Record<string, string>, lookups: ImportLookups
   else if (phone.replace(/\D/g, '').length < 7) errors.push({ column: 'phone', code: 'INVALID_PHONE' });
   const birthDate = values['birth_date'] ?? '';
   if (!birthDate) errors.push({ column: 'birth_date', code: 'REQUIRED' });
-  else if (!validPastDate(birthDate, lookups.today)) errors.push({ column: 'birth_date', code: 'INVALID_DATE' });
+  else if (!isCalendarDateNotAfter(birthDate, lookups.today)) errors.push({ column: 'birth_date', code: 'INVALID_DATE' });
   const locale = (values['locale'] ?? '').toLowerCase();
   if (locale && locale !== 'es' && locale !== 'en') errors.push({ column: 'locale', code: 'INVALID_LOCALE' });
   return { errors, existing: errors.length === 0 ? lookups.customersByEmail.get(email) : undefined };
@@ -133,7 +126,7 @@ function validatePayment(values: Record<string, string>, lookups: ImportLookups)
   else if (NOT_ALLOWED_TRIP_STATUSES.includes(trip.status)) errors.push({ column: 'trip_slug', code: 'TRIP_NOT_ALLOWED' });
   const paidAt = values['paid_at'] ?? '';
   if (!paidAt) errors.push({ column: 'paid_at', code: 'REQUIRED' });
-  else if (!validPastDate(paidAt, lookups.today)) errors.push({ column: 'paid_at', code: 'INVALID_DATE' });
+  else if (!isCalendarDateNotAfter(paidAt, lookups.today)) errors.push({ column: 'paid_at', code: 'INVALID_DATE' });
   const amount = values['amount'] ?? '';
   if (!amount) errors.push({ column: 'amount', code: 'REQUIRED' });
   else {

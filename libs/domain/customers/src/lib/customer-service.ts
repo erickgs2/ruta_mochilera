@@ -1,9 +1,10 @@
 import { Prisma, uniqueViolationIndex, type CustomerOrigin, type Db, type DbTransactionClient, type Locale, type ReservationStatus } from '@rm/db';
 import { recordAudit } from '@rm/domain-audit';
 import { invitationEmailMessage, issueInvitationToken } from '@rm/domain-identity';
-import { organizationProfile } from '@rm/domain-settings';
+import { organizationProfile, organizationTimeZone } from '@rm/domain-settings';
 import type { EmailProvider } from '@rm/email';
-import { fail, ok, type Result } from '@rm/shared-utils';
+import { fail, isCalendarDateNotAfter, ok, type Result } from '@rm/shared-utils';
+import { DateTime } from 'luxon';
 
 /**
  * Customers at the counter (Phase 2B, business rule 5.1): find them, register
@@ -247,6 +248,11 @@ async function registerCustomer(
   input: CreateBranchCustomerInput,
   options: { sendInvitation: boolean; actorId: string; origin: 'BRANCH' | 'IMPORT' }
 ): Promise<Result<CustomerDetailDto & { invitationSent: boolean }>> {
+  // The same rule as the CSV import: a real date, not after today in the
+  // organization's time zone.
+  const today = DateTime.now().setZone(await organizationTimeZone(db)).toISODate() as string;
+  if (!isCalendarDateNotAfter(input.birthDate, today)) return fail('VALIDATION_FAILED', { field: 'birthDate' });
+
   const email = input.email.trim().toLowerCase();
   const existing = await db.user.findFirst({
     where: { email: { equals: email, mode: 'insensitive' } },
