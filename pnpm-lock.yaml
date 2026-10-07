@@ -73,7 +73,7 @@ importers:
         version: 3.7.2
       next:
         specifier: ~16.3.6
-        version: 16.3.6(@babel/core@8.0.1)(@opentelemetry/api@1.9.1)(@types/node@24.19.0)(babel-plugin-macros@3.1.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(sass@1.101.0)
+        version: 16.3.6(@babel/core@8.0.1)(@opentelemetry/api@1.9.1)(@playwright/test@1.56.1)(@types/node@24.19.0)(babel-plugin-macros@3.1.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(sass@1.101.0)
       pg-boss:
         specifier: ^12.36.0
         version: 12.36.0(@opentelemetry/api@1.9.1)
@@ -134,7 +134,7 @@ importers:
         version: 23.2.1(@babel/traverse@7.29.8)(@swc-node/register@1.11.1(@swc/core@1.15.8(@swc/helpers@0.5.18))(@swc/types@0.1.28)(typescript@6.0.3))(@swc/cli@0.8.1(@swc/core@1.15.8(@swc/helpers@0.5.18))(chokidar@5.0.0))(@swc/core@1.15.8(@swc/helpers@0.5.18))(nx@23.2.1(@swc-node/register@1.11.1(@swc/core@1.15.8(@swc/helpers@0.5.18))(@swc/types@0.1.28)(typescript@6.0.3))(@swc/core@1.15.8(@swc/helpers@0.5.18)))
       '@nx/next':
         specifier: ^23.2.1
-        version: 23.2.1(a40e75956b214b6f9163d48582141454)
+        version: 23.2.1(cf2ed59f94476ff6518ee809566f1525)
       '@nx/vite':
         specifier: ^23.2.1
         version: 23.2.1(fdad05d1295d9cdbfa70fc6c7cc46a07)
@@ -144,6 +144,9 @@ importers:
       '@nx/web':
         specifier: 23.2.1
         version: 23.2.1(c02c3e55397be9bf02f7917bb9904fae)
+      '@playwright/test':
+        specifier: 1.56.1
+        version: 1.56.1
       '@schematics/angular':
         specifier: ~22.1.0
         version: 22.1.9(chokidar@5.0.0)
@@ -3129,6 +3132,11 @@ packages:
     resolution: {integrity: sha512-SEeaJLb3qBNF/OaXnaR1NmmBbFYk1zC0ZH/52fATcRPLFg/p791YrcyFFy44Bo9sLaGuSuLp5Q6axbb/O+v/RA==}
     engines: {node: ^14.18.0 || >=16.0.0}
 
+  '@playwright/test@1.56.1':
+    resolution: {integrity: sha512-vSMYtL/zOcFpvJCW71Q/OEGQb7KYBPAdKh35WNSkaZA75JlAO8ED8UN6GUNTm3drWomcbcqRPFqQbLae8yBTdg==}
+    engines: {node: '>=18'}
+    hasBin: true
+
   '@polka/url@1.0.0-next.29':
     resolution: {integrity: sha512-wwQAWhWSuHaag8c4q/KN/vCoeOJYshAIvMQwD4GpSb3OiZklFfvAgmj0VCBBImRpuF/aFgIRzllXlVX93Jevww==}
 
@@ -5696,6 +5704,11 @@ packages:
   fs.realpath@1.0.0:
     resolution: {integrity: sha512-OO0pH2lK6a0hZnAdau5ItzHPI6pUlvI7jMVnxUQRtw4owF2wk8lOSabtGDCTP4Ggrg2MbGnWO9X8K1t4+fGMDw==}
 
+  fsevents@2.3.2:
+    resolution: {integrity: sha512-xiqMQR4xAeHTuB9uWm+fFRcIOgKBMiOBP+eXiyT7jsgVCq1bkVygt00oASowB7EdtpOHaaPgKt812P9ab+DDKA==}
+    engines: {node: ^8.16.0 || ^10.6.0 || >=11.0.0}
+    os: [darwin]
+
   fsevents@2.3.3:
     resolution: {integrity: sha512-5xoDfX+fL7faATnagmWPpbFtwh/R77WmMMqqHGS65C3vvB0YHrgF+B1YmZ3441tMj5n63k0212XNoJwzlhffQw==}
     engines: {node: ^8.16.0 || ^10.6.0 || >=11.0.0}
@@ -7391,6 +7404,16 @@ packages:
 
   pkg-types@2.3.3:
     resolution: {integrity: sha512-j/lCFdcppV0JxWpCEITdbDltBxPP6cHT+yNJ6Go2OgoSA9518X847X9z0p6LtA4Nc16+eQzCZjRrWanTGvHJ5w==}
+
+  playwright-core@1.56.1:
+    resolution: {integrity: sha512-hutraynyn31F+Bifme+Ps9Vq59hKuUCz7H1kDOcBs+2oGguKkWTU50bBWrtz34OUWmIwpBTWDxaRPXrIXkgvmQ==}
+    engines: {node: '>=18'}
+    hasBin: true
+
+  playwright@1.56.1:
+    resolution: {integrity: sha512-aFi5B0WovBHTEvpM3DzXTUaeN6eN0qWnTkKx4NQaH4Wvcmc153PdaY2UBdSYKaGYw+UyWXSVyxDUg5DoPEttjw==}
+    engines: {node: '>=18'}
+    hasBin: true
 
   plist@3.1.1:
     resolution: {integrity: sha512-ZIfcLJC+7E7FBFnDxm9MPmt7D+DidyQ26lewieO75AdhA2ayMtsJSES0iWzqJQbcVRSrTufQoy0DR94xHue0oA==}
@@ -11840,7 +11863,7 @@ snapshots:
       - nx
       - supports-color
 
-  '@nx/next@23.2.1(a40e75956b214b6f9163d48582141454)':
+  '@nx/next@23.2.1(cf2ed59f94476ff6518ee809566f1525)':
     dependencies:
       '@babel/plugin-proposal-decorators': 7.29.7(@babel/core@8.0.1)
       '@nx/devkit': 23.2.1(nx@23.2.1(@swc-node/register@1.11.1(@swc/core@1.15.8(@swc/helpers@0.5.18))(@swc/types@0.1.28)(typescript@6.0.3))(@swc/core@1.15.8(@swc/helpers@0.5.18)))
@@ -11851,7 +11874,7 @@ snapshots:
       '@phenomnomnominal/tsquery': 6.2.0(typescript@6.0.3)
       copy-webpack-plugin: 14.0.0(webpack@5.111.1(@swc/core@1.15.8(@swc/helpers@0.5.18))(esbuild@0.28.2)(postcss@8.5.28))
       ignore: 7.0.10
-      next: 16.3.6(@babel/core@8.0.1)(@opentelemetry/api@1.9.1)(@types/node@24.19.0)(babel-plugin-macros@3.1.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(sass@1.101.0)
+      next: 16.3.6(@babel/core@8.0.1)(@opentelemetry/api@1.9.1)(@playwright/test@1.56.1)(@types/node@24.19.0)(babel-plugin-macros@3.1.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(sass@1.101.0)
       semver: 7.8.5
       tslib: 2.8.1
       webpack-merge: 5.10.0
@@ -12230,6 +12253,10 @@ snapshots:
     optional: true
 
   '@pkgr/core@0.3.6': {}
+
+  '@playwright/test@1.56.1':
+    dependencies:
+      playwright: 1.56.1
 
   '@polka/url@1.0.0-next.29': {}
 
@@ -15137,6 +15164,9 @@ snapshots:
 
   fs.realpath@1.0.0: {}
 
+  fsevents@2.3.2:
+    optional: true
+
   fsevents@2.3.3:
     optional: true
 
@@ -16771,7 +16801,7 @@ snapshots:
 
   neo-async@2.6.2: {}
 
-  next@16.3.6(@babel/core@8.0.1)(@opentelemetry/api@1.9.1)(@types/node@24.19.0)(babel-plugin-macros@3.1.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(sass@1.101.0):
+  next@16.3.6(@babel/core@8.0.1)(@opentelemetry/api@1.9.1)(@playwright/test@1.56.1)(@types/node@24.19.0)(babel-plugin-macros@3.1.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(sass@1.101.0):
     dependencies:
       '@next/env': 16.3.6
       '@swc/helpers': 0.5.23
@@ -16791,6 +16821,7 @@ snapshots:
       '@next/swc-win32-arm64-msvc': 16.3.6
       '@next/swc-win32-x64-msvc': 16.3.6
       '@opentelemetry/api': 1.9.1
+      '@playwright/test': 1.56.1
       sass: 1.101.0
       sharp: 0.35.5(@types/node@24.19.0)
     transitivePeerDependencies:
@@ -17369,6 +17400,14 @@ snapshots:
       confbox: 0.3.1
       exsolve: 1.1.1
       pathe: 2.0.3
+
+  playwright-core@1.56.1: {}
+
+  playwright@1.56.1:
+    dependencies:
+      playwright-core: 1.56.1
+    optionalDependencies:
+      fsevents: 2.3.2
 
   plist@3.1.1:
     dependencies:

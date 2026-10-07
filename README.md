@@ -110,6 +110,29 @@ es un estado válido en producción, no sólo un recordatorio de desarrollo.
 | `pnpm nx serve worker` | Corre el worker de jobs en modo desarrollo |
 | `pnpm nx run-many -t typecheck lint test build` | Verifica los 25 proyectos del workspace |
 | `pnpm nx test <proyecto>` | Corre las pruebas de un solo proyecto (p. ej. `shared-utils`) |
+| `pnpm nx e2e client-e2e` | Pruebas de extremo a extremo de la app de clientes (Playwright) contra la API y un PostgreSQL reales; ver abajo |
+
+## Pruebas de extremo a extremo
+
+`apps/client-e2e` recorre la app de clientes en un navegador real contra la
+API y PostgreSQL reales: registrarse y verificar con el código, reservar con
+anticipo y pagar hasta quedar `ACTIVE`; un apartado que vence y devuelve su
+lugar; y dos clientes peleando el último lugar.
+
+Cada corrida es determinista: usa su propia base (`rm_e2e`, que se vacía y se
+siembra al empezar), sus propios puertos (API en 3100, app en 4300, para no
+chocar con los servidores de desarrollo) y el proveedor de pagos falso. Los
+pagos se confirman enviando el webhook firmado que mandaría Stripe, que es el
+mismo camino de un pago real. Requiere la base creada una vez:
+
+```bash
+createdb -U rm rm_e2e        # o: psql -c 'create database rm_e2e owner rm'
+pnpm nx e2e client-e2e
+```
+
+En CI corre en un job aparte (`e2e` en `.github/workflows/ci.yml`), con
+PostgreSQL como servicio y Chromium en caché; la corrida completa tarda
+alrededor de un minuto.
 
 ## Documentación
 

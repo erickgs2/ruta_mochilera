@@ -118,6 +118,7 @@ pnpm nx test shared-utils             # una librería
 pnpm db:migrate                       # aplicar migraciones
 pnpm db:seed                          # sembrar permisos, rol y usuario inicial
 pnpm db:seed:demo                     # las 7 rutas de los carteles, para desarrollo
+pnpm nx e2e client-e2e                # extremo a extremo (base rm_e2e, puertos 3100/4300)
 ```
 
 ### Postgres en esta máquina
@@ -125,6 +126,7 @@ pnpm db:seed:demo                     # las 7 rutas de los carteles, para desarr
 - Dev y pruebas corren contra un **PostgreSQL 15 nativo** en `localhost:5432`, no en Docker.
 - `DATABASE_URL=postgresql://rm:rm@localhost:5432/rm_dev`
 - `TEST_DATABASE_URL=postgresql://rm:rm@localhost:5432/rm_test`
+- `E2E_DATABASE_URL=postgresql://rm:rm@localhost:5432/rm_e2e` (por omisión en `apps/client-e2e`)
 - El rol `rm` y ambas bases ya existen en esta máquina.
 - `compose.dev.yml`, `compose.test.yml` y `compose.prod.yml` (`infra/compose/`) son artefactos de despliegue para Raspberry Pi y EC2 y no se ejecutan en esta máquina.
 
