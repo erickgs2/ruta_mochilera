@@ -13,6 +13,14 @@ import { assertSchemaIdentifier } from '../lib/client';
 /** PostgreSQL truncates identifiers longer than this many bytes. */
 const MAX_IDENTIFIER_BYTES = 63;
 
+/**
+ * Put in front of a `TEST_SCHEMA_PREFIX` so that a custom scope can never read
+ * as part of a legacy name: with `TEST_SCHEMA_PREFIX=api` the schema is
+ * `test_custom_api_api_w0`, which `test_api_w0` (the old shared shape) does not
+ * start like. It also keeps a custom scope from passing for a fingerprint.
+ */
+const CUSTOM_SCOPE_MARKER = 'custom_';
+
 /** Length of the workspace fingerprint in a schema name. */
 const FINGERPRINT_LENGTH = 6;
 
@@ -29,11 +37,11 @@ export function workspaceFingerprint(root: string): string {
 
 /**
  * The part of the name that scopes it to one checkout: `TEST_SCHEMA_PREFIX`
- * when set (for a caller that wants a name it can predict), else the
- * workspace fingerprint.
+ * when set (for a caller that wants a name it can predict), behind a
+ * `custom_` marker, else the workspace fingerprint.
  */
 export function schemaScope(root: string, override = process.env['TEST_SCHEMA_PREFIX']): string {
-  return override ? slugify(override) : workspaceFingerprint(root);
+  return override ? `${CUSTOM_SCOPE_MARKER}${slugify(override)}` : workspaceFingerprint(root);
 }
 
 /**

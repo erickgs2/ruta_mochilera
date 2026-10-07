@@ -57,9 +57,11 @@ describe('test schema names', () => {
   });
 
   it('take TEST_SCHEMA_PREFIX in place of the fingerprint', () => {
-    expect(schemaScope(MAIN, 'My-Run 7')).toBe('my_run_7');
+    expect(schemaScope(MAIN, 'My-Run 7')).toBe('custom_my_run_7');
     expect(schemaScope(MAIN, undefined)).toBe(workspaceFingerprint(MAIN));
-    expect(composeSchemaName({ project: 'api', workerId: '0', workspaceRoot: MAIN, scope: 'My-Run 7' })).toBe('test_my_run_7_api_w0');
+    expect(composeSchemaName({ project: 'api', workerId: '0', workspaceRoot: MAIN, scope: schemaScope(MAIN, 'My-Run 7') })).toBe(
+      'test_custom_my_run_7_api_w0'
+    );
   });
 
   it('are classified by owner for the cleanup script', () => {
@@ -74,6 +76,18 @@ describe('test schema names', () => {
     expect(classifyTestSchema('test_domain_reservations_w12_jobs', scope)).toBe('legacy');
     expect(classifyTestSchema('test_database_backup', scope)).toBe('unrelated');
     expect(classifyTestSchema('public', scope)).toBe('unrelated');
+  });
+
+  it('never mistake a legacy schema for one of ours, whatever TEST_SCHEMA_PREFIX says', () => {
+    const scope = schemaScope(MAIN, 'api');
+    const own = composeSchemaName({ project: 'api', workerId: '0', workspaceRoot: MAIN, scope });
+
+    expect(own).toBe('test_custom_api_api_w0');
+    expect(classifyTestSchema(own, scope)).toBe('own');
+    expect(classifyTestSchema('test_api_w0', scope)).toBe('legacy');
+    expect(classifyTestSchema('test_api_w0_jobs', scope)).toBe('legacy');
+    // A custom scope is not a fingerprint either.
+    expect(classifyTestSchema(own, workspaceFingerprint(MAIN))).not.toBe('own');
   });
 
   it('are only dropped when they are plain, short test identifiers', () => {

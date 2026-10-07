@@ -14,7 +14,10 @@ Vitest worker its own schema inside it, named
 hash of the workspace root, so the main working tree and each git worktree
 get different schemas and can test in parallel without truncating each
 other's rows. Set `TEST_SCHEMA_PREFIX` to use a name you choose instead of
-the fingerprint.
+the fingerprint; it goes behind a `custom_` marker (`TEST_SCHEMA_PREFIX=api`
+gives `test_custom_api_<project>_w<id>`), so a custom scope can never be
+taken for the old shared names (`test_api_w0`) or for another checkout's
+fingerprint.
 
 Schemas are reused between runs (that is what keeps `prepareTestDb()` cheap),
 so they pile up. To clean up:
