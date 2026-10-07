@@ -6,12 +6,12 @@ agrupadas por quién las tomó. Las del diseño original están en la spec
 «Cambios respecto del diseño general»); aquí van las que se tomaron o se
 confirmaron después, al implementar.
 
-**Estado:** las Tareas 1 a 14 están en `main` (`934c971`). La Tarea 15 (extremo
-a extremo, documentación y cierre) y los arreglos que dejó la validación están
-integrados en `phase-2b/integration`, pendiente de pasar a `main`. Las
-decisiones 13 y 16 (revivir un apartado vencido y acreditar lo pagado al
-vencer) están **implementadas**; la 17 es un caso inerte conocido. Quedan
-abiertas las limitaciones de «Pendientes» y la interpretación de la decisión 7.
+**Estado:** la Fase 2B está en `main` (merge `2494855`): las Tareas 1 a 14, la
+Tarea 15 (extremo a extremo, documentación y cierre) y los arreglos que dejó la
+validación. Las decisiones 13 y 16 (revivir un apartado vencido y acreditar lo
+pagado al vencer) están **implementadas**; la 17 es un caso inerte conocido; la
+7 quedó confirmada por el dueño. Quedan abiertas las limitaciones de
+«Pendientes» y la decisión 4, que espera al build nativo.
 
 ## Índice
 
@@ -20,10 +20,10 @@ abiertas las limitaciones de «Pendientes» y la interpretación de la decisión
 | 1 | Una bajada de precio resta lo pagado de más de la reserva | Decidida |
 | 2 | Las importaciones CSV corren en el worker, con progreso y sin reintento automático | Decidida |
 | 3 | Los recibos son privados | Decidida |
-| 4 | La descarga del recibo en la app de Capacitor queda pendiente | Pendiente |
+| 4 | La descarga del recibo en la app de Capacitor queda pendiente | Pendiente hasta el build nativo (aceptado) |
 | 5 | Las Tareas 1 a 14 entraron directo a `main`, sin pull request | Decidida |
 | 6 | El dinero de una reserva cancelada se vuelve saldo a favor | Registrada en la spec |
-| 7 | Quien cambia el saldo es la agencia, no el viajero | Interpretación por confirmar |
+| 7 | Quien cambia el saldo es la agencia, no el viajero | Confirmada |
 | 8 | El saldo vive por cliente, en un libro de movimientos | Registrada en la spec |
 | 9 | El folio del recibo sale de un contador por año | Registrada en la spec |
 | 10 | Cambiar el precio de un viaje y llevarlo a las reservas son dos operaciones | Registrada en la spec |
@@ -107,6 +107,9 @@ Capacitor eso probablemente no basta: guardar o compartir un archivo en el
 teléfono necesita un plugin nativo. Se deja pendiente. El recibo adjunto por correo
 (`SEND_RECEIPT`) no depende de esto.
 
+**Aceptado por el dueño (2026-10-07):** se resuelve cuando exista el build
+nativo de la app; hasta entonces no se toca. No bloquea el cierre de la fase.
+
 ### 5. Las Tareas 1 a 14 entraron directo a `main`, sin pull request
 
 A diferencia de la Fase 2A (que se integró con el PR #1), las Tareas 1 a 14 de
@@ -154,7 +157,12 @@ La respuesta del dueño dice que «el cliente» puede aumentar o disminuir su
 saldo. Se interpretó como **la agencia** (el personal con
 `payment.credit.apply`), siempre con motivo y en `AuditLog`: que un viajero
 edite su propio saldo no tiene sentido contable. El viajero lo ve en «Mi
-cuenta», sólo lectura. **Interpretación pendiente de confirmar por el dueño.**
+cuenta», sólo lectura.
+
+**Confirmada por el dueño (2026-10-07).** Quien cambia el saldo a favor es el
+**personal de la agencia**, por motivos que ocurren fuera de la plataforma:
+promociones, concursos o devoluciones en efectivo en la sucursal. El viajero
+nunca lo modifica. Cada movimiento lleva su motivo y queda en `AuditLog`.
 
 ### 8. El saldo vive por cliente, en un libro de movimientos
 

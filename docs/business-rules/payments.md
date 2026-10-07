@@ -623,12 +623,13 @@ y sólo ensucia el historial.
 | `REFUND` | − | Personal | Se devolvió el dinero **fuera del sistema**; motivo obligatorio |
 | `ADJUSTMENT` | ± | Personal | Corrección o cortesía; motivo obligatorio |
 
-**Decisión del dueño del producto (2026-10-07), con interpretación.** «El
-dinero de una reserva cancelada se vuelve saldo a favor; la devolución se
-hace fuera del sistema y después se puede aumentar o disminuir el saldo a
-voluntad». Lo interpretamos como: **quien modifica el saldo es el personal de
-la agencia**, nunca el viajero desde la app — `REFUND` registra la devolución
-y `ADJUSTMENT` cubre el «aumentar o disminuir a voluntad», siempre con motivo.
+**Decisión del dueño del producto (2026-10-07), confirmada.** «El dinero de
+una reserva cancelada se vuelve saldo a favor; la devolución se hace fuera del
+sistema y después se puede aumentar o disminuir el saldo a voluntad». **Quien
+modifica el saldo es el personal de la agencia**, nunca el viajero desde la
+app, por motivos que ocurren fuera de la plataforma (promociones, concursos o
+devoluciones en efectivo en la sucursal) — `REFUND` registra la devolución y
+`ADJUSTMENT` cubre el «aumentar o disminuir a voluntad», siempre con motivo.
 
 ### Bajo bloqueo, nunca negativo
 
