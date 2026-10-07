@@ -254,3 +254,23 @@ se actualizan en el mismo commit que el código; hasta entonces describen el
 comportamiento anterior (`HOLD_EXPIRED`). Se registra aquí primero para que la
 decisión no se pierda. Sustituye a la observación original sobre `HOLD_EXPIRED`
 (la spec §5.3 sólo exigía `HELD` o `ACTIVE`).
+
+## Casos inertes conocidos
+
+### 17. Reenviar una invitación mientras el cliente restablece su contraseña
+
+`issueInvitationToken` (reenvío de la invitación) **no toma el bloqueo del
+usuario** que sí toman `acceptInvitation` y `resetPassword`. No hay
+interbloqueo posible: `password_resets.user_id` no tiene llave foránea, así que
+insertar el token nuevo no necesita bloquear la fila del usuario.
+
+Lo que sí puede pasar: si el reenvío corre justo después de que el
+restablecimiento consumió las invitaciones pendientes, queda una invitación
+viva en una cuenta que ya tiene contraseña. **Es inerte**: `acceptInvitation`
+la rechaza con `TOKEN_INVALID` porque la escritura es condicional a «sin
+contraseña» (`customers.md`, sección Invitación). Sólo deja una fila sin
+consumir hasta que venza.
+
+Se decidió no cerrarlo ahora. Si algún día estorba (por ejemplo, un reporte de
+invitaciones pendientes), basta con que `sendCustomerInvitation` bloquee al
+usuario y vuelva a comprobar que sigue sin contraseña dentro de su transacción.
