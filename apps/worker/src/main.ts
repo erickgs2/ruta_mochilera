@@ -4,6 +4,7 @@ import { PgBoss } from 'pg-boss';
 import { createPrismaClient } from '@rm/db';
 import { loadEnv } from '@rm/shared-utils';
 import { createEmail } from '@rm/email';
+import { applyImport } from '@rm/domain-imports';
 import { deliverQueuedEmail } from '@rm/domain-notifications';
 import { createCancelPendingPaymentIntents } from '@rm/domain-payments';
 import { organizationTimeZone } from '@rm/domain-settings';
@@ -11,12 +12,14 @@ import { createPaymentProvider } from '@rm/payments-stripe';
 import { PdfLibReceiptRenderer } from '@rm/receipts';
 import { createStorage } from '@rm/storage';
 import {
+  APPLY_IMPORT_JOB,
   EXPIRE_HOLDS_JOB,
   JOB_NAMES,
   RECONCILE_PAID_CENTS_JOB,
   SEND_NOTIFICATION_EMAIL_JOB,
   SEND_RECEIPT_JOB,
   WARN_EXPIRING_HOLDS_JOB,
+  type ApplyImportPayload,
   type SendNotificationEmailPayload,
   type SendReceiptPayload,
 } from '@rm/jobs';
@@ -108,6 +111,14 @@ async function main(): Promise<void> {
       // Thrown so pg-boss retries: the PDF is already stored, only the email
       // is missing (see `sendReceipt`).
       if (!result.ok) throw new Error(`Receipt for payment ${job.data.paymentId} not sent: ${result.error.code}`);
+    }
+  });
+  await boss.work<ApplyImportPayload>(APPLY_IMPORT_JOB, async (jobs) => {
+    for (const job of jobs) {
+      // A failed row is in the report, not an error; only a batch that is
+      // missing or not APPLYING comes back failed, and retrying would not help.
+      const result = await applyImport(db, { queue: boss, mail: { email, clientAppUrl: env.clientAppUrl } }, job.data);
+      if (!result.ok) console.warn(`[worker] import ${job.data.batchId} not applied: ${result.error.code}`);
     }
   });
 

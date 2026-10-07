@@ -219,6 +219,34 @@ export async function createBranchCustomer(
   input: CreateBranchCustomerInput,
   options: { sendInvitation: boolean; actorId: string }
 ): Promise<Result<CustomerDetailDto & { invitationSent: boolean }>> {
+  return registerCustomer(db, mail, input, { ...options, origin: 'BRANCH' });
+}
+
+/**
+ * A customer from a CSV import (Phase 2B, §5.8): the same registration with
+ * `origin = IMPORT`. An email that already belongs to a customer is not an
+ * error here -- the row is reported as `EXISTS` with that customer's id.
+ */
+export async function createImportedCustomer(
+  db: Db,
+  mail: CustomerMailContext,
+  input: CreateBranchCustomerInput,
+  options: { sendInvitation: boolean; actorId: string }
+): Promise<Result<{ status: 'CREATED' | 'EXISTS'; customerId: string }>> {
+  const result = await registerCustomer(db, mail, input, { ...options, origin: 'IMPORT' });
+  if (result.ok) return ok({ status: 'CREATED', customerId: result.value.id });
+  if (result.error.code === 'CUSTOMER_ALREADY_EXISTS' && typeof result.error.details?.['customerId'] === 'string') {
+    return ok({ status: 'EXISTS', customerId: result.error.details['customerId'] });
+  }
+  return result;
+}
+
+async function registerCustomer(
+  db: Db,
+  mail: CustomerMailContext,
+  input: CreateBranchCustomerInput,
+  options: { sendInvitation: boolean; actorId: string; origin: 'BRANCH' | 'IMPORT' }
+): Promise<Result<CustomerDetailDto & { invitationSent: boolean }>> {
   const email = input.email.trim().toLowerCase();
   const existing = await db.user.findFirst({
     where: { email: { equals: email, mode: 'insensitive' } },
@@ -244,7 +272,7 @@ export async function createBranchCustomer(
               fullName: input.fullName.trim(),
               phone: input.phone.trim(),
               birthDate: new Date(`${input.birthDate}T00:00:00Z`),
-              origin: 'BRANCH',
+              origin: options.origin,
               invitedAt: options.sendInvitation ? new Date() : null,
             },
           },
@@ -255,7 +283,7 @@ export async function createBranchCustomer(
         action: 'customer.created',
         entityType: 'User',
         entityId: user.id,
-        after: { email, origin: 'BRANCH', fullName: input.fullName.trim(), invited: options.sendInvitation },
+        after: { email, origin: options.origin, fullName: input.fullName.trim(), invited: options.sendInvitation },
       });
       const invitation = options.sendInvitation ? await issueInvitationToken(tx, user.id) : undefined;
       return { userId: user.id, invitation };

@@ -21,6 +21,7 @@ esté actualizado **en el mismo commit**.
 | `libs/domain/notifications/**` | `docs/business-rules/notifications.md` |
 | `libs/domain/rbac/**` | `docs/business-rules/rbac.md` |
 | `libs/domain/customers/**` | `docs/business-rules/customers.md` y `docs/diagrams/counter-sale.md` |
+| `libs/domain/imports/**` | `docs/business-rules/imports.md` |
 
 Los diagramas se escriben en **Mermaid dentro de archivos Markdown**, nunca como
 imágenes: se versionan como texto y un diff muestra qué cambió en la regla.
@@ -59,8 +60,8 @@ SPEI, que además tardan horas o días. Ver `docs/diagrams/payment-flow.md`.
 ### `apps/worker`: los trabajos en segundo plano
 
 `expireHolds`, `warnExpiringHolds`, `reconcilePaidCents`, el envío de correos
-(la bandeja de salida de avisos) y el de recibos en PDF (`SEND_RECEIPT`) corren
-en `apps/worker`, un proceso aparte de
+(la bandeja de salida de avisos), el de recibos en PDF (`SEND_RECEIPT`) y la
+aplicación de importaciones CSV (`APPLY_IMPORT`) corren en `apps/worker`, un proceso aparte de
 la API sobre pg-boss. Está separado a propósito: cada despliegue de Next.js
 mata los procesos en curso, y un `expireHolds` a medias es justo el trabajo que
 un reinicio no debe interrumpir. Cada job es una función pura del cliente de

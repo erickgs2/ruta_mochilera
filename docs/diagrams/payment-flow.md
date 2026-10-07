@@ -118,6 +118,9 @@ flowchart LR
     D -- Sí --> F["encola SEND_RECEIPT<br/>(misma transacción)"]
 ```
 
+La importación CSV de pagos (`imports.md`) entra por este mismo camino, con
+`external_ref` único para no importar dos veces el mismo pago.
+
 ## Tres métodos, tres tiempos (Tarea 20)
 
 Los tres métodos terminan igual —la verdad del pago llega **sólo** por el

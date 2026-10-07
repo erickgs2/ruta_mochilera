@@ -3573,6 +3573,324 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/imports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description The latest import batches, newest first, without their reports. Requires import.manage. */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Batches */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ImportBatchSummary"][];
+                    };
+                };
+                /** @description Missing or invalid access token */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description PERMISSION_DENIED -- requires import.manage */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        /** @description Uploads a CSV (customers or payments, spec §5.8) and validates it row by row without writing anything but the batch. The answer is the preview: each row VALID, INVALID (with column and code) or EXISTS. A file missing required columns is stored FAILED. Requires import.manage. */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["ValidateImportRequest"];
+                };
+            };
+            responses: {
+                /** @description Validated batch with its preview */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ImportBatch"];
+                    };
+                };
+                /** @description Missing or invalid access token */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description PERMISSION_DENIED -- requires import.manage */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description IMPORT_TOO_LARGE -- more than 5,000 rows or 5 MB */
+                413: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description VALIDATION_FAILED */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/imports/{batchId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description One batch with its full report. Requires import.manage. */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    batchId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Batch */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ImportBatch"];
+                    };
+                };
+                /** @description Missing or invalid access token */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description PERMISSION_DENIED -- requires import.manage */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description NOT_FOUND */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/imports/{batchId}/apply": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Confirms a validated batch: VALIDATED -> APPLYING, and the worker applies it row by row (a failing row does not stop the others) until APPLIED. Requires import.manage. */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    batchId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Applying */
+                202: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ImportBatch"];
+                    };
+                };
+                /** @description Missing or invalid access token */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description PERMISSION_DENIED -- requires import.manage */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description NOT_FOUND */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description IMPORT_ALREADY_APPLIED, or INVALID_STATUS_TRANSITION -- a FAILED file */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/imports/templates/{type}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Downloads a template: header row and one example row, UTF-8 CSV. type is customers or payments. */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    type: "customers" | "payments";
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description The template */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/csv": string;
+                    };
+                };
+                /** @description Missing or invalid access token */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description PERMISSION_DENIED -- requires import.manage */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description NOT_FOUND -- unknown type */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/customers": {
         parameters: {
             query?: never;
@@ -5143,6 +5461,71 @@ export interface components {
             }[];
             /** @default false */
             sendReceipts: boolean;
+        };
+        ImportBatchSummary: {
+            /** Format: uuid */
+            id: string;
+            /** @enum {string} */
+            type: "CUSTOMERS" | "PAYMENTS";
+            fileName: string;
+            /** @enum {string} */
+            status: "VALIDATED" | "APPLYING" | "APPLIED" | "FAILED";
+            rowsTotal: number;
+            rowsOk: number;
+            rowsFailed: number;
+            sendEmails: boolean;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            appliedAt: string | null;
+        };
+        ImportBatch: {
+            /** Format: uuid */
+            id: string;
+            /** @enum {string} */
+            type: "CUSTOMERS" | "PAYMENTS";
+            fileName: string;
+            /** @enum {string} */
+            status: "VALIDATED" | "APPLYING" | "APPLIED" | "FAILED";
+            rowsTotal: number;
+            rowsOk: number;
+            rowsFailed: number;
+            sendEmails: boolean;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            appliedAt: string | null;
+            report: {
+                columns: string[];
+                fileErrors: {
+                    code: string;
+                    column?: string;
+                }[];
+                rows: {
+                    row: number;
+                    values: {
+                        [key: string]: string;
+                    };
+                    /** @enum {string} */
+                    status: "VALID" | "INVALID" | "EXISTS";
+                    errors: {
+                        column: string;
+                        code: string;
+                    }[];
+                    /** @enum {string} */
+                    outcome?: "CREATED" | "EXISTS" | "FAILED";
+                    outcomeCode?: string;
+                    entityId?: string;
+                }[];
+            };
+        };
+        ValidateImportRequest: {
+            /** @enum {string} */
+            type: "CUSTOMERS" | "PAYMENTS";
+            fileName: string;
+            content: string;
+            /** @default false */
+            sendEmails: boolean;
         };
         CustomerPage: {
             items: {

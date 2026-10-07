@@ -1,0 +1,17 @@
+{
+  "name": "imports",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/domain/imports/src",
+  "projectType": "library",
+  "tags": [],
+  "// targets": "to see all targets run: nx show project imports --web",
+  "targets": {
+    "typecheck": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "tsc -p tsconfig.typecheck.json",
+        "cwd": "{projectRoot}"
+      }
+    }
+  }
+}

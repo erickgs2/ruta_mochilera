@@ -8,6 +8,9 @@ import {
   cancelReservationRequestSchema as cancelReservationRequestSchemaImport,
   declineCancellationRequestSchema as declineCancellationRequestSchemaImport,
   adjustCreditRequestSchema as adjustCreditRequestSchemaImport,
+  importBatchSchema as importBatchSchemaImport,
+  importBatchSummarySchema as importBatchSummarySchemaImport,
+  validateImportRequestSchema as validateImportRequestSchemaImport,
   backfillPaymentsRequestSchema as backfillPaymentsRequestSchemaImport,
   backfillReservationRequestSchema as backfillReservationRequestSchemaImport,
   applyPriceChangeRequestSchema as applyPriceChangeRequestSchemaImport,
@@ -137,6 +140,9 @@ const createPaymentIntentRequestSchema = createPaymentIntentRequestSchemaImport.
 });
 const paymentSchema = paymentSchemaImport.meta({ id: 'Payment' });
 const creditEntrySchema = creditEntrySchemaImport.meta({ id: 'CreditEntry' });
+const importBatchSchema = importBatchSchemaImport.meta({ id: 'ImportBatch' });
+const importBatchSummarySchema = importBatchSummarySchemaImport.meta({ id: 'ImportBatchSummary' });
+const validateImportRequestSchema = validateImportRequestSchemaImport.meta({ id: 'ValidateImportRequest' });
 const backfillReservationRequestSchema = backfillReservationRequestSchemaImport.meta({
   id: 'BackfillReservationRequest',
 });
@@ -1361,6 +1367,87 @@ export function buildOpenApiDocument() {
       404: problem('NOT_FOUND'),
       409: problem('INVALID_STATUS_TRANSITION -- the reservation is not live'),
       422: problem('VALIDATION_FAILED, or PAYMENT_EXCEEDS_BALANCE'),
+    },
+  });
+
+  // --- CSV imports (Phase 2B) ------------------------------------------------
+  registry.registerPath({
+    method: 'get',
+    path: '/api/v1/admin/imports',
+    tags: ['imports', 'admin'],
+    security: [{ bearerAuth: [] }],
+    description: 'The latest import batches, newest first, without their reports. Requires import.manage.',
+    responses: {
+      200: { description: 'Batches', ...json(importBatchSummarySchema.array()) },
+      401: problem('Missing or invalid access token'),
+      403: problem('PERMISSION_DENIED -- requires import.manage'),
+    },
+  });
+
+  registry.registerPath({
+    method: 'post',
+    path: '/api/v1/admin/imports',
+    tags: ['imports', 'admin'],
+    security: [{ bearerAuth: [] }],
+    description:
+      'Uploads a CSV (customers or payments, spec §5.8) and validates it row by row without writing anything ' +
+      'but the batch. The answer is the preview: each row VALID, INVALID (with column and code) or EXISTS. A file ' +
+      'missing required columns is stored FAILED. Requires import.manage.',
+    request: { body: requestBody(validateImportRequestSchema) },
+    responses: {
+      201: { description: 'Validated batch with its preview', ...json(importBatchSchema) },
+      401: problem('Missing or invalid access token'),
+      403: problem('PERMISSION_DENIED -- requires import.manage'),
+      413: problem('IMPORT_TOO_LARGE -- more than 5,000 rows or 5 MB'),
+      422: problem('VALIDATION_FAILED'),
+    },
+  });
+
+  registry.registerPath({
+    method: 'get',
+    path: '/api/v1/admin/imports/{batchId}',
+    tags: ['imports', 'admin'],
+    security: [{ bearerAuth: [] }],
+    description: 'One batch with its full report. Requires import.manage.',
+    request: { params: uuidParam('batchId') },
+    responses: {
+      200: { description: 'Batch', ...json(importBatchSchema) },
+      401: problem('Missing or invalid access token'),
+      403: problem('PERMISSION_DENIED -- requires import.manage'),
+      404: problem('NOT_FOUND'),
+    },
+  });
+
+  registry.registerPath({
+    method: 'post',
+    path: '/api/v1/admin/imports/{batchId}/apply',
+    tags: ['imports', 'admin'],
+    security: [{ bearerAuth: [] }],
+    description:
+      'Confirms a validated batch: VALIDATED -> APPLYING, and the worker applies it row by row (a failing row ' +
+      'does not stop the others) until APPLIED. Requires import.manage.',
+    request: { params: uuidParam('batchId') },
+    responses: {
+      202: { description: 'Applying', ...json(importBatchSchema) },
+      401: problem('Missing or invalid access token'),
+      403: problem('PERMISSION_DENIED -- requires import.manage'),
+      404: problem('NOT_FOUND'),
+      409: problem('IMPORT_ALREADY_APPLIED, or INVALID_STATUS_TRANSITION -- a FAILED file'),
+    },
+  });
+
+  registry.registerPath({
+    method: 'get',
+    path: '/api/v1/admin/imports/templates/{type}',
+    tags: ['imports', 'admin'],
+    security: [{ bearerAuth: [] }],
+    description: 'Downloads a template: header row and one example row, UTF-8 CSV. type is customers or payments.',
+    request: { params: z.object({ type: z.enum(['customers', 'payments']) }) },
+    responses: {
+      200: { description: 'The template', content: { 'text/csv': { schema: z.string() } } },
+      401: problem('Missing or invalid access token'),
+      403: problem('PERMISSION_DENIED -- requires import.manage'),
+      404: problem('NOT_FOUND -- unknown type'),
     },
   });
 

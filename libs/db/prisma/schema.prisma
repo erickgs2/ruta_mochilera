@@ -115,6 +115,8 @@ enum ImportType {
 
 enum ImportStatus {
   VALIDATED
+  /// Claimed by an apply request; the worker is processing its rows.
+  APPLYING
   APPLIED
   FAILED
 }
@@ -511,6 +513,10 @@ model Payment {
   receiptSentAt      DateTime?       @map("receipt_sent_at") @db.Timestamptz
   recordedById       String?         @map("recorded_by") @db.Uuid
   isBackfilled       Boolean         @default(false) @map("is_backfilled")
+  /// The agency's own reference for a payment loaded from a CSV import
+  /// (Phase 2B, §5.8). Unique when present, so the same payment can never be
+  /// imported twice; NULL everywhere else.
+  externalRef        String?         @unique @map("external_ref")
   notes              String          @default("")
   createdAt          DateTime        @default(now()) @map("created_at") @db.Timestamptz
   updatedAt          DateTime        @updatedAt @map("updated_at") @db.Timestamptz

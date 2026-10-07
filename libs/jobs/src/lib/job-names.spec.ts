@@ -5,6 +5,7 @@ import {
   RECONCILE_PAID_CENTS_JOB,
   SEND_NOTIFICATION_EMAIL_JOB,
   SEND_RECEIPT_JOB,
+  APPLY_IMPORT_JOB,
   WARN_EXPIRING_HOLDS_JOB,
 } from './job-names';
 
@@ -21,6 +22,7 @@ describe('job names', () => {
 
   it('names the receipt job the payments domain enqueues', () => {
     expect(SEND_RECEIPT_JOB).toBe('send-receipt');
+    expect(APPLY_IMPORT_JOB).toBe('apply-import');
   });
 
   it('collects every job name into one array with no duplicates', () => {
@@ -32,6 +34,7 @@ describe('job names', () => {
         RECONCILE_PAID_CENTS_JOB,
         SEND_NOTIFICATION_EMAIL_JOB,
         SEND_RECEIPT_JOB,
+        APPLY_IMPORT_JOB,
       ])
     );
   });

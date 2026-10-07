@@ -1,4 +1,4 @@
-import { SEND_NOTIFICATION_EMAIL_JOB, SEND_RECEIPT_JOB } from '@rm/jobs';
+import { APPLY_IMPORT_JOB, SEND_NOTIFICATION_EMAIL_JOB, SEND_RECEIPT_JOB } from '@rm/jobs';
 import type { NotificationQueue } from '@rm/domain-notifications';
 import { PgBoss } from 'pg-boss';
 import { config } from './config';
@@ -36,9 +36,11 @@ async function startQueue(): Promise<NotificationQueue> {
   // takes the process down.
   boss.on('error', (error) => console.error('[api] pg-boss error', error));
   await boss.start();
-  // Every queue this process sends to: notices and, since Phase 2B, receipts.
+  // Every queue this process sends to: notices and, since Phase 2B, receipts
+  // and import batches.
   await boss.createQueue(SEND_NOTIFICATION_EMAIL_JOB);
   await boss.createQueue(SEND_RECEIPT_JOB);
+  await boss.createQueue(APPLY_IMPORT_JOB);
   return boss;
 }
 

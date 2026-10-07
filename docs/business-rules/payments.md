@@ -541,6 +541,12 @@ de recibo en la misma transacción.
   `RM-2025-…`.
 - Sólo sobre reservas vivas; todo o nada (un pago que excede el saldo revierte
   los demás).
+- Desde la importación CSV también pueden llegar como `CARD`, `OXXO` o `SPEI`
+  (con `provider = MANUAL`: nunca pasaron por Stripe) y con `external_ref`,
+  la referencia propia de la agencia: **columna única**
+  (`payments_external_ref_key`), así que el mismo pago no se importa dos
+  veces. Una violación de ese índice vuelve como `CONFLICT` con
+  `field: externalRef` y la transacción se revierte. Ver `imports.md`.
 - **Recibos silenciados por omisión**: no se encola ninguno salvo que el
   trabajador marque `sendReceipts`. El folio y el PDF existen igual: el PDF
   se genera al descargarlo o al reenviarlo.

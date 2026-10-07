@@ -17,8 +17,11 @@ import { enqueueReceipt, type ReceiptQueue } from './receipt-service';
 export interface BackfilledPaymentInput {
   amountCents: number;
   paidAt: Date;
-  method: 'LEGACY' | 'CASH';
+  /** `LEGACY` when unknown; an import may also say how it was really paid. */
+  method: 'LEGACY' | 'CASH' | 'CARD' | 'OXXO' | 'SPEI';
   notes?: string;
+  /** An import's own reference: the same one is never imported twice. */
+  externalRef?: string;
 }
 
 export interface RecordBackfilledPaymentsInput {
@@ -77,6 +80,7 @@ export async function recordBackfilledPaymentsWithin(
       recordedById: input.actorId,
       notes: payment.notes,
       isBackfilled: true,
+      externalRef: payment.externalRef,
     });
     if (!result.ok) return result;
     if (input.sendReceipts) await enqueueReceipt(tx, queue, result.value.id);

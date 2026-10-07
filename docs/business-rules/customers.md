@@ -62,6 +62,12 @@ nombre completo, correo, teléfono, fecha de nacimiento e idioma opcional.
   `TOKEN_INVALID`; y un token de invitación tampoco sirve para restablecer
   contraseña. Los dos propósitos no se cruzan.
 
+## Clientes importados
+
+`createImportedCustomer` es la misma alta con `origin = IMPORT`, para la
+importación CSV (`imports.md`): un correo que ya es de un cliente no es error
+sino `EXISTS` con su id, y la invitación sólo sale si el lote lo pide.
+
 ## Un cliente sin activar sigue siendo cliente
 
 Un cliente que nunca activa su cuenta sigue recibiendo recibos y avisos por

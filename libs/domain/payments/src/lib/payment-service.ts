@@ -43,6 +43,8 @@ export interface RecordPaymentInput {
   notes?: string;
   /** Historical capture (Phase 2B): the payment happened before the system. */
   isBackfilled?: boolean;
+  /** The agency's own reference from a CSV import; unique when present. */
+  externalRef?: string;
 }
 
 export interface ConfirmPaymentInput {
@@ -298,6 +300,7 @@ export async function recordPayment(
         recordedById: input.recordedById ?? null,
         notes: input.notes ?? '',
         isBackfilled: input.isBackfilled ?? false,
+        externalRef: input.externalRef ?? null,
       },
     });
   } catch (error) {
@@ -318,6 +321,11 @@ export async function recordPayment(
     // next delivery of the same event gets a clean run.
     if (uniqueViolationIndex(error) === 'payments_provider_intent_id_key') {
       return fail('CONFLICT', { field: 'providerIntentId' });
+    }
+    // Same reasoning for an imported payment's reference: the caller's
+    // transaction is aborted and must roll back.
+    if (uniqueViolationIndex(error) === 'payments_external_ref_key') {
+      return fail('CONFLICT', { field: 'externalRef' });
     }
     throw error;
   }

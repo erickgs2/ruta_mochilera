@@ -43,6 +43,7 @@
       "@rm/domain-costing": ["./libs/domain/costing/src/index.ts"],
       "@rm/domain-audit": ["./libs/domain/audit/src/index.ts"],
       "@rm/domain-customers": ["./libs/domain/customers/src/index.ts"],
+      "@rm/domain-imports": ["./libs/domain/imports/src/index.ts"],
       "@rm/domain-settings": ["./libs/domain/settings/src/index.ts"],
       "@rm/jobs": ["./libs/jobs/src/index.ts"],
       "@rm/jobs/testing": ["./libs/jobs/src/testing/index.ts"],
