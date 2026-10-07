@@ -114,7 +114,7 @@ sequenceDiagram
 
 ```mermaid
 flowchart LR
-    A["Captura histórica<br/>(data.backfill)<br/>fechas YYYY-MM-DD"] --> A2["El servidor fecha cada una:<br/>mediodía en la zona de la organización,<br/>sin pasar de ahora; futura = VALIDATION_FAILED"]
+    A["Captura histórica<br/>(data.backfill)<br/>fechas YYYY-MM-DD"] --> A2["El dominio fecha cada una (resolveBackfillMoments):<br/>mediodía en la zona de la organización,<br/>sin pasar de ahora; futura = VALIDATION_FAILED"]
     A2 --> B["Ordena los pagos<br/>por paid_at"]
     B --> C["recordPayment por cada uno:<br/>LEGACY o CASH (CARD, OXXO o SPEI sólo desde la importación CSV,<br/>provider MANUAL), SUCCEEDED, is_backfilled,<br/>folio del año de paid_at"]
     C --> D{"¿sendReceipts?"}

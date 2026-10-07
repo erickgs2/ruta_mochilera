@@ -174,7 +174,9 @@ Ver `docs/business-rules/reservations.md`, «Leer una reserva propia».
 
 ## Estados de una reserva y quién dispara cada transición
 
-El ciclo completo a la fecha de la Fase 2B. El esquema no tiene un estado
+El ciclo completo a la fecha de la Fase 2B. (La entrada «captura histórica» a `ACTIVE`
+recibe su fecha como día de calendario y es el dominio quien la fecha a mediodía en la
+zona de la organización, sin pasar de ahora: `reservations.md`, «Captura histórica».) El esquema no tiene un estado
 `COMPLETED` para la reserva; el viaje sí lo tiene, la reserva no.
 
 ```mermaid

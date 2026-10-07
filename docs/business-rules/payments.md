@@ -534,12 +534,19 @@ de recibo en la misma transacción.
   (nunca futuro), `is_backfilled`, `recorded_by` = el trabajador, nota
   opcional (por ejemplo, la hoja de la libreta).
 - **Las fechas llegan como fecha de calendario** (`YYYY-MM-DD`), no como
-  instante: el servidor las lee en la zona horaria de la organización, nunca
-  en la del navegador. El pago se fecha a **mediodía de ese día en esa zona,
-  sin pasar de ahora** (`noonOrNow`, la misma regla de la importación CSV):
-  una fecha de hoy capturada antes del mediodía queda fechada en ese momento.
-  Una fecha posterior a hoy en la zona de la organización es
-  `VALIDATION_FAILED` (`field: payments.<i>.paidAt`).
+  instante, y **las fecha el dominio, no la capa HTTP**: `paidAt` acepta una
+  cadena `YYYY-MM-DD` o un `Date` ya decidido (la importación CSV fecha el
+  suyo). Con una cadena, `recordBackfilledPayments` y el gancho de
+  `createBackfilledReservation` leen la zona horaria de la organización —nunca
+  la del navegador ni la del servidor— y fechan el pago a **mediodía de ese
+  día en esa zona, sin pasar de ahora**: una fecha de hoy capturada antes del
+  mediodía queda fechada en ese momento. Una fecha posterior a hoy en esa
+  zona, o un texto que no es una fecha real, es `VALIDATION_FAILED`
+  (`field: payments.<i>.paidAt`) y no se escribe nada. La regla es una sola
+  función pura, `resolveBackfillMoments` (`@rm/shared-utils`), así que un
+  segundo llamador (un job, una importación) la hereda sin repetirla; el
+  Route Handler sólo autentica, verifica el permiso, valida la forma con Zod y
+  pasa las cadenas tal cual.
 - Dos caminos con la misma función: un abono único con todo lo ya pagado, o
   el desglose pago por pago. Se escriben **del más antiguo al más reciente**,
   para que la foto del saldo de cada recibo siga el orden real.

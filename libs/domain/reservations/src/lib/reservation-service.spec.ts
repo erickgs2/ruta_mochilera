@@ -573,6 +573,37 @@ describe('reservation service', () => {
 
       expect(created).toMatchObject({ ok: false, error: { code: 'VALIDATION_FAILED', details: { field: 'createdAt' } } });
     });
+
+    it('takes the creation date as a calendar day and stamps it at noon in the organization zone, in the domain', async () => {
+      const trip = await seedTrip(db, { status: 'COMPLETED', paymentDeadline: new Date('2020-01-01') });
+
+      const created = await createBackfilledReservation(db, {
+        tripId: trip.id,
+        customerId: await seedCustomer(db),
+        actorId: staffId,
+        createdAt: '2025-11-03',
+      });
+
+      expect(created.ok).toBe(true);
+      const stored = await db.reservation.findFirstOrThrow({ where: { tripId: trip.id } });
+      expect(stored.createdAt.toISOString()).toBe('2025-11-03T18:00:00.000Z');
+    });
+
+    it('refuses a calendar day after today and text that is not a date, creating nothing', async () => {
+      const trip = await seedTrip(db);
+
+      for (const createdAt of ['2999-01-01', '2026-02-31', 'ayer']) {
+        expect(
+          await createBackfilledReservation(db, {
+            tripId: trip.id,
+            customerId: await seedCustomer(db),
+            actorId: staffId,
+            createdAt,
+          })
+        ).toMatchObject({ ok: false, error: { code: 'VALIDATION_FAILED', details: { field: 'createdAt' } } });
+      }
+      expect(await db.reservation.count({ where: { tripId: trip.id } })).toBe(0);
+    });
   });
 
   describe('getReservationForCustomer', () => {

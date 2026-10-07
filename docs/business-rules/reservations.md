@@ -270,6 +270,13 @@ saldo a favor junto a ellos.
 - Con su `created_at` **retroactivo** (nunca futuro), `is_backfilled`,
   `source = BRANCH`, y precio opcional cuando el pactado entonces difiere del
   vigente.
+- **La fecha la interpreta el dominio**: `createdAt` acepta una cadena
+  `YYYY-MM-DD` o un `Date` ya decidido. Con una cadena, `createBackfilledReservation`
+  la fecha a mediodía de ese día en la zona horaria de la organización, sin
+  pasar de ahora; un día posterior a hoy en esa zona, o un texto que no es una
+  fecha, es `VALIDATION_FAILED` (`field: createdAt`) y no se crea nada. Es la
+  misma función que las fechas de los pagos históricos
+  (`resolveBackfillMoments`, ver `payments.md`); la ruta sólo valida la forma.
 - Nace **`ACTIVE` sin apartado**: es historia, no un apartado que vence. No
   se valida anticipo, fecha límite ni verificación del correo (el cliente
   pudo llegar por importación).
