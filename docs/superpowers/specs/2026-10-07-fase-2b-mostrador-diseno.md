@@ -279,7 +279,9 @@ y si el personal la rechazó, el motivo y la opción de pedirla otra vez.
 |---|---|---|
 | `SEND_RECEIPT` | Encolado al confirmar un pago (salvo silenciado) | Genera el PDF si falta, lo guarda, lo envía adjunto, sella `receipt_sent_at` |
 
-Los demás jobs de la 2A no cambian. La conciliación nocturna no cambia: los pagos `CREDIT` son
+Los demás jobs de la 2A no cambian. La conciliación nocturna (`reconcilePaidCents`) cambió en un
+solo punto: compara `paid_cents` contra los pagos `SUCCEEDED` **menos** los movimientos
+`PRICE_DECREASE` de la reserva (§5.6, paso 3). Los pagos `CREDIT` no necesitan caso especial: son
 pagos `SUCCEEDED` como cualquier otro.
 
 ---

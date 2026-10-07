@@ -23,6 +23,14 @@ errores. El panel traduce los encabezados; el archivo no cambia.
 - `method`: `CASH`, `LEGACY`, `CARD`, `OXXO` o `SPEI`.
 - Las columnas pueden venir en cualquier orden; falta una obligatoria → el
   archivo entero se guarda `FAILED` con `MISSING_COLUMN`.
+- **Lectura tolerante.** Los encabezados se comparan sin distinguir mayúsculas
+  y sin espacios sobrantes; las columnas que no son de la plantilla se ignoran;
+  las líneas en blanco no cuentan como filas. Se aceptan campos entre comillas
+  dobles (con comas o saltos de línea dentro y `""` como comilla), saltos CRLF o
+  LF y el BOM UTF-8 que escribe Excel al guardar «CSV UTF-8».
+- **Errores de archivo.** Además de `MISSING_COLUMN` (con la columna que falta),
+  un archivo vacío es `EMPTY_FILE` y uno con encabezados pero sin filas es
+  `NO_ROWS`. Los tres guardan el lote como `FAILED` y no se pueden aplicar.
 
 ## Flujo
 
@@ -56,6 +64,25 @@ de una segunda copia de sí misma: si el worker se cae a medias, el lote se
 queda `APPLYING` con su reporte parcial para que una persona decida, en lugar
 de arriesgar pagos duplicados. Por eso se recomienda llenar `external_ref`.
 
+### Limitaciones conocidas
+
+Ver `docs/decisiones-fase-2b.md`, «Pendientes». Se documentan tal como son hoy:
+
+- **Un lote caído no tiene salida.** Aplicar un lote `APPLYING` responde
+  `IMPORT_ALREADY_APPLIED` y no existe una acción para reanudarlo ni
+  cancelarlo: «que una persona decida» todavía no tiene con qué. El lote queda
+  `APPLYING` con su reporte parcial; las filas que ya tienen resultado no se
+  vuelven a aplicar si el job llegara a correr de nuevo.
+- **El job vence a la hora.** Se encola con `retryLimit: 0` y
+  `expireInSeconds: 3600`. Un lote que tarde más de una hora (5,000 filas con
+  invitaciones) puede ser dado por vencido por pg-boss y quedar también
+  `APPLYING`, con el mismo problema.
+- **Un pago fechado hoy, antes del mediodía, falla.** La validación acepta
+  `paid_at` de hoy, pero el pago se fecha a mediodía de ese día; mientras ese
+  mediodía no llega, `recordBackfilledPayments` lo rechaza por estar en el
+  futuro y la fila queda `FAILED` con `VALIDATION_FAILED`. Una fecha de ayer o
+  anterior no tiene el problema.
+
 ## Códigos por fila
 
 | Código | Significado |
@@ -73,13 +100,38 @@ de arriesgar pagos duplicados. Por eso se recomienda llenar `external_ref`.
 | `UNKNOWN_METHOD` | Método de pago desconocido |
 | `DUPLICATE_IN_FILE` | El mismo correo o `external_ref` aparece antes en el archivo |
 
+`DUPLICATE_IN_FILE` compara el correo **sin distinguir mayúsculas** y el
+`external_ref` **distinguiéndolas** («A-1» y «a-1» son referencias distintas).
+Se marca en cada aparición posterior a la primera, aunque la primera tenga
+errores. Una fila de pago **sin** `external_ref` nunca se considera duplicada:
+dos filas iguales sin referencia se importan las dos.
+
 El panel traduce los códigos; el backend nunca envía texto para personas.
+
+## Auditoría
+
+Quedan en `AuditLog`: `import.validated` (al subir y validar; incluye el tipo,
+el archivo, las filas y el estado), `import.apply_requested` (al confirmar) e
+`import.applied` (al terminar, con las cuentas de filas buenas y fallidas). El
+actor es quien subió o confirmó; el trabajo en el worker usa el actor que
+confirmó.
 
 ## Clientes
 
 Crea clientes `origin = IMPORT`, **correo verificado** y **sin contraseña**
 (la misma alta que el mostrador, `customers.md`). Un correo que ya es de un
 cliente no se duplica: la fila es `EXISTS` con el id de ese cliente.
+
+Valida lo mismo que el mostrador en lo que importa: la fecha de nacimiento debe
+ser real y **no futura** (`INVALID_DATE`, en la zona de la organización). *(El
+mostrador adopta el mismo rechazo con la corrección de Delta; ver
+`customers.md`.)* El teléfono pide al menos 7 **dígitos** y el nombre sólo que
+no esté vacío.
+
+**Una invitación que no se pudo enviar no hace fallar la fila.** Con
+`sendEmails`, el cliente queda creado (`CREATED`) aunque el proveedor de correo
+falle; el reporte no registra ese fallo, y el personal puede reenviar la
+invitación desde el cliente.
 
 ## Pagos
 
@@ -88,7 +140,11 @@ Busca la reserva viva (`HELD` o `ACTIVE`) de ese cliente en ese viaje:
 - si existe, el pago entra como **pago histórico** sobre ella
   (`payments.md`, «Pagos históricos»);
 - si no, crea la **reserva histórica** (`reservations.md`, «Captura
-  histórica») con el pago, fechada el día del pago.
+  histórica») con el pago, fechada el día del pago (a mediodía; si esa hora
+  aún no ha llegado hoy, con la hora actual para no quedar en el futuro). Su
+  **total es el precio vigente del viaje**: la importación no puede fijar otro.
+  Una reserva `CANCELLED` o `EXPIRED` del cliente en ese viaje no cuenta como
+  viva, así que se crea una nueva.
 
 El pago se fecha a mediodía de `paid_at` en la zona de la organización, para
 que nunca caiga en el día (o el año) de al lado. **`external_ref` evita
