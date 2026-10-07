@@ -111,7 +111,8 @@ sequenceDiagram
 
 ```mermaid
 flowchart LR
-    A["Captura histórica<br/>(data.backfill)"] --> B["Ordena los pagos<br/>por paid_at"]
+    A["Captura histórica<br/>(data.backfill)<br/>fechas YYYY-MM-DD"] --> A2["El servidor fecha cada una:<br/>mediodía en la zona de la organización,<br/>sin pasar de ahora; futura = VALIDATION_FAILED"]
+    A2 --> B["Ordena los pagos<br/>por paid_at"]
     B --> C["recordPayment por cada uno:<br/>LEGACY o CASH, SUCCEEDED,<br/>is_backfilled, folio del año de paid_at"]
     C --> D{"¿sendReceipts?"}
     D -- No --> E["Sin correo: el PDF se genera<br/>al descargarlo o reenviarlo"]
