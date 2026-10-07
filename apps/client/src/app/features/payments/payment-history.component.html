@@ -24,9 +24,14 @@
         @for (payment of payments(); track payment.id) {
           <li class="payment-row" [class.payment-row--pending]="payment.status === 'PENDING'">
             <span class="payment-method">{{ 'payments.method.' + payment.method | translate }}</span>
-            <span class="payment-date">{{ payment.paidAt ?? payment.recordedAt | date: 'medium' }}</span>
+            <span class="payment-date">{{ payment.paidAt ?? payment.recordedAt | rmDateTime: 'medium' }}</span>
             <span class="payment-row-amount">{{ payment.amountCents | rmMoney }}</span>
             <span class="payment-status">{{ 'payments.status.' + payment.status | translate }}</span>
+            @if (payment.status === 'SUCCEEDED' && payment.receiptNumber) {
+              <button type="button" class="payment-receipt" (click)="downloadReceipt(payment)">
+                {{ 'payments.history.downloadReceipt' | translate }} · {{ payment.receiptNumber }}
+              </button>
+            }
             @if (payment.status === 'PENDING' && payment.providerVoucherUrl) {
               <a [href]="payment.providerVoucherUrl" target="_blank" rel="noopener noreferrer">
                 {{ 'payments.voucher.open' | translate }}

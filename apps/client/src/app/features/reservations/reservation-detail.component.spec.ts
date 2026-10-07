@@ -37,6 +37,12 @@ async function open(first: ReservationDetail, url = '/reservations/res-1') {
       'reservation.processingSlow',
       'errors.RESERVATION_NOT_OWNED',
       'errors.UNKNOWN',
+      'reservation.cancellation.pending',
+      'reservation.cancellation.declined',
+      'reservation.cancellation.declineReason',
+      'reservation.cancellation.request',
+      'reservation.cancellation.again',
+      'reservation.cancellation.sent',
     ])
   );
   TestBed.inject(LanguageService).use('es');
@@ -169,5 +175,54 @@ describe('ReservationDetailComponent', () => {
     harness.detectChanges();
 
     expect(element(harness).textContent).toContain(shown('errors.RESERVATION_NOT_OWNED'));
+  });
+
+  describe('cancellation request (Phase 2B)', () => {
+    it('asks for confirmation before sending, with an optional reason, then shows it under review', async () => {
+      const { harness, component, http } = await open(reservation({ status: 'ACTIVE', holdExpiresAt: null }));
+      const page = element(harness);
+
+      expect(page.textContent).toContain(shown('reservation.cancellation.request'));
+      (page.querySelector('.cancellation-open') as HTMLButtonElement).click();
+      harness.detectChanges();
+      http.expectNone('/api/v1/reservations/res-1/cancellation-requests');
+
+      component.cancellationReason.setValue('Me cambiaron las vacaciones');
+      (page.querySelector('.cancellation-confirm') as HTMLButtonElement).click();
+      const request = http.expectOne('/api/v1/reservations/res-1/cancellation-requests');
+      expect(request.request.body).toEqual({ reason: 'Me cambiaron las vacaciones' });
+      request.flush(reservation({ status: 'ACTIVE', cancellationRequestedAt: '2026-10-07T10:00:00.000Z' }));
+      http
+        .expectOne('/api/v1/reservations/res-1')
+        .flush(reservation({ status: 'ACTIVE', holdExpiresAt: null, cancellationRequestedAt: '2026-10-07T10:00:00.000Z' }));
+      harness.detectChanges();
+
+      expect(page.textContent).toContain(shown('reservation.cancellation.sent'));
+      expect(page.textContent).toContain(shown('reservation.cancellation.pending'));
+      expect(page.querySelector('.cancellation-open')).toBeNull();
+    });
+
+    it("shows staff's decline with its reason and lets the customer ask again", async () => {
+      const { harness } = await open(
+        reservation({
+          status: 'ACTIVE',
+          holdExpiresAt: null,
+          cancellationRequestedAt: '2026-10-01T10:00:00.000Z',
+          cancellationDeclinedAt: '2026-10-02T10:00:00.000Z',
+          cancellationDeclineReason: 'El viaje sigue en pie.',
+        })
+      );
+      const page = element(harness);
+
+      expect(page.textContent).toContain(shown('reservation.cancellation.declined'));
+      expect(page.querySelector('.cancellation-decline-reason')).not.toBeNull();
+      expect(page.textContent).toContain(shown('reservation.cancellation.again'));
+    });
+
+    it('offers nothing on a reservation that is no longer live', async () => {
+      const { harness } = await open(reservation({ status: 'EXPIRED', holdExpiresAt: null }));
+
+      expect(element(harness).querySelector('.reservation-cancellation')).toBeNull();
+    });
   });
 });

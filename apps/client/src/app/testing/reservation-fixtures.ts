@@ -19,6 +19,9 @@ export function reservation(overrides: Partial<ReservationDetail> = {}): Reserva
     balanceCents: 500_000,
     paymentDeadline: '2028-02-01T00:00:00.000Z',
     cancellationRequestedAt: null,
+    cancellationReason: null,
+    cancellationDeclinedAt: null,
+    cancellationDeclineReason: null,
     createdAt: new Date().toISOString(),
     // Deliberately a value no client-side formula over the fields above
     // would produce: the screens must show what the API sent.

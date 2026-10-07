@@ -69,7 +69,17 @@
       "linkInvalid": "Este enlace ya no funciona: puede que haya vencido o que ya se haya usado.",
       "requestNewLink": "Solicitar un enlace nuevo"
     },
-    "panelTitle": "Panel de administración"
+    "panelTitle": "Panel de administración",
+    "invitation": {
+      "title": "Activa tu cuenta",
+      "intro": "Te registramos en el mostrador. Elige una contraseña para entrar a la app y ver tus reservas, pagos y recibos.",
+      "password": "Contraseña",
+      "confirmPassword": "Confirma tu contraseña",
+      "submit": "Activar mi cuenta",
+      "submitting": "Activando…",
+      "success": "Tu cuenta está activa. Ya puedes iniciar sesión con {{email}}.",
+      "linkInvalid": "Este enlace ya no funciona: se usó, venció o se envió uno más nuevo. Pide en el mostrador que te envíen otro."
+    }
   },
   "catalogue": {
     "title": "Próximas rutas",
@@ -117,7 +127,20 @@
     "refresh": "Actualizar",
     "processing": "Estamos procesando tu pago. Esta pantalla se actualizará en cuanto se confirme.",
     "processingSlow": "Tu pago sigue en proceso. Actualiza en unos minutos para ver si ya se acreditó.",
-    "paymentHistory": "Ver historial de pagos"
+    "paymentHistory": "Ver historial de pagos",
+    "cancellation": {
+      "title": "Cancelación",
+      "request": "Solicitar cancelación",
+      "again": "Solicitar de nuevo",
+      "explanation": "La agencia revisa tu solicitud y te avisa. Si se cancela, lo que ya pagaste queda como saldo a favor en tu cuenta.",
+      "reason": "Motivo (opcional)",
+      "confirm": "Confirmar solicitud",
+      "back": "Volver",
+      "pending": "Tu solicitud de cancelación está en revisión desde el {{date}}.",
+      "declined": "La agencia no aceptó tu solicitud del {{date}}.",
+      "declineReason": "Motivo: {{reason}}",
+      "sent": "Enviamos tu solicitud. Te avisaremos cuando la agencia decida."
+    }
   },
   "reservations": {
     "title": "Mis reservas",
@@ -243,7 +266,9 @@
     "history": {
       "title": "Pagos de la reserva",
       "backToReservation": "Volver a la reserva",
-      "empty": "Esta reserva todavía no tiene pagos."
+      "empty": "Esta reserva todavía no tiene pagos.",
+      "receipt": "Recibo {{number}}",
+      "downloadReceipt": "Descargar recibo"
     }
   },
   "inbox": {
@@ -263,7 +288,20 @@
     "emailNotEditable": "El correo no se puede cambiar desde aquí.",
     "save": "Guardar cambios",
     "saving": "Guardando…",
-    "saved": "Tus datos se guardaron."
+    "saved": "Tus datos se guardaron.",
+    "credit": {
+      "title": "Saldo a favor",
+      "balance": "Disponible",
+      "empty": "Sin movimientos.",
+      "explanation": "Lo administra la agencia: puede aplicarlo a una reserva o devolvértelo.",
+      "kinds": {
+        "CANCELLATION": "Cancelación",
+        "PRICE_DECREASE": "Bajada de precio",
+        "APPLIED": "Aplicado a una reserva",
+        "REFUND": "Devolución",
+        "ADJUSTMENT": "Ajuste"
+      }
+    }
   },
   "nav": {
     "trips": "Viajes",

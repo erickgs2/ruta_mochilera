@@ -40,7 +40,7 @@ async function open(theReservation: ReservationDetail, payments: Payment[]) {
   http.expectOne('/api/v1/reservations/res-1').flush(theReservation);
   http.expectOne('/api/v1/payments').flush(payments);
   harness.detectChanges();
-  return { element: harness.routeNativeElement as HTMLElement };
+  return { element: harness.routeNativeElement as HTMLElement, http, harness };
 }
 
 function rows(element: HTMLElement): HTMLElement[] {
@@ -104,5 +104,22 @@ describe('PaymentHistoryComponent', () => {
 
     expect(rows(element)).toHaveLength(0);
     expect(element.textContent).toContain(shown('payments.history.empty'));
+  });
+
+  it('lets the customer download the receipt of each confirmed payment (Phase 2B)', async () => {
+    const createObjectURL = jest.fn().mockReturnValue('blob:receipt');
+    Object.assign(globalThis.URL, { createObjectURL, revokeObjectURL: jest.fn() });
+    const { element, http } = await open(reservation(), [
+      payment({ id: 'pay-1', status: 'SUCCEEDED', receiptNumber: 'RM-2026-000001' }),
+      payment({ id: 'pay-2', status: 'PENDING', method: 'OXXO', paidAt: null, receiptNumber: null }),
+    ]);
+
+    const buttons = element.querySelectorAll('.payment-receipt');
+    expect(buttons).toHaveLength(1);
+    (buttons[0] as HTMLButtonElement).click();
+    const request = http.expectOne('/api/v1/payments/pay-1/receipt');
+    expect(request.request.responseType).toBe('blob');
+    request.flush(new Blob(['%PDF-'], { type: 'application/pdf' }));
+    expect(createObjectURL).toHaveBeenCalled();
   });
 });

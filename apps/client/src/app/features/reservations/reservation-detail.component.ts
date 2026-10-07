@@ -2,7 +2,8 @@ import { Component, computed, DestroyRef, inject, signal } from '@angular/core';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { TranslatePipe } from '@ngx-translate/core';
 import { ReservationsApi, type components } from '@rm/api-client';
-import { CalendarDatePipe } from '@rm/i18n';
+import { CalendarDatePipe, DateTimePipe } from '@rm/i18n';
+import { FormControl, ReactiveFormsModule, Validators } from '@angular/forms';
 import { ErrorCodePipe } from '../../shared/error-code.pipe';
 import { MoneyPipe } from '../../shared/money.pipe';
 import { PaymentMethodComponent } from '../payments/payment-method.component';
@@ -29,7 +30,16 @@ export const PROCESSING_POLL_ATTEMPTS = 10;
  */
 @Component({
   selector: 'rm-reservation-detail',
-  imports: [RouterLink, TranslatePipe, ErrorCodePipe, MoneyPipe, CalendarDatePipe, PaymentMethodComponent],
+  imports: [
+    ReactiveFormsModule,
+    RouterLink,
+    TranslatePipe,
+    ErrorCodePipe,
+    MoneyPipe,
+    CalendarDatePipe,
+    DateTimePipe,
+    PaymentMethodComponent,
+  ],
   templateUrl: './reservation-detail.component.html',
   styleUrl: './reservations.scss',
 })
@@ -67,6 +77,23 @@ export class ReservationDetailComponent {
     return reservation.status === 'HELD' && (this.holdLeftMs() ?? 0) > 0;
   });
 
+  /**
+   * Phase 2B, §5.9: where the customer's cancellation request stands.
+   * `none` offers the button; `pending` says it is under review; `declined`
+   * shows staff's reason and offers to ask again. Only for a live reservation.
+   */
+  readonly cancellationState = computed<'none' | 'pending' | 'declined' | null>(() => {
+    const reservation = this.reservation();
+    if (!reservation || (reservation.status !== 'HELD' && reservation.status !== 'ACTIVE')) return null;
+    if (reservation.cancellationDeclinedAt) return 'declined';
+    return reservation.cancellationRequestedAt ? 'pending' : 'none';
+  });
+  /** The request form is a second step, so a stray tap never sends it. */
+  readonly cancellationOpen = signal(false);
+  readonly cancellationSending = signal(false);
+  readonly cancellationSent = signal(false);
+  readonly cancellationReason = new FormControl('', { nonNullable: true, validators: Validators.maxLength(500) });
+
   private paidBefore = 0;
   private attempts = 0;
   private pollTimer: ReturnType<typeof setTimeout> | null = null;
@@ -84,6 +111,30 @@ export class ReservationDetailComponent {
 
   refresh(): void {
     this.load();
+  }
+
+  openCancellation(): void {
+    this.cancellationReason.reset();
+    this.cancellationSent.set(false);
+    this.cancellationOpen.set(true);
+  }
+
+  requestCancellation(): void {
+    if (this.cancellationSending() || this.cancellationReason.invalid) return;
+    this.cancellationSending.set(true);
+    const reason = this.cancellationReason.value.trim();
+    this.api.requestCancellation(this.id, reason || undefined).subscribe({
+      next: () => {
+        this.cancellationSending.set(false);
+        this.cancellationOpen.set(false);
+        this.cancellationSent.set(true);
+        this.load();
+      },
+      error: (error: unknown) => {
+        this.cancellationSending.set(false);
+        this.error.set(error);
+      },
+    });
   }
 
   /** Stripe accepted the card; wait for the webhook to credit it. */

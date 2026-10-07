@@ -32,6 +32,8 @@ function setup() {
   fixture.detectChanges();
   const http = TestBed.inject(HttpTestingController);
   http.expectOne('/api/v1/me/profile').flush(profile);
+  // Phase 2B: the read-only credit block asks for the balance on its own.
+  http.expectOne('/api/v1/me/credit').flush({ balanceCents: 0, entries: [] });
   fixture.detectChanges();
   return { fixture, component: fixture.componentInstance, http, element: fixture.nativeElement as HTMLElement };
 }

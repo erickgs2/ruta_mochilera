@@ -58,6 +58,12 @@ export const appRoutes: Routes = [
     loadComponent: () => import('./features/auth/reset-password.component').then((m) => m.ResetPasswordComponent),
   },
   {
+    // The path a counter customer's invitation links to:
+    // `${CLIENT_APP_URL}/invitation?token=…` (see `invitationEmailMessage` in `@rm/domain-identity`).
+    path: 'invitation',
+    loadComponent: () => import('./features/auth/invitation.component').then((m) => m.InvitationComponent),
+  },
+  {
     path: 'account',
     canActivate: [authGuard],
     loadComponent: () => import('./features/profile/profile.component').then((m) => m.ProfileComponent),

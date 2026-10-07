@@ -94,6 +94,15 @@ export interface ReservationDto {
   balanceCents: number;
   paymentDeadline: Date;
   cancellationRequestedAt: Date | null;
+  /** The customer's own reason when they asked to cancel. */
+  cancellationReason: string | null;
+  /**
+   * Phase 2B: staff declined the request (the customer was notified with
+   * this same reason) -- what lets the app show "declined, and why" and offer
+   * to ask again.
+   */
+  cancellationDeclinedAt: Date | null;
+  cancellationDeclineReason: string | null;
   createdAt: Date;
 }
 
@@ -264,6 +273,9 @@ function toDto(reservation: Reservation): ReservationDto {
     balanceCents: balanceOf(reservation),
     paymentDeadline: reservation.paymentDeadline,
     cancellationRequestedAt: reservation.cancellationRequestedAt,
+    cancellationReason: reservation.cancellationReason,
+    cancellationDeclinedAt: reservation.cancellationDeclinedAt,
+    cancellationDeclineReason: reservation.cancellationDeclineReason,
     createdAt: reservation.createdAt,
   };
 }

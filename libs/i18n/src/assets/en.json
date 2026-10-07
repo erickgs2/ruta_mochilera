@@ -69,7 +69,17 @@
       "linkInvalid": "This link no longer works: it may have expired or already been used.",
       "requestNewLink": "Request a new link"
     },
-    "panelTitle": "Admin panel"
+    "panelTitle": "Admin panel",
+    "invitation": {
+      "title": "Activate your account",
+      "intro": "We registered you at the counter. Choose a password to use the app and see your reservations, payments and receipts.",
+      "password": "Password",
+      "confirmPassword": "Confirm your password",
+      "submit": "Activate my account",
+      "submitting": "Activating…",
+      "success": "Your account is active. You can now sign in with {{email}}.",
+      "linkInvalid": "This link no longer works: it was used, it expired or a newer one was sent. Ask the counter to send you another."
+    }
   },
   "catalogue": {
     "title": "Upcoming routes",
@@ -117,7 +127,20 @@
     "refresh": "Refresh",
     "processing": "We are processing your payment. This screen will update as soon as it is confirmed.",
     "processingSlow": "Your payment is still being processed. Refresh in a few minutes to see whether it was credited.",
-    "paymentHistory": "See payment history"
+    "paymentHistory": "See payment history",
+    "cancellation": {
+      "title": "Cancellation",
+      "request": "Request cancellation",
+      "again": "Request again",
+      "explanation": "The agency reviews your request and lets you know. If it is cancelled, what you already paid stays as credit in your account.",
+      "reason": "Reason (optional)",
+      "confirm": "Confirm request",
+      "back": "Back",
+      "pending": "Your cancellation request has been under review since {{date}}.",
+      "declined": "The agency did not accept your request from {{date}}.",
+      "declineReason": "Reason: {{reason}}",
+      "sent": "We sent your request. We will let you know when the agency decides."
+    }
   },
   "reservations": {
     "title": "My reservations",
@@ -243,7 +266,9 @@
     "history": {
       "title": "Payments for reservation",
       "backToReservation": "Back to the reservation",
-      "empty": "This reservation has no payments yet."
+      "empty": "This reservation has no payments yet.",
+      "receipt": "Receipt {{number}}",
+      "downloadReceipt": "Download receipt"
     }
   },
   "inbox": {
@@ -263,7 +288,20 @@
     "emailNotEditable": "The email cannot be changed here.",
     "save": "Save changes",
     "saving": "Saving…",
-    "saved": "Your details were saved."
+    "saved": "Your details were saved.",
+    "credit": {
+      "title": "Account credit",
+      "balance": "Available",
+      "empty": "No movements.",
+      "explanation": "The agency manages it: it can apply it to a reservation or give it back to you.",
+      "kinds": {
+        "CANCELLATION": "Cancellation",
+        "PRICE_DECREASE": "Price decrease",
+        "APPLIED": "Applied to a reservation",
+        "REFUND": "Refund",
+        "ADJUSTMENT": "Adjustment"
+      }
+    }
   },
   "nav": {
     "trips": "Trips",

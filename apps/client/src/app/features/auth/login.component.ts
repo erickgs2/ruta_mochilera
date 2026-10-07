@@ -1,6 +1,6 @@
 import { Component, inject, signal } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
-import { Router, RouterLink } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { TranslatePipe } from '@ngx-translate/core';
 import { AuthService } from '@rm/auth-web';
 import { ErrorCodePipe } from '../../shared/error-code.pipe';
@@ -10,6 +10,9 @@ import { ErrorCodePipe } from '../../shared/error-code.pipe';
  * (see `apps/admin/src/app/features/auth/login.component.ts`) but with
  * plain HTML controls instead of Angular Material -- this app does not
  * consume `@rm/ui`.
+ *
+ * `?email=` prefills the address -- the invitation screen links here with
+ * the account it just activated.
  */
 @Component({
   selector: 'rm-login',
@@ -26,7 +29,7 @@ export class LoginComponent {
   readonly error = signal<unknown>(null);
 
   readonly form = this.formBuilder.nonNullable.group({
-    email: ['', [Validators.required, Validators.email]],
+    email: [inject(ActivatedRoute).snapshot.queryParamMap.get('email') ?? '', [Validators.required, Validators.email]],
     password: ['', Validators.required],
   });
 

@@ -47,6 +47,54 @@
       <rm-payment-method [reservation]="reservation" (cardConfirmed)="onCardConfirmed()" />
     }
 
+    @if (cancellationState(); as state) {
+      <section class="reservation-cancellation">
+        <h2>{{ 'reservation.cancellation.title' | translate }}</h2>
+        @if (cancellationSent()) {
+          <p class="reservation-notice cancellation-sent" role="status">{{ 'reservation.cancellation.sent' | translate }}</p>
+        }
+        @if (state === 'pending') {
+          <p class="cancellation-pending">
+            {{ 'reservation.cancellation.pending' | translate: { date: (reservation.cancellationRequestedAt | rmDateTime: 'mediumDate') } }}
+          </p>
+        } @else {
+          @if (state === 'declined') {
+            <div class="cancellation-declined">
+              <p>
+                {{ 'reservation.cancellation.declined' | translate: { date: (reservation.cancellationRequestedAt | rmDateTime: 'mediumDate') } }}
+              </p>
+              @if (reservation.cancellationDeclineReason) {
+                <p class="cancellation-decline-reason">
+                  {{ 'reservation.cancellation.declineReason' | translate: { reason: reservation.cancellationDeclineReason } }}
+                </p>
+              }
+            </div>
+          }
+          @if (cancellationOpen()) {
+            <div class="cancellation-form">
+              <p>{{ 'reservation.cancellation.explanation' | translate }}</p>
+              <label>
+                {{ 'reservation.cancellation.reason' | translate }}
+                <textarea [formControl]="cancellationReason" rows="3" maxlength="500"></textarea>
+              </label>
+              <div class="cancellation-actions">
+                <button type="button" class="cancellation-back" (click)="cancellationOpen.set(false)">
+                  {{ 'reservation.cancellation.back' | translate }}
+                </button>
+                <button type="button" class="cancellation-confirm" (click)="requestCancellation()" [disabled]="cancellationSending()">
+                  {{ 'reservation.cancellation.confirm' | translate }}
+                </button>
+              </div>
+            </div>
+          } @else {
+            <button type="button" class="cancellation-open" (click)="openCancellation()">
+              {{ (state === 'declined' ? 'reservation.cancellation.again' : 'reservation.cancellation.request') | translate }}
+            </button>
+          }
+        }
+      </section>
+    }
+
     @if (error()) {
       <p class="reservation-error">{{ error() | rmErrorCode }}</p>
     }

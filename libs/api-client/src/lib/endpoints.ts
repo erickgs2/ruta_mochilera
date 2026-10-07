@@ -199,6 +199,17 @@ export class ReservationsApi {
   }
 
   /**
+   * Asks staff to cancel (Phase 2B wires the button). Never changes the
+   * status by itself; asking again after a decline opens a new request.
+   */
+  requestCancellation(
+    reservationId: string,
+    reason?: string
+  ): Observable<Ok<'/api/v1/reservations/{reservationId}/cancellation-requests', 'post'>> {
+    return this.api.post(`/api/v1/reservations/${reservationId}/cancellation-requests`, reason ? { reason } : {});
+  }
+
+  /**
    * The body is an intent (`FULL` or `DEPOSIT`) and a method, never a number
    * of cents: the API decides the amount from the reservation's own balance
    * and echoes it back as `amountCents`.

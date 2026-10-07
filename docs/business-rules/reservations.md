@@ -435,6 +435,14 @@ trae el viaje con un solo `include` sobre la misma lectura, sin N+1.
 `balance_cents` nunca se almacena: es `total_price_cents − paid_cents` con
 piso en cero, recalculado en cada lectura.
 
+**Fase 2B (§5.9): el estado de su solicitud de cancelación.** El detalle del
+cliente lleva, además de `cancellationRequestedAt`, su propio motivo
+(`cancellationReason`) y, si el personal la rechazó, `cancellationDeclinedAt`
+y `cancellationDeclineReason` — el mismo motivo que ya recibió en el aviso
+`CANCELLATION_DECLINED`. Con eso la app muestra «en revisión», o «rechazada,
+por esto» con la opción de pedirla otra vez (`requestCancellation` reabre una
+solicitud rechazada). El nombre de quien rechazó no se expone al cliente.
+
 ## Solicitud de cancelación (§5.6)
 
 `requestCancellation(db, reservationId, customerId, reason?)` sella

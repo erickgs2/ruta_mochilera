@@ -1,0 +1,50 @@
+<div class="auth-page">
+  <div class="auth-card">
+    <a routerLink="/" class="auth-logo" aria-label="La Ruta Mochilera"><img src="brand/logo-on-dark.png" alt="" width="72" height="72" /></a>
+    <h1>{{ 'auth.invitation.title' | translate }}</h1>
+
+    @if (activatedEmail(); as email) {
+      <p class="auth-notice invitation-success">{{ 'auth.invitation.success' | translate: { email: email } }}</p>
+      <p class="auth-switch">
+        <a routerLink="/login" [queryParams]="{ email: email }">{{ 'auth.signIn' | translate }}</a>
+      </p>
+    } @else if (linkInvalid()) {
+      <p class="auth-error invitation-invalid-link">{{ 'auth.invitation.linkInvalid' | translate }}</p>
+    } @else {
+      <p class="auth-intro">{{ 'auth.invitation.intro' | translate }}</p>
+      <form [formGroup]="form" (ngSubmit)="submit()" novalidate>
+        <label>
+          {{ 'auth.invitation.password' | translate }}
+          <input type="password" formControlName="password" autocomplete="new-password" />
+          @if (showError('password')) {
+            <span class="field-error">{{ 'auth.validation.password' | translate }}</span>
+          }
+        </label>
+
+        <label>
+          {{ 'auth.invitation.confirmPassword' | translate }}
+          <input type="password" formControlName="confirmPassword" autocomplete="new-password" />
+          @if (showMismatchError()) {
+            <span class="field-error">{{ 'auth.validation.passwordMismatch' | translate }}</span>
+          }
+        </label>
+
+        <label class="auth-checkbox">
+          <input type="checkbox" formControlName="acceptTerms" />
+          {{ 'auth.acceptTerms' | translate }}
+        </label>
+        @if (showError('acceptTerms')) {
+          <span class="field-error">{{ 'auth.validation.acceptTerms' | translate }}</span>
+        }
+
+        @if (error()) {
+          <p class="auth-error">{{ error() | rmErrorCode }}</p>
+        }
+
+        <button type="submit" [disabled]="loading()">
+          {{ loading() ? ('auth.invitation.submitting' | translate) : ('auth.invitation.submit' | translate) }}
+        </button>
+      </form>
+    }
+  </div>
+</div>

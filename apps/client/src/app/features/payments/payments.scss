@@ -115,3 +115,17 @@ button {
   text-align: right;
   font-weight: 600;
 }
+
+// Phase 2B: a confirmed payment's receipt, across the whole row.
+button.payment-receipt {
+  grid-column: 1 / -1;
+  justify-self: start;
+  padding: 0.5rem 0.75rem;
+  font: inherit;
+  font-size: 0.875rem;
+  font-weight: 600;
+  border: 1px solid var(--rm-ink);
+  border-radius: var(--rm-radius-pill);
+  background: transparent;
+  color: var(--rm-ink);
+}

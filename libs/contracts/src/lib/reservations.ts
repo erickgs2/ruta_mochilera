@@ -45,6 +45,9 @@ export const reservationSchema = z.object({
   balanceCents: z.number().int(),
   paymentDeadline: z.iso.datetime(),
   cancellationRequestedAt: z.iso.datetime().nullable(),
+  cancellationReason: z.string().nullable(),
+  cancellationDeclinedAt: z.iso.datetime().nullable(),
+  cancellationDeclineReason: z.string().nullable(),
   createdAt: z.iso.datetime(),
 });
 

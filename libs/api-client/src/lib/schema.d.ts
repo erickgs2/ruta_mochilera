@@ -5350,6 +5350,10 @@ export interface components {
             paymentDeadline: string;
             /** Format: date-time */
             cancellationRequestedAt: string | null;
+            cancellationReason: string | null;
+            /** Format: date-time */
+            cancellationDeclinedAt: string | null;
+            cancellationDeclineReason: string | null;
             /** Format: date-time */
             createdAt: string;
             suggestedMonthlyCents: number;
@@ -5378,6 +5382,10 @@ export interface components {
             paymentDeadline: string;
             /** Format: date-time */
             cancellationRequestedAt: string | null;
+            cancellationReason: string | null;
+            /** Format: date-time */
+            cancellationDeclinedAt: string | null;
+            cancellationDeclineReason: string | null;
             /** Format: date-time */
             createdAt: string;
         };
@@ -5454,6 +5462,10 @@ export interface components {
             paymentDeadline: string;
             /** Format: date-time */
             cancellationRequestedAt: string | null;
+            cancellationReason: string | null;
+            /** Format: date-time */
+            cancellationDeclinedAt: string | null;
+            cancellationDeclineReason: string | null;
             /** Format: date-time */
             createdAt: string;
             tripName: string;
@@ -5462,15 +5474,11 @@ export interface components {
             customerName: string;
             customerEmail: string;
             customerPhone: string;
-            cancellationReason: string | null;
             cancellationPending: boolean;
             /** Format: date-time */
             cancelledAt: string | null;
             cancelledByName: string | null;
-            /** Format: date-time */
-            cancellationDeclinedAt: string | null;
             cancellationDeclinedByName: string | null;
-            cancellationDeclineReason: string | null;
         };
         Payment: {
             /** Format: uuid */

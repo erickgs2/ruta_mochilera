@@ -5,6 +5,7 @@ import { firstValueFrom } from 'rxjs';
 import { TranslatePipe } from '@ngx-translate/core';
 import { ProfileApi, type components } from '@rm/api-client';
 import { AuthService } from '@rm/auth-web';
+import { AccountCreditComponent } from './account-credit.component';
 import { ErrorCodePipe } from '../../shared/error-code.pipe';
 
 type CustomerProfile = components['schemas']['CustomerProfile'];
@@ -22,7 +23,7 @@ type CustomerProfile = components['schemas']['CustomerProfile'];
  */
 @Component({
   selector: 'rm-profile',
-  imports: [ReactiveFormsModule, RouterLink, TranslatePipe, ErrorCodePipe],
+  imports: [ReactiveFormsModule, RouterLink, TranslatePipe, ErrorCodePipe, AccountCreditComponent],
   templateUrl: './profile.component.html',
   styleUrl: './profile.component.scss',
 })
