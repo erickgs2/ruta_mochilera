@@ -10,6 +10,11 @@ export default defineConfig(() => ({
     watch: false,
     globals: true,
     environment: 'node',
+    // Integration suites on a real PostgreSQL, tested alongside other projects
+    // (and other checkouts) on one machine: Vitest's 5s default turns a busy
+    // moment into a spurious timeout.
+    testTimeout: 20_000,
+    hookTimeout: 20_000,
     include: ['{src,tests}/**/*.{test,spec}.{js,mjs,cjs,ts,mts,cts,jsx,tsx}'],
     reporters: ['default'],
     coverage: {

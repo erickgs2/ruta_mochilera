@@ -22,6 +22,11 @@ export default defineConfig(() => ({
       '{src,app,pages,specs}/**/*.{test,spec}.{js,mjs,cjs,ts,mts,cts,jsx,tsx}',
     ],
     setupFiles: ['./src/test-setup.ts'],
+    // The integration suites hit a real PostgreSQL, and several projects test
+    // at once on one machine: Vitest's 5s default turns a slow moment into a
+    // spurious timeout (receipts.integration.spec.ts under parallel load).
+    testTimeout: 20_000,
+    hookTimeout: 20_000,
     reporters: ['default'],
     coverage: {
       reportsDirectory: '../../coverage/apps/api',

@@ -1,18 +1,20 @@
-import { execFileSync } from 'node:child_process';
-import { existsSync, readdirSync, statSync } from 'node:fs';
+import { execFile } from 'node:child_process';
+import { readdirSync, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
+import { promisify } from 'node:util';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '../generated/prisma/client';
-import {
-  assertSchemaIdentifier,
-  createPrismaClient,
-  searchPathStartupOption,
-  type Db,
-} from '../lib/client';
+import { createPrismaClient, searchPathStartupOption, type Db, type DbTransactionClient } from '../lib/client';
+import { composeSchemaName, findWorkspaceRoot } from './schema-name';
 
 const DEFAULT_TEST_DATABASE_URL = 'postgresql://rm:rm@localhost:5432/rm_test';
 
 const TEST_DATABASE_URL = process.env['TEST_DATABASE_URL'] ?? DEFAULT_TEST_DATABASE_URL;
+
+const execFileAsync = promisify(execFile);
+
+/** How long one schema's migration may hold its lock (and so how long a second process waits for it). */
+const MIGRATE_TIMEOUT_MS = 180_000;
 
 /**
  * Upper bound of every test client's connection pool (`TEST_DB_POOL_MAX`, 4
@@ -45,11 +47,23 @@ let cachedRoot: string | undefined;
  * tested in the same `nx run-many` batch would otherwise both land on worker 0.
  * Prefixing with the project makes the name unique across processes too.
  *
+ * Neither half tells two *checkouts* apart: the main working tree and every git
+ * worktree share the one `rm_test`, and each would otherwise name its API
+ * project's first worker `test_api_w0` -- the same schema, truncated by
+ * whichever suite starts a test first. So the name also carries a short
+ * fingerprint of the workspace root (`test_<fingerprint>_<project>_w<id>`),
+ * stable for a checkout and different between checkouts. `TEST_SCHEMA_PREFIX`
+ * replaces the fingerprint for a caller that wants a name it can predict.
+ *
  * The key is deliberately stable rather than random: a worker reuses the schema
  * it already migrated on a previous run, which is what keeps `prepareTestDb()`
  * down to two queries after the first run.
  */
-export const TEST_SCHEMA = composeSchemaName(projectKey(), process.env['VITEST_WORKER_ID'] ?? '0');
+export const TEST_SCHEMA = composeSchemaName({
+  project: projectKey(),
+  workerId: process.env['VITEST_WORKER_ID'] ?? '0',
+  workspaceRoot: workspaceRoot(),
+});
 
 let client: Db | undefined;
 let prepared: Promise<void> | undefined;
@@ -146,38 +160,81 @@ export async function withQueryCountingDb<T>(
 export { uniqueViolationIndex } from '../lib/prisma-errors';
 
 async function provisionWorkerSchema(): Promise<void> {
-  const db = withTestDb();
-  await db.$executeRawUnsafe(`CREATE SCHEMA IF NOT EXISTS "${TEST_SCHEMA}"`);
+  await provisionSchema(TEST_SCHEMA, withTestDb());
+}
 
+/**
+ * Brings `schema` of the test database up to date with every migration (the
+ * schema is created on the way if it does not exist).
+ *
+ * Prisma Migrate takes `pg_advisory_lock(72707369)` around `migrate deploy`,
+ * and that lock belongs to the whole *database*, not to the schema being
+ * migrated. Every worker of every project of every checkout migrates its own
+ * schema in the one `rm_test`, so the lock serialised work that never
+ * conflicted -- and once enough of them queued, the 10s Prisma waits for it
+ * ran out (P1002 "Timed out trying to acquire a postgres advisory lock"; the
+ * `identity`, `customers` and `payments` suites failed that way under a normal
+ * parallel `nx run-many`).
+ *
+ * So the global lock is switched off (`PRISMA_SCHEMA_DISABLE_ADVISORY_LOCK`,
+ * a variable the schema engine of this Prisma version checks for, and the
+ * documented switch for exactly this) and replaced by one that is as narrow as
+ * the thing it protects: a transaction-level advisory lock keyed by the
+ * schema's name. Two processes preparing *different* schemas never wait for
+ * each other; two preparing the *same* one (the same project run twice in one
+ * checkout) still queue, and the second finds the work done.
+ */
+export async function provisionSchema(schema: string, db: Db): Promise<void> {
   const expected = migrationNames();
-  const applied = await appliedMigrationNames(db);
-  if (expected.every((name) => applied.has(name))) return;
+  if (await isUpToDate(db, schema, expected)) return;
 
   const url = new URL(TEST_DATABASE_URL);
-  url.searchParams.set('schema', TEST_SCHEMA);
-  // `migrate deploy` takes a database-wide advisory lock, so concurrent workers
-  // queue rather than collide. It only runs when a migration is missing.
+  url.searchParams.set('schema', schema);
+  // The transaction exists only to hold the lock while the CLI runs in a child
+  // process; it ends, and releases the lock, when the migration does. The
+  // child uses its own connection, so this one is not in its way.
+  await db.$transaction(
+    async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${schema}, 0))`;
+      // No CREATE SCHEMA here: `migrate deploy` creates a missing schema itself,
+      // and one made inside this still-open transaction would be invisible to its
+      // connection yet block its own CREATE SCHEMA -- a deadlock.
+      // Someone else may have finished while this process waited for the lock.
+      if (await isUpToDate(tx, schema, expected)) return;
+      await migrateDeploy(schema, url);
+    },
+    { timeout: MIGRATE_TIMEOUT_MS, maxWait: MIGRATE_TIMEOUT_MS }
+  );
+}
+
+async function migrateDeploy(schema: string, url: URL): Promise<void> {
   try {
-    execFileSync(join(workspaceRoot(), 'node_modules', '.bin', 'prisma'), ['migrate', 'deploy'], {
+    const migration = execFileAsync(join(workspaceRoot(), 'node_modules', '.bin', 'prisma'), ['migrate', 'deploy'], {
       cwd: workspaceRoot(),
-      env: { ...process.env, DATABASE_URL: url.toString() },
-      // Captured rather than ignored: a broken migration must explain itself
-      // here instead of surfacing as a bare non-zero exit.
-      stdio: ['ignore', 'pipe', 'pipe'],
+      env: { ...process.env, DATABASE_URL: url.toString(), PRISMA_SCHEMA_DISABLE_ADVISORY_LOCK: '1' },
       encoding: 'utf8',
     });
+    // Nothing to tell it: close its stdin so it never waits for input.
+    migration.child.stdin?.end();
+    await migration;
   } catch (error) {
+    // Captured rather than ignored: a broken migration must explain itself
+    // here instead of surfacing as a bare non-zero exit.
     const { stdout, stderr } = error as { stdout?: string; stderr?: string };
     const output = [stdout, stderr]
       .map((stream) => stream?.trim())
       .filter((stream) => stream)
       .join('\n');
     throw new Error(
-      `prisma migrate deploy failed for schema "${TEST_SCHEMA}".` +
-        (output ? `\n${output}` : ' The CLI produced no output.'),
+      `prisma migrate deploy failed for schema "${schema}".` + (output ? `\n${output}` : ' The CLI produced no output.'),
       { cause: error }
     );
   }
+}
+
+async function isUpToDate(db: Db | DbTransactionClient, schema: string, expected: string[]): Promise<boolean> {
+  const applied = await appliedMigrationNames(db, schema);
+  return expected.every((name) => applied.has(name));
 }
 
 /**
@@ -195,32 +252,6 @@ function projectKey(): string {
   return relative === '' ? 'root' : relative;
 }
 
-/**
- * Builds a schema name that is a safe SQL identifier: lowercased, every
- * character outside `[a-z0-9_]` folded to `_`, and truncated with a hash
- * suffix so it can never exceed PostgreSQL's 63-byte identifier limit. The
- * validation applies to the fully composed name because a project name may
- * legally contain characters an identifier may not, and it is the same
- * `assertSchemaIdentifier` the connection builder applies, so a name this
- * function accepts can never be one `search_path` rejects.
- */
-function composeSchemaName(project: string, workerId: string): string {
-  const slug = `test_${project}_w${workerId}`
-    .toLowerCase()
-    .replace(/[^a-z0-9_]+/g, '_')
-    .replace(/_+/g, '_');
-  const name = slug.length <= 63 ? slug : `${slug.slice(0, 54)}_${fingerprint(slug)}`;
-  assertSchemaIdentifier(name);
-  return name;
-}
-
-/** Short deterministic digest (djb2), used only to keep long schema names unique. */
-function fingerprint(value: string): string {
-  let hash = 5381;
-  for (let i = 0; i < value.length; i++) hash = ((hash * 33) ^ value.charCodeAt(i)) >>> 0;
-  return hash.toString(36).padStart(7, '0');
-}
-
 function migrationNames(): string[] {
   const dir = join(workspaceRoot(), 'libs', 'db', 'prisma', 'migrations');
   return readdirSync(dir)
@@ -228,35 +259,22 @@ function migrationNames(): string[] {
     .sort();
 }
 
-async function appliedMigrationNames(db: Db): Promise<Set<string>> {
+async function appliedMigrationNames(db: Db | DbTransactionClient, schema: string): Promise<Set<string>> {
   const present = await db.$queryRaw<{ exists: boolean }[]>`
     SELECT EXISTS (
       SELECT 1 FROM information_schema.tables
-      WHERE table_schema = ${TEST_SCHEMA} AND table_name = '_prisma_migrations'
+      WHERE table_schema = ${schema} AND table_name = '_prisma_migrations'
     ) AS exists
   `;
   if (!present[0]?.exists) return new Set();
   const rows = await db.$queryRawUnsafe<{ migration_name: string }[]>(
-    `SELECT migration_name FROM "${TEST_SCHEMA}"."_prisma_migrations" WHERE finished_at IS NOT NULL`
+    `SELECT migration_name FROM "${schema}"."_prisma_migrations" WHERE finished_at IS NOT NULL`
   );
   return new Set(rows.map((row) => row.migration_name));
 }
 
-/**
- * Walks up from the current working directory until it finds the directory
- * holding `prisma.config.ts`. Vitest runs with the project directory as cwd, so
- * this resolves the workspace root from any library's suite.
- */
+/** The workspace root, found once from the current working directory. */
 function workspaceRoot(): string {
-  if (cachedRoot) return cachedRoot;
-  let dir = resolve(process.cwd());
-  for (;;) {
-    if (existsSync(join(dir, 'prisma.config.ts'))) {
-      cachedRoot = dir;
-      return dir;
-    }
-    const parent = resolve(dir, '..');
-    if (parent === dir) throw new Error('Could not locate the workspace root (no prisma.config.ts found)');
-    dir = parent;
-  }
+  cachedRoot ??= findWorkspaceRoot(process.cwd());
+  return cachedRoot;
 }
