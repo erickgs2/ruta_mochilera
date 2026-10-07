@@ -1,0 +1,145 @@
+{
+  "name": "client",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "projectType": "application",
+  "prefix": "rm",
+  "sourceRoot": "apps/client/src",
+  "tags": [],
+  "targets": {
+    "typecheck": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "tsc -p tsconfig.typecheck.json",
+        "cwd": "{projectRoot}"
+      }
+    },
+    "build": {
+      "executor": "@angular/build:application",
+      "outputs": ["{options.outputPath}"],
+      "defaultConfiguration": "production",
+      "options": {
+        "outputPath": "dist/apps/client",
+        "browser": "apps/client/src/main.ts",
+        "tsConfig": "apps/client/tsconfig.app.json",
+        "inlineStyleLanguage": "scss",
+        "assets": [
+          {
+            "glob": "**/*",
+            "input": "apps/client/public"
+          },
+          {
+            "glob": "**/*",
+            "input": "libs/i18n/src/assets",
+            "output": "assets/i18n"
+          },
+          {
+            "glob": "logo-*.png",
+            "input": "assets/branding",
+            "output": "brand"
+          }
+        ],
+        "styles": [
+          "node_modules/@fontsource/poppins/400.css",
+          "node_modules/@fontsource/poppins/500.css",
+          "node_modules/@fontsource/poppins/600.css",
+          "node_modules/@fontsource/poppins/700.css",
+          "node_modules/@fontsource/poppins/800.css",
+          "apps/client/src/styles.scss"
+        ],
+        "stylePreprocessorOptions": {
+          "includePaths": ["libs/ui/src/styles"]
+        }
+      },
+      "configurations": {
+        "production": {
+          "budgets": [
+            {
+              "type": "initial",
+              "maximumWarning": "500kb",
+              "maximumError": "1mb"
+            },
+            {
+              "type": "anyComponentStyle",
+              "maximumWarning": "4kb",
+              "maximumError": "8kb"
+            }
+          ],
+          "outputHashing": "all",
+          "baseHref": "/app/"
+        },
+        "development": {
+          "optimization": false,
+          "extractLicenses": false,
+          "sourceMap": true,
+          "fileReplacements": [
+            {
+              "replace": "apps/client/src/environments/environment.ts",
+              "with": "apps/client/src/environments/environment.development.ts"
+            }
+          ]
+        },
+        "capacitor": {
+          "fileReplacements": [
+            {
+              "replace": "apps/client/src/environments/environment.ts",
+              "with": "apps/client/src/environments/environment.capacitor.ts"
+            }
+          ]
+        },
+        "capacitor-development": {
+          "optimization": false,
+          "extractLicenses": false,
+          "sourceMap": true,
+          "fileReplacements": [
+            {
+              "replace": "apps/client/src/environments/environment.ts",
+              "with": "apps/client/src/environments/environment.capacitor.development.ts"
+            }
+          ]
+        }
+      }
+    },
+    "serve": {
+      "continuous": true,
+      "executor": "@angular/build:dev-server",
+      "defaultConfiguration": "development",
+      "options": {
+        "port": 4201,
+        "proxyConfig": "apps/client/proxy.conf.json"
+      },
+      "configurations": {
+        "production": {
+          "buildTarget": "client:build:production"
+        },
+        "development": {
+          "buildTarget": "client:build:development"
+        }
+      }
+    },
+    "test": {
+      "executor": "@nx/jest:jest",
+      "outputs": ["{workspaceRoot}/coverage/{projectRoot}"],
+      "options": {
+        "jestConfig": "apps/client/jest.config.cts",
+        "tsConfig": "apps/client/tsconfig.spec.json"
+      }
+    },
+    "cap-sync": {
+      "executor": "nx:run-commands",
+      "dependsOn": ["build"],
+      "options": {
+        "command": "npx cap sync",
+        "cwd": "{projectRoot}"
+      }
+    },
+    "serve-static": {
+      "continuous": true,
+      "executor": "@nx/web:file-server",
+      "options": {
+        "buildTarget": "client:build",
+        "staticFilePath": "dist/apps/client/browser",
+        "spa": true
+      }
+    }
+  }
+}

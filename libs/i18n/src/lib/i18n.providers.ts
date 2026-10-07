@@ -20,6 +20,10 @@ export function provideI18n(): (Provider | EnvironmentProviders)[] {
   return provideTranslateService({
     lang: 'es',
     fallbackLang: 'es',
-    loader: provideTranslateHttpLoader({ prefix: '/assets/i18n/', suffix: '.json' }),
+    // Relative, never `/assets/...`: the browser resolves it against the
+    // document's base href, so it works for the panel at /admin/, the
+    // customer app at /app/ and the Capacitor bundle at / alike. An absolute
+    // path would ask the domain root, which Nginx redirects to /app/.
+    loader: provideTranslateHttpLoader({ prefix: 'assets/i18n/', suffix: '.json' }),
   });
 }

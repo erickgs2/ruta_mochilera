@@ -6,6 +6,28 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { API_BASE_URL } from '@rm/api-client';
 import { authInterceptor } from './auth.interceptor';
 import { AuthService } from './auth.service';
+import { REFRESH_TOKEN_STORE, type RefreshTokenStore } from './refresh-token-store';
+
+/** A store that always has something to report, so its effects on the interceptor are observable. */
+class FakeNativeRefreshTokenStore implements RefreshTokenStore {
+  token: string | null = null;
+  persisted: Array<{ refreshToken?: string }> = [];
+
+  requestHeaders({ includeRefreshToken }: { includeRefreshToken: boolean }): Record<string, string> {
+    const headers: Record<string, string> = { 'X-Client-Platform': 'native' };
+    if (includeRefreshToken && this.token) headers['X-Refresh-Token'] = this.token;
+    return headers;
+  }
+
+  async persist(tokens: { refreshToken?: string }): Promise<void> {
+    this.persisted.push(tokens);
+    if (tokens.refreshToken) this.token = tokens.refreshToken;
+  }
+
+  async clear(): Promise<void> {
+    this.token = null;
+  }
+}
 
 describe('authInterceptor', () => {
   let http: HttpClient;
@@ -138,5 +160,119 @@ describe('authInterceptor', () => {
     expect(receivedError).toBeInstanceOf(HttpErrorResponse);
     expect((receivedError as HttpErrorResponse).status).toBe(401);
     expect((receivedError as HttpErrorResponse).url).toContain('/api/v1/trips');
+  });
+
+  // A 401 from one of these is an answer about the request itself (a wrong
+  // password, a bad code, a used reset token), not about the session. With
+  // a session open, treating it as an expired token would start a refresh
+  // and, if that failed, clear the session and leave the screen before the
+  // user ever saw the error.
+  it.each([
+    '/api/v1/auth/login',
+    '/api/v1/auth/register',
+    '/api/v1/auth/verify-email',
+    '/api/v1/auth/resend-code',
+    '/api/v1/auth/forgot-password',
+    '/api/v1/auth/reset-password',
+    '/api/v1/auth/oauth/google',
+    '/api/v1/auth/oauth/apple',
+  ])('passes a 401 from the public auth endpoint %s to the caller without refreshing', (path) => {
+    auth.setSessionForTesting('access-1', { id: 'u1', email: 'a@b.test', type: 'CUSTOMER', locale: 'es', fullName: 'Ana', permissions: [] });
+    const navigateSpy = vi.spyOn(router, 'navigate').mockResolvedValue(true);
+
+    let receivedError: unknown;
+    http.post(path, {}).subscribe({ error: (error) => (receivedError = error) });
+    controller.expectOne(path).flush({ code: 'TOKEN_INVALID' }, { status: 401, statusText: 'Unauthorized' });
+
+    controller.verify(); // no refresh call was made
+    expect(auth.isAuthenticated()).toBe(true);
+    expect(navigateSpy).not.toHaveBeenCalled();
+    expect(receivedError).toBeInstanceOf(HttpErrorResponse);
+    expect((receivedError as HttpErrorResponse).error).toEqual({ code: 'TOKEN_INVALID' });
+  });
+});
+
+// Task 15b: a platform-aware RefreshTokenStore. The interceptor must attach
+// its `requestHeaders()` uniformly and hand a successful refresh's tokens to
+// `persist()` -- without ever branching on platform itself. Every test above
+// this point never provides REFRESH_TOKEN_STORE and still passes, which is
+// the proof that the default (web) request/refresh shape is unchanged.
+describe('authInterceptor with an injected RefreshTokenStore', () => {
+  let http: HttpClient;
+  let controller: HttpTestingController;
+  let auth: AuthService;
+  let store: FakeNativeRefreshTokenStore;
+
+  beforeEach(() => {
+    localStorage.clear();
+    store = new FakeNativeRefreshTokenStore();
+    TestBed.configureTestingModule({
+      providers: [
+        provideHttpClient(withInterceptors([authInterceptor])),
+        provideHttpClientTesting(),
+        provideRouter([{ path: 'login', children: [] }]),
+        { provide: API_BASE_URL, useValue: '' },
+        { provide: REFRESH_TOKEN_STORE, useValue: store },
+      ],
+    });
+    http = TestBed.inject(HttpClient);
+    controller = TestBed.inject(HttpTestingController);
+    auth = TestBed.inject(AuthService);
+  });
+
+  it("attaches the store's platform header alongside the bearer token, but never the refresh token on an ordinary request", () => {
+    // The refresh token is long-lived; it must only travel on the two calls
+    // that actually consume it, not on every API request where it would end
+    // up in every access log and proxy along the way.
+    store.token = 'native-refresh-1';
+    auth.setSessionForTesting('access-1');
+    http.get('/api/v1/trips').subscribe();
+
+    const req = controller.expectOne('/api/v1/trips');
+    expect(req.request.headers.get('Authorization')).toBe('Bearer access-1');
+    expect(req.request.headers.get('X-Client-Platform')).toBe('native');
+    expect(req.request.headers.has('X-Refresh-Token')).toBe(false);
+    req.flush([]);
+  });
+
+  it('attaches the refresh token to the refresh call the interceptor itself makes', () => {
+    store.token = 'native-refresh-1';
+    auth.setSessionForTesting('expired', { id: 'u1', email: 'a@b.test', type: 'STAFF', locale: 'es', fullName: 'Ana', permissions: [] });
+    http.get('/api/v1/trips').subscribe({ error: () => undefined });
+
+    controller.expectOne('/api/v1/trips').flush(null, { status: 401, statusText: 'Unauthorized' });
+    const refresh = controller.expectOne('/api/v1/auth/refresh');
+    expect(refresh.request.headers.get('X-Refresh-Token')).toBe('native-refresh-1');
+    refresh.flush(null, { status: 401, statusText: 'Unauthorized' });
+  });
+
+  it('attaches the refresh token to the logout call, so the server can revoke it', () => {
+    store.token = 'native-refresh-1';
+    http.post('/api/v1/auth/logout', {}).subscribe();
+
+    const logout = controller.expectOne('/api/v1/auth/logout');
+    expect(logout.request.headers.get('X-Refresh-Token')).toBe('native-refresh-1');
+    logout.flush(null);
+  });
+
+  it('attaches the store headers even with no local session (e.g. the login call itself)', () => {
+    http.post('/api/v1/auth/login', {}).subscribe({ error: () => undefined });
+    const req = controller.expectOne('/api/v1/auth/login');
+    expect(req.request.headers.get('X-Client-Platform')).toBe('native');
+    req.flush(null, { status: 401, statusText: 'Unauthorized' });
+  });
+
+  it('hands a successful refresh response to the store', () => {
+    auth.setSessionForTesting('expired', { id: 'u1', email: 'a@b.test', type: 'STAFF', locale: 'es', fullName: 'Ana', permissions: [] });
+    http.get('/api/v1/trips').subscribe();
+
+    controller.expectOne('/api/v1/trips').flush(null, { status: 401, statusText: 'Unauthorized' });
+    controller.expectOne('/api/v1/auth/refresh').flush({
+      user: { id: 'u1', email: 'a@b.test', type: 'STAFF', locale: 'es', fullName: 'Ana', permissions: [] },
+      tokens: { accessToken: 'access-2', refreshToken: 'native-refresh-2', expiresInSeconds: 900 },
+    });
+
+    expect(store.persisted).toEqual([{ accessToken: 'access-2', refreshToken: 'native-refresh-2', expiresInSeconds: 900 }]);
+    controller.expectOne('/api/v1/trips').flush([]);
   });
 });

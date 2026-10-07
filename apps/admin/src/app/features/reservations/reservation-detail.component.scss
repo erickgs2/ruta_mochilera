@@ -1,0 +1,75 @@
+.reservation-back {
+  margin-bottom: 0.5rem;
+}
+
+.reservation-status {
+  display: block;
+  margin-bottom: 1rem;
+}
+
+.reservation-request {
+  border: 1px solid var(--mat-sys-outline-variant);
+  border-radius: 0.5rem;
+  padding: 0.75rem 1rem;
+  margin-bottom: 1rem;
+}
+
+.reservation-request-pending {
+  background: var(--mat-sys-error-container);
+}
+
+.reservation-request-reason {
+  white-space: pre-wrap;
+}
+
+.reservation-declined,
+.reservation-decline {
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--mat-sys-outline-variant);
+}
+
+.reservation-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  gap: 1rem;
+  margin-bottom: 1rem;
+
+  p {
+    margin: 0.25rem 0;
+    overflow-wrap: anywhere;
+  }
+}
+
+h2 {
+  font-size: 1rem;
+  font-weight: 500;
+  margin: 0 0 0.5rem;
+}
+
+.reservation-payments {
+  margin-bottom: 1.5rem;
+}
+
+.reservation-payments-table-container {
+  overflow-x: auto;
+}
+
+.reservation-payments-table {
+  width: 100%;
+}
+
+.reservation-cancel {
+  border-top: 1px solid var(--mat-sys-outline-variant);
+  padding-top: 1rem;
+}
+
+.reservation-cancel-reason {
+  width: 100%;
+  max-width: 36rem;
+  display: block;
+}
+
+.reservation-error {
+  color: var(--mat-sys-error);
+}

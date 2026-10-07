@@ -1,0 +1,58 @@
+<div class="auth-page">
+  <div class="auth-card">
+    <a routerLink="/" class="auth-logo" aria-label="La Ruta Mochilera"><img src="brand/logo-on-dark.png" alt="" width="72" height="72" /></a>
+    <h1>{{ 'auth.verify.title' | translate }}</h1>
+
+    @if (verified()) {
+      <p class="auth-notice">{{ 'auth.verify.success' | translate }}</p>
+      <p class="auth-switch">
+        <a routerLink="/login">{{ 'auth.signIn' | translate }}</a>
+      </p>
+    } @else {
+      <p class="auth-intro">{{ 'auth.verify.intro' | translate }}</p>
+
+      <form [formGroup]="form" (ngSubmit)="submit()" novalidate>
+        <label>
+          {{ 'auth.email' | translate }}
+          <input type="email" formControlName="email" autocomplete="email" />
+          @if (form.controls.email.invalid && form.controls.email.touched) {
+            <span class="field-error">{{ 'auth.validation.email' | translate }}</span>
+          }
+        </label>
+
+        <label>
+          {{ 'auth.verify.code' | translate }}
+          <input
+            type="text"
+            formControlName="code"
+            inputmode="numeric"
+            autocomplete="one-time-code"
+            maxlength="6"
+          />
+          @if (form.controls.code.invalid && form.controls.code.touched) {
+            <span class="field-error">{{ 'auth.validation.code' | translate }}</span>
+          }
+        </label>
+
+        @if (error()) {
+          <p class="auth-error">{{ error() | rmErrorCode }}</p>
+        }
+        @if (resent()) {
+          <p class="auth-notice">{{ 'auth.verify.resent' | translate }}</p>
+        }
+
+        <button type="submit" [disabled]="loading()">
+          {{ loading() ? ('auth.verify.submitting' | translate) : ('auth.verify.submit' | translate) }}
+        </button>
+
+        <button type="button" class="verify-resend auth-secondary" [disabled]="!canResend()" (click)="resend()">
+          @if (cooldownLeft() > 0) {
+            {{ 'auth.verify.resendIn' | translate: { seconds: cooldownLeft() } }}
+          } @else {
+            {{ 'auth.verify.resend' | translate }}
+          }
+        </button>
+      </form>
+    }
+  </div>
+</div>

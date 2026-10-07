@@ -42,7 +42,7 @@ server {
     ssl_certificate_key /etc/letsencrypt/live/${DOMAIN_NAME}/privkey.pem;
     ssl_protocols TLSv1.2 TLSv1.3;
 
-    # The API and the admin panel live behind this single front door. The
+    # The API and both Angular apps live behind this single front door. The
     # `api` hostname is the compose service name from compose.prod.yml.
     location /api/ {
         proxy_pass http://api:3000;
@@ -52,14 +52,63 @@ server {
         proxy_set_header X-Forwarded-Proto $scheme;
     }
 
-    location /admin/ {
-        alias /usr/share/nginx/html/admin/;
-        try_files $uri $uri/ /admin/index.html;
+    # Each app is built with its own base href (`baseHref` in the production
+    # configuration of apps/admin/project.json and apps/client/project.json),
+    # so its scripts, styles, fonts and images resolve under its own prefix,
+    # and each lives in the directory of the same name under this `root`
+    # (see Dockerfile.web). `root` rather than `alias`: the nested caching
+    # location below inherits `root`, which it would not do with `alias`.
+    #
+    # `try_files ... /<app>/index.html` hands every deep link (a reload on
+    # /app/reservations/123) to Angular's router instead of a 404.
+    #
+    # Only files whose name carries Angular's content hash (`main-CQOSORMN.js`,
+    # the self-hosted fonts under media/) are cached for a year: they never
+    # change under the same name. The logo, favicons and translation
+    # catalogues keep their names across deploys, so they get no long cache,
+    # and index.html is revalidated on every load so a deploy is picked up at
+    # once.
+    root /usr/share/nginx/html;
+
+    # Relative `Location` headers: a redirect never names a host or port, so
+    # it is right behind any port mapping, not only on 443.
+    absolute_redirect off;
+
+    location = /admin {
+        return 301 /admin/;
     }
 
-    # The customer-facing app is Phase 2 and does not exist yet, so the root
-    # path redirects to the admin panel for now.
+    location /admin/ {
+        try_files $uri $uri/ /admin/index.html;
+
+        location ~* "-[A-Za-z0-9_]{8}\.(?:js|css|woff2?)$" {
+            add_header Cache-Control "public, max-age=31536000, immutable";
+        }
+    }
+
+    location = /admin/index.html {
+        add_header Cache-Control "no-cache";
+    }
+
+    location = /app {
+        return 301 /app/;
+    }
+
+    location /app/ {
+        try_files $uri $uri/ /app/index.html;
+
+        location ~* "-[A-Za-z0-9_]{8}\.(?:js|css|woff2?)$" {
+            add_header Cache-Control "public, max-age=31536000, immutable";
+        }
+    }
+
+    location = /app/index.html {
+        add_header Cache-Control "no-cache";
+    }
+
+    # Customers far outnumber staff, so the bare domain opens the customer
+    # app. The panel stays one path away at /admin/.
     location / {
-        return 302 /admin/;
+        return 302 /app/;
     }
 }

@@ -12,7 +12,10 @@ module.exports = {
       },
     ],
   },
-  transformIgnorePatterns: ['node_modules/(?!.*\\.mjs$)'],
+  // Also transform Angular's locale data (`@angular/common/locales/*.js`):
+  // it ships as ES modules under a `.js` name, and `rmCalendarDate` imports
+  // the Spanish one.
+  transformIgnorePatterns: ['node_modules/(?!.*\\.mjs$|.*@angular/common/locales/)'],
   snapshotSerializers: [
     'jest-preset-angular/build/serializers/no-ng-attributes',
     'jest-preset-angular/build/serializers/ng-snapshot',

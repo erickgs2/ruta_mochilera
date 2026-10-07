@@ -31,9 +31,24 @@
             "glob": "**/*",
             "input": "libs/i18n/src/assets",
             "output": "assets/i18n"
+          },
+          {
+            "glob": "logo-*.png",
+            "input": "assets/branding",
+            "output": "brand"
           }
         ],
-        "styles": ["apps/admin/src/styles.scss"]
+        "styles": [
+          "node_modules/@fontsource/poppins/400.css",
+          "node_modules/@fontsource/poppins/500.css",
+          "node_modules/@fontsource/poppins/600.css",
+          "node_modules/@fontsource/poppins/700.css",
+          "node_modules/@fontsource/poppins/800.css",
+          "apps/admin/src/styles.scss"
+        ],
+        "stylePreprocessorOptions": {
+          "includePaths": ["libs/ui/src/styles"]
+        }
       },
       "configurations": {
         "production": {
@@ -49,7 +64,8 @@
               "maximumError": "8kb"
             }
           ],
-          "outputHashing": "all"
+          "outputHashing": "all",
+          "baseHref": "/admin/"
         },
         "development": {
           "optimization": false,

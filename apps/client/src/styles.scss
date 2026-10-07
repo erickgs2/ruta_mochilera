@@ -1,0 +1,196 @@
+// La Ruta Mochilera -- global styles of the customer app. Brand tokens and
+// the browser-surface rules come from libs/ui/src/styles/_brand.scss; see
+// docs/brand.md.
+@use 'brand';
+
+:root {
+  @include brand.tokens;
+}
+
+@include brand.browser-surfaces;
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: var(--rm-font);
+  font-size: 1rem;
+  line-height: 1.5;
+  color: var(--rm-ink);
+  background: var(--rm-ground);
+  -webkit-font-smoothing: antialiased;
+}
+
+h1,
+h2,
+h3 {
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+  text-wrap: balance;
+}
+
+a {
+  color: var(--rm-ink);
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+// Every button in the app is a brand button unless a screen says otherwise:
+// yellow with charcoal lettering, as the posters set their calls to action.
+button {
+  cursor: pointer;
+  font-weight: 700;
+  transition:
+    transform 160ms var(--rm-ease-out),
+    background-color 160ms var(--rm-ease-out);
+
+  &:not(:disabled):hover {
+    background-color: var(--rm-yellow-strong);
+  }
+
+  &:not(:disabled):active {
+    transform: translateY(1px);
+  }
+
+  &:disabled {
+    cursor: not-allowed;
+  }
+}
+
+input[type='checkbox'],
+input[type='radio'] {
+  accent-color: var(--rm-ink);
+  width: 1.125rem;
+  height: 1.125rem;
+}
+
+// The brand header: the posters' yellow band with the logo.
+.brand-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.75rem max(1rem, env(safe-area-inset-left)) 0.75rem max(1rem, env(safe-area-inset-right));
+  padding-top: max(0.75rem, env(safe-area-inset-top));
+  background: var(--rm-yellow);
+  color: var(--rm-ink);
+}
+
+.brand-home {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: inherit;
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 1.05rem;
+  letter-spacing: -0.01em;
+
+  img {
+    width: 40px;
+    height: 40px;
+  }
+
+  strong {
+    font-weight: 800;
+  }
+}
+
+// A cream pill link, like the posters' "a nuestra Ruta!" label.
+.brand-pill-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 2.5rem;
+  padding: 0.4rem 1rem;
+  border-radius: var(--rm-radius-pill);
+  background: var(--rm-cream);
+  color: var(--rm-ink);
+  font-weight: 700;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+// Shared by the catalogue screens (list and detail).
+.catalogue-page {
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 1.25rem 1rem 3rem;
+}
+
+.catalogue-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1rem;
+
+  h1 {
+    font-size: 1.5rem;
+    margin: 0;
+  }
+}
+
+.catalogue-status {
+  text-align: center;
+  color: var(--rm-ink-soft);
+  padding: 2rem 0;
+}
+
+.catalogue-error {
+  color: var(--rm-danger);
+}
+
+.trip-price {
+  font-weight: 800;
+  font-size: 1.25rem;
+  letter-spacing: -0.01em;
+}
+
+// The brand's signature: the posters' cream date pill.
+.trip-dates {
+  @include brand.date-pill;
+  align-self: flex-start;
+  font-size: 0.95rem;
+}
+
+.trip-seats {
+  color: var(--rm-ink-soft);
+  font-size: 0.9rem;
+}
+
+.trip-reserve {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 2.75rem;
+  padding: 0.65rem 1.4rem;
+  border-radius: var(--rm-radius-control);
+  background: var(--rm-yellow);
+  color: var(--rm-ink);
+  font-weight: 800;
+  text-decoration: none;
+  transition: background-color 160ms var(--rm-ease-out);
+
+  &:hover {
+    background: var(--rm-yellow-strong);
+  }
+}
+
+.trip-sold-out {
+  display: inline-block;
+  align-self: flex-start;
+  padding: 0.25rem 0.75rem;
+  border-radius: var(--rm-radius-pill);
+  background: var(--rm-danger-soft);
+  color: var(--rm-danger);
+  font-weight: 700;
+}

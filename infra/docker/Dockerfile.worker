@@ -1,0 +1,58 @@
+# Background worker (apps/worker). Built with `docker buildx build --platform
+# linux/amd64,linux/arm64` from the same file: dev runs on a Raspberry Pi
+# (arm64), qa and production run on EC2 (amd64). Build context is the repo
+# root, e.g.:
+#   docker buildx build -f infra/docker/Dockerfile.worker -t rm-worker:latest .
+#
+# Task 8: a plain Node process, deliberately not bundled by Next.js the way
+# apps/api is -- a job living inside Next.js gets killed mid-flight by every
+# redeploy, and `expireHolds` mid-pass is exactly the kind of work a restart
+# must never interrupt. There is no Next.js build step here at all: the
+# runtime stage runs the TypeScript source directly through `tsx`, the same
+# way this workspace already runs `libs/db/prisma/seed.ts` -- see
+# `apps/worker/project.json`'s `serve` target, which does the same thing in
+# development.
+FROM node:24-alpine AS builder
+WORKDIR /app
+RUN corepack enable
+
+# Installing from the lockfile before copying the rest of the source keeps
+# this layer cached across source-only changes.
+COPY pnpm-lock.yaml package.json pnpm-workspace.yaml prisma.config.ts ./
+RUN pnpm fetch
+COPY . .
+RUN pnpm install --offline --frozen-lockfile
+
+# Prisma 7 generates its client into libs/db/src/generated, a gitignored
+# directory rebuilt by `pnpm db:generate` (also wired as this workspace's
+# `postinstall`, but `pnpm install --offline` here runs before `.npmrc`/lockfile
+# scripts are guaranteed to have network access, so this is spelled out
+# explicitly rather than relied upon). Skipping this step lets the build
+# succeed and the container fail at runtime instead -- @rm/db does not exist
+# without it.
+RUN pnpm db:generate
+
+FROM node:24-alpine AS runner
+WORKDIR /app
+ENV NODE_ENV=production
+RUN corepack enable \
+ && addgroup -S rm && adduser -S rm -G rm
+
+# The full workspace is copied, not a pruned subset: `tsx` runs the
+# TypeScript source directly (no build output to trace), and the generated
+# Prisma client at libs/db/src/generated is a project-owned directory (not a
+# published npm package) that Prisma's generated code reads relative to its
+# own file location at runtime -- see libs/db/src/index.ts and
+# Dockerfile.api's matching comment for why a traced/pruned copy risks
+# silently losing it.
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/package.json ./package.json
+COPY --from=builder /app/tsconfig.base.json ./tsconfig.base.json
+COPY --from=builder /app/libs ./libs
+COPY --from=builder /app/apps/worker ./apps/worker
+
+USER rm
+WORKDIR /app
+# No EXPOSE and no published port: the worker answers no requests, pg-boss
+# only (see compose.prod.yml's `worker` service, which publishes none).
+CMD ["/app/node_modules/.bin/tsx", "apps/worker/src/main.ts"]

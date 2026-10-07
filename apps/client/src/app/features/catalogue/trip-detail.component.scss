@@ -1,0 +1,129 @@
+.trip-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  max-width: 760px;
+  margin: 0 auto;
+
+  h1 {
+    margin: 0.25rem 0 0;
+    font-size: clamp(2.25rem, 8vw, 3.75rem);
+    line-height: 0.98;
+    letter-spacing: -0.035em;
+  }
+
+  h2 {
+    font-size: 1.15rem;
+    margin: 1.75rem 0 0.35rem;
+  }
+
+  p {
+    margin: 0;
+  }
+
+  section {
+    max-width: 68ch;
+  }
+}
+
+.trip-gallery {
+  display: flex;
+  gap: 0.75rem;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  padding: 0.6rem;
+  border-radius: var(--rm-radius-card);
+  background: var(--rm-surface);
+  box-shadow: var(--rm-shadow-card);
+
+  img {
+    flex: 0 0 100%;
+    aspect-ratio: 4 / 3;
+    object-fit: cover;
+    border-radius: calc(var(--rm-radius-card) - 6px);
+    scroll-snap-align: start;
+    background: var(--rm-cream);
+  }
+}
+
+// Price and the call to action travel together. On a phone they stay pinned
+// to the bottom of the screen while the itinerary scrolls.
+.trip-cta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.85rem 1rem;
+  border-radius: var(--rm-radius-card);
+  background: var(--rm-yellow);
+  color: var(--rm-ink);
+
+  .trip-seats {
+    color: var(--rm-ink);
+  }
+
+  .trip-reserve {
+    background: var(--rm-ink);
+    color: var(--rm-yellow);
+
+    &:hover {
+      background: var(--rm-ink-strong);
+    }
+  }
+}
+
+@media (max-width: 640px) {
+  .trip-cta {
+    position: sticky;
+    bottom: max(0.75rem, env(safe-area-inset-bottom));
+    z-index: 2;
+    box-shadow: var(--rm-shadow-floating);
+  }
+}
+
+// On a wide screen the photo and the decision sit side by side, so the
+// price and the reserve button are in the first view instead of below a
+// photo the full width of the page.
+@media (min-width: 900px) {
+  .trip-detail {
+    display: grid;
+    grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+    column-gap: 2rem;
+    row-gap: 0.75rem;
+    align-items: start;
+    max-width: 1080px;
+
+    h1 {
+      grid-column: 1 / -1;
+    }
+
+    > :not(h1, .trip-gallery) {
+      grid-column: 2;
+    }
+
+    .trip-dates {
+      justify-self: start;
+    }
+  }
+
+  .trip-gallery {
+    grid-column: 1;
+    grid-row: 2 / span 6;
+    position: sticky;
+    top: 1rem;
+  }
+
+  .trip-detail h2 {
+    margin-top: 1rem;
+  }
+}
+
+// Staff write these fields as plain text with line breaks.
+.trip-text {
+  white-space: pre-line;
+}
+
+.trip-not-found {
+  text-align: center;
+  padding: 3rem 1rem;
+}

@@ -1,0 +1,78 @@
+<header class="brand-bar">
+  <a routerLink="/" class="brand-home" aria-label="La Ruta Mochilera">
+    <img src="brand/logo-on-light.png" alt="" width="40" height="40" />
+    <span>La Ruta <strong>Mochilera</strong></span>
+  </a>
+  <a routerLink="/" class="brand-pill-link">{{ 'catalogue.backToCatalogue' | translate }}</a>
+</header>
+
+<div class="catalogue-page">
+
+  @switch (status()) {
+    @case ('loading') {
+      <p class="catalogue-status">{{ 'common.loading' | translate }}</p>
+    }
+    @case ('not-found') {
+      <div class="trip-not-found">
+        <p>{{ 'catalogue.notFound' | translate }}</p>
+        <a routerLink="/">{{ 'catalogue.backToCatalogue' | translate }}</a>
+      </div>
+    }
+    @case ('error') {
+      <p class="catalogue-error">{{ error() | rmErrorCode }}</p>
+    }
+    @case ('ready') {
+      @if (trip(); as trip) {
+        <article class="trip-detail">
+          <h1>{{ translation()?.name ?? trip.slug }}</h1>
+
+          @if (images().length > 0) {
+            <div class="trip-gallery">
+              @for (image of images(); track image.id) {
+                <img [src]="image.url" [alt]="image.altText ?? translation()?.name ?? ''" loading="lazy" />
+              }
+            </div>
+          }
+
+          <p class="trip-dates">
+                {{ trip.departureDate | rmCalendarDate }}@if (trip.returnDate !== trip.departureDate) {
+                  – {{ trip.returnDate | rmCalendarDate }}
+                }
+              </p>
+
+          <div class="trip-cta">
+            <div>
+              <p class="trip-price">{{ trip.pricePerSeatCents | rmMoney }}</p>
+              @if (trip.availableSeats > 0) {
+                <p class="trip-seats">{{ 'catalogue.seatsLeft' | translate: { count: trip.availableSeats } }}</p>
+              }
+            </div>
+            @if (trip.availableSeats > 0) {
+              <a class="trip-reserve" [routerLink]="['/trips', trip.slug, 'reserve']">{{ 'catalogue.reserve' | translate }}</a>
+            } @else {
+              <p class="trip-sold-out">{{ 'catalogue.soldOut' | translate }}</p>
+            }
+          </div>
+
+          @if (translation(); as text) {
+            <section>
+              <p class="trip-text">{{ text.description }}</p>
+            </section>
+            <section>
+              <h2>{{ 'catalogue.itinerary' | translate }}</h2>
+              <p class="trip-text">{{ text.itinerary }}</p>
+            </section>
+            <section>
+              <h2>{{ 'catalogue.includes' | translate }}</h2>
+              <p class="trip-text">{{ text.includes }}</p>
+            </section>
+            <section>
+              <h2>{{ 'catalogue.excludes' | translate }}</h2>
+              <p class="trip-text">{{ text.excludes }}</p>
+            </section>
+          }
+        </article>
+      }
+    }
+  }
+</div>

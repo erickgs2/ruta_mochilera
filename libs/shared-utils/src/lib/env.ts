@@ -8,10 +8,53 @@ const schema = z
     ACCESS_TOKEN_TTL_SECONDS: z.coerce.number().int().positive().default(900),
     REFRESH_TOKEN_TTL_DAYS: z.coerce.number().int().positive().default(30),
     APP_BASE_URL: z.url(),
+    // The client app's public base URL, path prefix included (production
+    // serves it under `/app`). Not APP_BASE_URL: that one is the API/files
+    // origin. Links mailed to customers -- e.g. the password reset link --
+    // must open the client app, so they are built from this.
+    CLIENT_APP_URL: z.url(),
     STORAGE_DRIVER: z.enum(['local', 's3']).default('local'),
     STORAGE_LOCAL_ROOT: z.string().optional(),
     STORAGE_S3_BUCKET: z.string().optional(),
     STORAGE_S3_REGION: z.string().optional(),
+    RESEND_API_KEY: z.string().optional(),
+    RESEND_FROM_ADDRESS: z.string().optional(),
+    // Optional in every environment, not just development/test: there is no
+    // Stripe account anywhere in this phase, so their absence is what
+    // selects FakePaymentProvider (see createPaymentProvider), not a
+    // misconfiguration to fail fast on the way missing Resend credentials
+    // are outside development and test.
+    STRIPE_SECRET_KEY: z.string().optional(),
+    STRIPE_WEBHOOK_SECRET: z.string().optional(),
+    STRIPE_PUBLISHABLE_KEY: z.string().optional(),
+    // Optional in every environment, same reasoning as the Stripe keys above:
+    // there is no Google Cloud project and no Apple developer account for
+    // this build. Deliberately left as a plain optional string rather than
+    // transformed to `undefined` on empty -- `loginWithProvider` (see
+    // `@rm/domain-identity`) checks truthiness, so both an absent variable
+    // and one set to the empty string (as `.env.example` ships them) mean
+    // "this provider is switched off", and the social sign-in endpoint
+    // answers with a stable `PROVIDER_DISABLED` instead of ever reaching a
+    // Google/Apple key endpoint it has no client id to authenticate against.
+    GOOGLE_OAUTH_CLIENT_ID: z.string().optional(),
+    APPLE_OAUTH_CLIENT_ID: z.string().optional(),
+    // Deliberately a plain optional string, not z.coerce.boolean(): coercion
+    // treats any non-empty string (including the literal "false") as true,
+    // which is exactly the "on by accident" failure mode this flag must
+    // never have. Interpreted explicitly below -- only the literal "true"
+    // turns it on; absent or malformed stays off.
+    EMAIL_VERBOSE_LOGGING: z.string().optional(),
+    // Comma-separated exact origins allowed to call this API cross-origin
+    // with credentials (CORS). Never a wildcard: `Access-Control-Allow-
+    // Credentials: true` combined with `Access-Control-Allow-Origin: *` is
+    // rejected by browsers anyway, and defeats the point of an allowlist.
+    // Same-origin traffic (the admin panel and the web client behind
+    // Nginx, exactly as Phase 1 shipped) never triggers CORS at all and
+    // needs no entry here -- this is purely for the packaged Capacitor app,
+    // whose WebView origin (`capacitor://localhost` on iOS,
+    // `https://localhost` on Android by default) is a different origin
+    // than the API's. See `apps/api/src/lib/http/cors.ts`.
+    CORS_ALLOWED_ORIGINS: z.string().optional(),
   })
   .superRefine((value, ctx) => {
     if (value.STORAGE_DRIVER === 'local' && !value.STORAGE_LOCAL_ROOT) {
@@ -19,6 +62,28 @@ const schema = z
     }
     if (value.STORAGE_DRIVER === 's3' && (!value.STORAGE_S3_BUCKET || !value.STORAGE_S3_REGION)) {
       ctx.addIssue({ code: 'custom', message: 'STORAGE_S3_BUCKET and STORAGE_S3_REGION are required when STORAGE_DRIVER is s3' });
+    }
+    // Console email provider is selected for development/test (see createEmail);
+    // every other environment sends through Resend and needs its credentials.
+    const needsResendCredentials = value.NODE_ENV !== 'development' && value.NODE_ENV !== 'test';
+    if (needsResendCredentials && !value.RESEND_API_KEY) {
+      ctx.addIssue({ code: 'custom', message: 'RESEND_API_KEY is required when NODE_ENV is not development or test' });
+    }
+    if (needsResendCredentials && !value.RESEND_FROM_ADDRESS) {
+      ctx.addIssue({ code: 'custom', message: 'RESEND_FROM_ADDRESS is required when NODE_ENV is not development or test' });
+    }
+    // Both or neither: a lone STRIPE_SECRET_KEY or STRIPE_WEBHOOK_SECRET is
+    // a half-finished configuration that createPaymentProvider cannot act
+    // on (it only switches to Stripe once both are present), so catching it
+    // here beats silently falling back to the fake while someone believes
+    // Stripe is wired up.
+    const hasSecretKey = Boolean(value.STRIPE_SECRET_KEY);
+    const hasWebhookSecret = Boolean(value.STRIPE_WEBHOOK_SECRET);
+    if (hasSecretKey !== hasWebhookSecret) {
+      ctx.addIssue({
+        code: 'custom',
+        message: 'STRIPE_SECRET_KEY and STRIPE_WEBHOOK_SECRET must both be set, or both left unset',
+      });
     }
   });
 
@@ -29,10 +94,40 @@ export interface AppEnv {
   accessTokenTtlSeconds: number;
   refreshTokenTtlDays: number;
   appBaseUrl: string;
+  /** The client app's public base URL, path prefix included -- see the schema comment on `CLIENT_APP_URL`. */
+  clientAppUrl: string;
   storageDriver: 'local' | 's3';
   storageLocalRoot?: string;
   storageS3Bucket?: string;
   storageS3Region?: string;
+  resendApiKey?: string;
+  resendFromAddress?: string;
+  /** Optional in every environment -- see `createPaymentProvider`. */
+  stripeSecretKey?: string;
+  stripeWebhookSecret?: string;
+  stripePublishableKey?: string;
+  /**
+   * Empty or absent means this provider is switched off -- see
+   * `loginWithProvider` in `@rm/domain-identity`. Never transformed to
+   * `undefined` on empty input; callers must check truthiness, not
+   * `=== undefined`, since `.env.example` ships these as the empty string.
+   */
+  googleOauthClientId?: string;
+  appleOauthClientId?: string;
+  /**
+   * Prints email `html`/`text` bodies to the console (ConsoleEmailProvider
+   * only). Off by default and off for any value other than the literal
+   * "true": Task 11 sends six-digit email-verification codes through this
+   * port, and this flag controls whether those land in the log.
+   */
+  emailVerboseLogging: boolean;
+  /**
+   * Exact origins allowed to call this API cross-origin with credentials.
+   * Empty when `CORS_ALLOWED_ORIGINS` is absent or blank -- same-origin
+   * traffic needs no CORS headers at all, so an empty allowlist is a valid,
+   * safe default, not a misconfiguration. See `apps/api/src/lib/http/cors.ts`.
+   */
+  corsAllowedOrigins: string[];
 }
 
 export function loadEnv(source: Record<string, string | undefined>): AppEnv {
@@ -54,9 +149,28 @@ export function loadEnv(source: Record<string, string | undefined>): AppEnv {
     accessTokenTtlSeconds: value.ACCESS_TOKEN_TTL_SECONDS,
     refreshTokenTtlDays: value.REFRESH_TOKEN_TTL_DAYS,
     appBaseUrl: value.APP_BASE_URL,
+    clientAppUrl: value.CLIENT_APP_URL,
     storageDriver: value.STORAGE_DRIVER,
     storageLocalRoot: value.STORAGE_LOCAL_ROOT,
     storageS3Bucket: value.STORAGE_S3_BUCKET,
     storageS3Region: value.STORAGE_S3_REGION,
+    resendApiKey: value.RESEND_API_KEY,
+    resendFromAddress: value.RESEND_FROM_ADDRESS,
+    stripeSecretKey: value.STRIPE_SECRET_KEY,
+    stripeWebhookSecret: value.STRIPE_WEBHOOK_SECRET,
+    stripePublishableKey: value.STRIPE_PUBLISHABLE_KEY,
+    googleOauthClientId: value.GOOGLE_OAUTH_CLIENT_ID,
+    appleOauthClientId: value.APPLE_OAUTH_CLIENT_ID,
+    emailVerboseLogging: value.EMAIL_VERBOSE_LOGGING === 'true',
+    corsAllowedOrigins: parseCorsAllowedOrigins(value.CORS_ALLOWED_ORIGINS),
   };
+}
+
+/** Splits on commas, trims whitespace, and drops empty entries (a trailing comma, a blank value, or an absent variable all become `[]`). */
+function parseCorsAllowedOrigins(raw: string | undefined): string[] {
+  if (!raw) return [];
+  return raw
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter((origin) => origin.length > 0);
 }

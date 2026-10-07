@@ -9,9 +9,18 @@ import { buildOpenApiDocument } from './registry';
  */
 const EVERY_ROUTE_FILE_PATH = [
   '/api/v1/auth/login',
+  '/api/v1/auth/register',
+  '/api/v1/auth/verify-email',
+  '/api/v1/auth/resend-code',
+  '/api/v1/auth/forgot-password',
+  '/api/v1/auth/reset-password',
   '/api/v1/auth/refresh',
   '/api/v1/auth/logout',
+  '/api/v1/auth/oauth/google',
+  '/api/v1/auth/oauth/apple',
   '/api/v1/me',
+  '/api/v1/me/profile',
+  '/api/v1/me/profile/photo',
   '/api/v1/rbac/permissions',
   '/api/v1/rbac/roles',
   '/api/v1/rbac/roles/{roleId}',
@@ -26,6 +35,69 @@ const EVERY_ROUTE_FILE_PATH = [
   '/api/v1/trips/{tripId}/costing/items',
   '/api/v1/trips/{tripId}/costing/items/{itemId}',
   '/api/v1/files/{key}',
+  '/api/v1/webhooks/stripe',
+  '/api/v1/public/trips',
+  '/api/v1/public/trips/{slug}',
+  '/api/v1/reservations',
+  '/api/v1/reservations/{reservationId}',
+  '/api/v1/reservations/{reservationId}/cancellation-requests',
+  '/api/v1/reservations/{reservationId}/payment-intents',
+  '/api/v1/admin/reservations',
+  '/api/v1/admin/reservations/{reservationId}',
+  '/api/v1/admin/reservations/{reservationId}/payments',
+  '/api/v1/admin/reservations/{reservationId}/cancel',
+  '/api/v1/admin/reservations/{reservationId}/decline-cancellation',
+  '/api/v1/payments',
+  '/api/v1/notifications',
+  '/api/v1/notifications/{deliveryId}/read',
+];
+
+/**
+ * The routes that are deliberately not gated on a token: the three auth
+ * endpoints that issue one, the two social sign-in endpoints (Task 13,
+ * `auth: 'public'` the same as `/auth/login`), the local file server, and
+ * Stripe's webhook -- which is authorised by an HMAC over the request body,
+ * not by an actor, and therefore has no 401 or 403 to document.
+ */
+const UNGATED_PATHS = [
+  '/api/v1/auth/login',
+  '/api/v1/auth/register',
+  '/api/v1/auth/verify-email',
+  '/api/v1/auth/resend-code',
+  '/api/v1/auth/forgot-password',
+  '/api/v1/auth/reset-password',
+  '/api/v1/auth/refresh',
+  '/api/v1/auth/logout',
+  '/api/v1/auth/oauth/google',
+  '/api/v1/auth/oauth/apple',
+  '/api/v1/files/{key}',
+  '/api/v1/webhooks/stripe',
+  '/api/v1/public/trips',
+  '/api/v1/public/trips/{slug}',
+];
+
+/**
+ * Routes that require a valid access token but check no permission from the
+ * RBAC catalogue at all -- `/api/v1/me` (there is no "view your own
+ * profile" permission to hold), and every customer-facing reservations /
+ * payments / notifications endpoint Task 14 adds: those are gated on
+ * ownership (a reservation or inbox delivery belonging to the caller),
+ * never on a permission a STAFF role could hold or lack, so none of them
+ * can ever answer 403. See `docs/business-rules/reservations.md` and this
+ * task's own doc comments in each `route.ts` for why that check lives in
+ * the domain rather than as a route-level `permission`.
+ */
+const NO_PERMISSION_CHECK_PATHS = [
+  '/api/v1/me',
+  '/api/v1/me/profile',
+  '/api/v1/me/profile/photo',
+  '/api/v1/reservations',
+  '/api/v1/reservations/{reservationId}',
+  '/api/v1/reservations/{reservationId}/cancellation-requests',
+  '/api/v1/reservations/{reservationId}/payment-intents',
+  '/api/v1/payments',
+  '/api/v1/notifications',
+  '/api/v1/notifications/{deliveryId}/read',
 ];
 
 describe('buildOpenApiDocument', () => {
@@ -53,7 +125,7 @@ describe('buildOpenApiDocument', () => {
   });
 
   it('documents both 401 and 403 on every gated route, so the client can tell an expired token apart from a real permission failure', () => {
-    const gatedPaths = EVERY_ROUTE_FILE_PATH.filter((path) => path !== '/api/v1/auth/login' && path !== '/api/v1/auth/refresh' && path !== '/api/v1/auth/logout' && path !== '/api/v1/files/{key}');
+    const gatedPaths = EVERY_ROUTE_FILE_PATH.filter((path) => !UNGATED_PATHS.includes(path));
 
     for (const path of gatedPaths) {
       const operations = Object.values(document.paths?.[path] ?? {}).filter(
@@ -62,9 +134,10 @@ describe('buildOpenApiDocument', () => {
       );
       for (const operation of operations) {
         expect(operation.responses['401'], `${path} is missing 401`).toBeDefined();
-        // /api/v1/me is authenticated but does not gate on a permission, so it
-        // never returns 403 -- every other gated route requires a permission.
-        if (path !== '/api/v1/me') {
+        // See `NO_PERMISSION_CHECK_PATHS`: these are authenticated but gate
+        // on ownership, never on a permission, so none of them can ever
+        // return 403.
+        if (!NO_PERMISSION_CHECK_PATHS.includes(path)) {
           expect(operation.responses['403'], `${path} is missing 403`).toBeDefined();
         }
       }

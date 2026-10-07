@@ -1,0 +1,56 @@
+@if (created(); as payment) {
+  @if (payment.method === 'OXXO' && payment.voucherUrl && payment.voucherExpiresAt) {
+    <rm-voucher
+      [voucherUrl]="payment.voucherUrl"
+      [voucherExpiresAt]="payment.voucherExpiresAt"
+      [amountCents]="payment.amountCents"
+      [balanceCents]="reservation().balanceCents"
+    />
+  } @else {
+    <p class="payment-amount">{{ 'payments.youPay' | translate }} {{ payment.amountCents | rmMoney }}</p>
+    <rm-card-form [clientSecret]="payment.clientSecret" (confirmed)="cardConfirmed.emit()" />
+  }
+  <button type="button" class="payment-back" (click)="reset()">{{ 'payments.chooseAnother' | translate }}</button>
+} @else {
+  <form class="payment-method" (submit)="$event.preventDefault(); submit()">
+    <fieldset>
+      <legend>{{ 'payments.whatToPay' | translate }}</legend>
+      <label class="payment-option">
+        <input type="radio" name="intent" value="FULL" [ngModel]="intent()" (ngModelChange)="intent.set($event)" />
+        {{ 'payments.payFull' | translate }}
+      </label>
+      @if (canPayDeposit()) {
+        <label class="payment-option">
+          <input type="radio" name="intent" value="DEPOSIT" [ngModel]="intent()" (ngModelChange)="intent.set($event)" />
+          {{ 'payments.payDeposit' | translate }}
+        </label>
+      }
+    </fieldset>
+
+    <fieldset>
+      <legend>{{ 'payments.how' | translate }}</legend>
+      <label class="payment-option">
+        <input type="radio" name="method" value="CARD" [ngModel]="method()" (ngModelChange)="method.set($event)" />
+        {{ 'payments.card' | translate }}
+      </label>
+      <label class="payment-option">
+        <input type="radio" name="method" value="OXXO" [ngModel]="method()" (ngModelChange)="method.set($event)" />
+        {{ 'payments.oxxo' | translate }}
+      </label>
+    </fieldset>
+
+    <p class="payment-amount">{{ 'payments.youPay' | translate }} {{ amountToShow() | rmMoney }}</p>
+
+    @if (methodUnavailable()) {
+      <p class="payments-unavailable">{{ 'payments.unavailable' | translate }}</p>
+    }
+
+    @if (error()) {
+      <p class="payments-error">{{ error() | rmErrorCode }}</p>
+    }
+
+    <button type="submit" [disabled]="loading() || methodUnavailable()">
+      {{ loading() ? ('payments.submitting' | translate) : ('payments.continue' | translate) }}
+    </button>
+  </form>
+}

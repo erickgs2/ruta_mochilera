@@ -37,7 +37,7 @@
             {{ 'trips.status.' + row.status | translate }}
           </mat-chip>
         </mat-chip-set>
-        <p class="trips-card-meta">{{ row.departureDate | date: 'mediumDate' }}</p>
+        <p class="trips-card-meta">{{ row.departureDate | rmCalendarDate }}</p>
         <p class="trips-card-meta">{{ row.availableSeats }} / {{ row.totalCapacity }}</p>
         <p class="trips-card-meta">{{ row.pricePerSeatCents | rmMoney }}</p>
         <div class="trips-card-actions" *rmHasPermission="'trip.update'">
@@ -71,7 +71,7 @@
 
       <ng-container matColumnDef="departureDate">
         <th mat-header-cell *matHeaderCellDef>{{ 'trips.columns.departureDate' | translate }}</th>
-        <td mat-cell *matCellDef="let row">{{ row.departureDate | date: 'mediumDate' }}</td>
+        <td mat-cell *matCellDef="let row">{{ row.departureDate | rmCalendarDate }}</td>
       </ng-container>
 
       <ng-container matColumnDef="seats">

@@ -2,24 +2,60 @@ import { OpenAPIRegistry, OpenApiGeneratorV31 } from '@asteasolutions/zod-to-ope
 import { z } from 'zod';
 import {
   authenticatedUserSchema as authenticatedUserSchemaImport,
+  customerProfileSchema as customerProfileSchemaImport,
+  updateCustomerProfileRequestSchema,
   budgetItemRequestSchema as budgetItemRequestSchemaImport,
+  cancelReservationRequestSchema as cancelReservationRequestSchemaImport,
+  declineCancellationRequestSchema as declineCancellationRequestSchemaImport,
   changeStatusRequestSchema as changeStatusRequestSchemaImport,
+  createPaymentIntentRequestSchema as createPaymentIntentRequestSchemaImport,
+  createReservationRequestSchema as createReservationRequestSchemaImport,
   createStaffRequestSchema as createStaffRequestSchemaImport,
   createTripRequestSchema as createTripRequestSchemaImport,
+  createdPaymentIntentSchema as createdPaymentIntentSchemaImport,
+  forgotPasswordRequestSchema as forgotPasswordRequestSchemaImport,
+  inboxItemSchema as inboxItemSchemaImport,
+  listInboxQuerySchema,
+  listStaffReservationsQuerySchema,
+  inboxPageSchema as inboxPageSchemaImport,
   loginRequestSchema as loginRequestSchemaImport,
+  paymentSchema as paymentSchemaImport,
   permissionSchema as permissionSchemaImport,
   pricingPolicyRequestSchema as pricingPolicyRequestSchemaImport,
   problemSchema as problemSchemaImport,
+  publicTripDetailSchema as publicTripDetailSchemaImport,
+  publicTripSummarySchema as publicTripSummarySchemaImport,
+  registerRequestSchema as registerRequestSchemaImport,
+  requestCancellationRequestSchema as requestCancellationRequestSchemaImport,
+  reservationDetailSchema as reservationDetailSchemaImport,
+  reservationSchema as reservationSchemaImport,
+  reservationSummarySchema as reservationSummarySchemaImport,
+  resendCodeRequestSchema as resendCodeRequestSchemaImport,
+  resetPasswordRequestSchema as resetPasswordRequestSchemaImport,
   roleInputSchema as roleInputSchemaImport,
   roleSchema as roleSchemaImport,
   sessionResponseSchema as sessionResponseSchemaImport,
+  socialLoginRequestSchema as socialLoginRequestSchemaImport,
+  staffReservationDetailSchema as staffReservationDetailSchemaImport,
+  staffReservationSummarySchema as staffReservationSummarySchemaImport,
   staffSchema as staffSchemaImport,
   tripTranslationSchema,
   updateStaffRequestSchema as updateStaffRequestSchemaImport,
   updateTripRequestSchema as updateTripRequestSchemaImport,
+  verifyEmailRequestSchema as verifyEmailRequestSchemaImport,
 } from '@rm/contracts';
 import type { TripCostingDto, BudgetItemDto } from '@rm/domain-costing';
-import type { TripDto, TripImageDto, TripSummaryDto } from '@rm/domain-trips';
+import type { InboxItemDto, InboxPageDto } from '@rm/domain-notifications';
+import type { CreatedPaymentIntentDto, PaymentDto } from '@rm/domain-payments';
+import type {
+  ReservationDto,
+  ReservationSummaryDto,
+  StaffReservationDetailDto,
+  StaffReservationSummaryDto,
+} from '@rm/domain-reservations';
+import type { PublicTripDetailDto, PublicTripSummaryDto, TripDto, TripImageDto, TripSummaryDto } from '@rm/domain-trips';
+import type { CustomerProfileDto } from '@rm/domain-identity';
+import type { ReservationDetail } from '../http/reservation-response';
 
 /**
  * `@rm/contracts` schemas are tagged with `.meta({ id })` here, rather than
@@ -37,7 +73,14 @@ import type { TripDto, TripImageDto, TripSummaryDto } from '@rm/domain-trips';
  */
 const problemSchema = problemSchemaImport.meta({ id: 'Problem' });
 const loginRequestSchema = loginRequestSchemaImport.meta({ id: 'LoginRequest' });
+const registerRequestSchema = registerRequestSchemaImport.meta({ id: 'RegisterRequest' });
+const verifyEmailRequestSchema = verifyEmailRequestSchemaImport.meta({ id: 'VerifyEmailRequest' });
+const resendCodeRequestSchema = resendCodeRequestSchemaImport.meta({ id: 'ResendCodeRequest' });
+const forgotPasswordRequestSchema = forgotPasswordRequestSchemaImport.meta({ id: 'ForgotPasswordRequest' });
+const resetPasswordRequestSchema = resetPasswordRequestSchemaImport.meta({ id: 'ResetPasswordRequest' });
+const socialLoginRequestSchema = socialLoginRequestSchemaImport.meta({ id: 'SocialLoginRequest' });
 const authenticatedUserSchema = authenticatedUserSchemaImport.meta({ id: 'AuthenticatedUser' });
+const customerProfileSchema = customerProfileSchemaImport.meta({ id: 'CustomerProfile' });
 const sessionResponseSchema = sessionResponseSchemaImport.meta({ id: 'Session' });
 const permissionSchema = permissionSchemaImport.meta({ id: 'Permission' });
 const roleInputSchema = roleInputSchemaImport.meta({ id: 'RoleInput' });
@@ -50,6 +93,27 @@ const updateTripRequestSchema = updateTripRequestSchemaImport.meta({ id: 'Update
 const changeStatusRequestSchema = changeStatusRequestSchemaImport.meta({ id: 'ChangeStatusRequest' });
 const budgetItemRequestSchema = budgetItemRequestSchemaImport.meta({ id: 'BudgetItemRequest' });
 const pricingPolicyRequestSchema = pricingPolicyRequestSchemaImport.meta({ id: 'PricingPolicyRequest' });
+const createReservationRequestSchema = createReservationRequestSchemaImport.meta({ id: 'CreateReservationRequest' });
+const requestCancellationRequestSchema = requestCancellationRequestSchemaImport.meta({
+  id: 'RequestCancellationRequest',
+});
+const reservationSchema = reservationSchemaImport.meta({ id: 'Reservation' });
+const reservationDetailSchema = reservationDetailSchemaImport.meta({ id: 'ReservationDetail' });
+const reservationSummarySchema = reservationSummarySchemaImport.meta({ id: 'ReservationSummary' });
+const cancelReservationRequestSchema = cancelReservationRequestSchemaImport.meta({ id: 'CancelReservationRequest' });
+const declineCancellationRequestSchema = declineCancellationRequestSchemaImport.meta({
+  id: 'DeclineCancellationRequest',
+});
+const staffReservationSummarySchema = staffReservationSummarySchemaImport.meta({ id: 'StaffReservationSummary' });
+const staffReservationDetailSchema = staffReservationDetailSchemaImport.meta({ id: 'StaffReservationDetail' });
+const createPaymentIntentRequestSchema = createPaymentIntentRequestSchemaImport.meta({
+  id: 'CreatePaymentIntentRequest',
+});
+const paymentSchema = paymentSchemaImport.meta({ id: 'Payment' });
+const createdPaymentIntentSchema = createdPaymentIntentSchemaImport.meta({ id: 'CreatedPaymentIntent' });
+const inboxPageSchema = inboxPageSchemaImport.meta({ id: 'InboxPage' });
+const publicTripSummarySchema = publicTripSummarySchemaImport.meta({ id: 'PublicTripSummary' });
+const publicTripDetailSchema = publicTripDetailSchemaImport.meta({ id: 'PublicTripDetail' });
 
 const json = (schema: z.ZodTypeAny) => ({ content: { 'application/json': { schema } } });
 
@@ -169,6 +233,10 @@ const tripCostingSchema = z
   })
   .meta({ id: 'TripCosting' });
 
+const uploadProfilePhotoSchema = z.object({
+  file: z.string().meta({ type: 'string', format: 'binary', description: 'Image bytes (jpeg, png or webp; max 8MB).' }),
+});
+
 const uploadTripImageSchema = z.object({
   file: z.string().meta({ type: 'string', format: 'binary', description: 'Image bytes (jpeg, png or webp; max 8MB).' }),
   altText: z.string().max(240).optional(),
@@ -247,6 +315,47 @@ type _budgetItemSchemaMatchesDto = Expect<Equals<z.infer<typeof budgetItemSchema
 type _tripCostingSchemaMatchesDto = Expect<Equals<z.infer<typeof tripCostingSchema>, DateToString<TripCostingDto>>>;
 
 /**
+ * Task 14's own set of these assertions, same reasoning as the five above:
+ * each of these response shapes is hand-maintained (in `@rm/contracts`
+ * rather than inline here, but that changes nothing about the risk --
+ * `reservationSchema` etc. are still typed independently of the domain DTO
+ * they claim to mirror) and nothing short of a compile-time check catches
+ * the two drifting apart.
+ */
+type _reservationSchemaMatchesDto = Expect<Equals<z.infer<typeof reservationSchema>, DateToString<ReservationDto>>>;
+type _reservationDetailSchemaMatchesDto = Expect<
+  Equals<z.infer<typeof reservationDetailSchema>, DateToString<ReservationDetail>>
+>;
+type _reservationSummarySchemaMatchesDto = Expect<
+  Equals<z.infer<typeof reservationSummarySchema>, DateToString<ReservationSummaryDto>>
+>;
+type _staffReservationSummarySchemaMatchesDto = Expect<
+  Equals<z.infer<typeof staffReservationSummarySchema>, DateToString<StaffReservationSummaryDto>>
+>;
+type _staffReservationDetailSchemaMatchesDto = Expect<
+  Equals<z.infer<typeof staffReservationDetailSchema>, DateToString<StaffReservationDetailDto>>
+>;
+type _paymentSchemaMatchesDto = Expect<Equals<z.infer<typeof paymentSchema>, DateToString<PaymentDto>>>;
+type _createdPaymentIntentSchemaMatchesDto = Expect<
+  Equals<z.infer<typeof createdPaymentIntentSchema>, DateToString<CreatedPaymentIntentDto>>
+>;
+// `inboxItemSchemaImport` is checked rather than a locally re-tagged
+// version: it is only ever used nested inside `inboxPageSchemaImport`'s own
+// `items` array (built that way already, inside `@rm/contracts`), the same
+// way `tripTranslationSchema` is used nested and untagged inside `tripSchema`
+// below -- there is no separate "InboxItem" path response for a `.meta()`
+// tag here to attach to.
+type _inboxItemSchemaMatchesDto = Expect<Equals<z.infer<typeof inboxItemSchemaImport>, DateToString<InboxItemDto>>>;
+type _inboxPageSchemaMatchesDto = Expect<Equals<z.infer<typeof inboxPageSchema>, DateToString<InboxPageDto>>>;
+type _publicTripSummarySchemaMatchesDto = Expect<
+  Equals<z.infer<typeof publicTripSummarySchema>, WithImageUrls<DateToString<PublicTripSummaryDto>>>
+>;
+type _customerProfileSchemaMatchesDto = Expect<Equals<z.infer<typeof customerProfileSchema>, CustomerProfileDto>>;
+type _publicTripDetailSchemaMatchesDto = Expect<
+  Equals<z.infer<typeof publicTripDetailSchema>, WithImageUrls<DateToString<PublicTripDetailDto>>>
+>;
+
+/**
  * `noUnusedLocals` would otherwise flag the five type aliases above as
  * unused -- they only exist to be evaluated by the compiler, never
  * referenced at a value position. Re-exporting them as a single type (never
@@ -259,6 +368,18 @@ export type _OpenApiDtoAssertions = [
   _tripImageSchemaMatchesDto,
   _budgetItemSchemaMatchesDto,
   _tripCostingSchemaMatchesDto,
+  _reservationSchemaMatchesDto,
+  _reservationDetailSchemaMatchesDto,
+  _reservationSummarySchemaMatchesDto,
+  _staffReservationSummarySchemaMatchesDto,
+  _staffReservationDetailSchemaMatchesDto,
+  _paymentSchemaMatchesDto,
+  _createdPaymentIntentSchemaMatchesDto,
+  _inboxItemSchemaMatchesDto,
+  _inboxPageSchemaMatchesDto,
+  _publicTripSummarySchemaMatchesDto,
+  _publicTripDetailSchemaMatchesDto,
+  _customerProfileSchemaMatchesDto,
 ];
 
 /**
@@ -287,6 +408,11 @@ export function buildOpenApiDocument() {
     method: 'post',
     path: '/api/v1/auth/login',
     tags: ['auth'],
+    description:
+      'The refresh token rides an httpOnly, Secure, SameSite=Strict Set-Cookie, never the JSON body -- ' +
+      'unless the caller sends X-Client-Platform: native (the packaged Capacitor app; see Task 15b), ' +
+      'in which case no cookie is set and tokens.refreshToken is populated instead, for that one caller ' +
+      'to persist in native secure storage (Keychain/Keystore).',
     request: { body: requestBody(loginRequestSchema) },
     responses: {
       200: { description: 'Session issued', ...json(sessionResponseSchema) },
@@ -297,10 +423,123 @@ export function buildOpenApiDocument() {
 
   registry.registerPath({
     method: 'post',
+    path: '/api/v1/auth/register',
+    tags: ['auth'],
+    description:
+      'Always responds 200 with a null body, whether or not the email is already registered -- see ' +
+      "`registerCustomer`'s doc comment in @rm/domain-identity for the enumeration argument. A new " +
+      'account receives a six-digit email verification code; an existing one receives a different, ' +
+      'code-free notice instead.',
+    request: { body: requestBody(registerRequestSchema) },
+    responses: {
+      200: { description: 'Registration accepted (same response either way)', ...json(z.null()) },
+      422: problem('Validation failed'),
+      429: problem('Rate limited'),
+    },
+  });
+
+  registry.registerPath({
+    method: 'post',
+    path: '/api/v1/auth/verify-email',
+    tags: ['auth'],
+    request: { body: requestBody(verifyEmailRequestSchema) },
+    responses: {
+      200: { description: 'Email verified', ...json(z.null()) },
+      422: problem('OTP_EXPIRED, OTP_INVALID, OTP_MAX_ATTEMPTS, or validation failed'),
+      429: problem('Rate limited'),
+    },
+  });
+
+  registry.registerPath({
+    method: 'post',
+    path: '/api/v1/auth/resend-code',
+    tags: ['auth'],
+    description:
+      'Does not reveal whether the email has an account, or whether it is already verified -- either ' +
+      'case returns the same response with nothing sent.',
+    request: { body: requestBody(resendCodeRequestSchema) },
+    responses: {
+      200: { description: 'A fresh code was sent, or nothing to resend to (same response either way)', ...json(z.null()) },
+      422: problem('OTP_RESEND_TOO_SOON, or validation failed'),
+      429: problem('Rate limited (the shared in-memory limiter, or otp.max_resends_per_hour)'),
+    },
+  });
+
+  registry.registerPath({
+    method: 'post',
+    path: '/api/v1/auth/forgot-password',
+    tags: ['auth'],
+    description:
+      'Always responds 200 with a null body and comparable timing, whether or not the email has an ' +
+      "account -- see `requestPasswordReset`'s doc comment in @rm/domain-identity.",
+    request: { body: requestBody(forgotPasswordRequestSchema) },
+    responses: {
+      200: { description: 'Reset email sent, or nothing to send to (same response either way)', ...json(z.null()) },
+      422: problem('Validation failed'),
+      429: problem('Rate limited'),
+    },
+  });
+
+  registry.registerPath({
+    method: 'post',
+    path: '/api/v1/auth/reset-password',
+    tags: ['auth'],
+    description: 'Revokes every live session for the account on success. Not rate-limited: the token is a 256-bit random value from a one-time link, not a guessable secret.',
+    request: { body: requestBody(resetPasswordRequestSchema) },
+    responses: {
+      200: { description: 'Password changed and every session revoked', ...json(z.null()) },
+      401: problem('Unknown, expired or already-used token (TOKEN_INVALID)'),
+      422: problem('Validation failed'),
+    },
+  });
+
+  registry.registerPath({
+    method: 'post',
+    path: '/api/v1/auth/oauth/google',
+    tags: ['auth'],
+    description:
+      'Signs in (or signs up) with a Google id token, verified against signature, issuer, audience ' +
+      '(our own client id) and expiry. Responds 503 PROVIDER_DISABLED, never a 500, when ' +
+      'GOOGLE_OAUTH_CLIENT_ID is unconfigured.',
+    request: { body: requestBody(socialLoginRequestSchema) },
+    responses: {
+      200: { description: 'Session issued', ...json(sessionResponseSchema) },
+      401: problem('TOKEN_INVALID -- the id token failed signature, issuer, audience or expiry verification'),
+      403: problem('ACCOUNT_DISABLED, or EMAIL_NOT_VERIFIED if the provider itself marks the email unverified'),
+      422: problem('Validation failed'),
+      503: problem('PROVIDER_DISABLED -- Google sign-in is not configured'),
+    },
+  });
+
+  registry.registerPath({
+    method: 'post',
+    path: '/api/v1/auth/oauth/apple',
+    tags: ['auth'],
+    description:
+      'Signs in (or signs up) with an Apple id token, verified against signature, issuer, audience ' +
+      '(our own client id) and expiry. Responds 503 PROVIDER_DISABLED, never a 500, when ' +
+      'APPLE_OAUTH_CLIENT_ID is unconfigured.',
+    request: { body: requestBody(socialLoginRequestSchema) },
+    responses: {
+      200: { description: 'Session issued', ...json(sessionResponseSchema) },
+      401: problem('TOKEN_INVALID -- the id token failed signature, issuer, audience or expiry verification'),
+      403: problem('ACCOUNT_DISABLED, or EMAIL_NOT_VERIFIED if the provider itself marks the email unverified'),
+      422: problem('Validation failed'),
+      503: problem('PROVIDER_DISABLED -- Apple sign-in is not configured'),
+    },
+  });
+
+  registry.registerPath({
+    method: 'post',
     path: '/api/v1/auth/refresh',
     tags: ['auth'],
     description:
-      'No request body: the refresh token is read from the httpOnly rm_refresh_token cookie set by /auth/login, never from JSON. The response sets a fresh cookie via Set-Cookie.',
+      'No request body: the refresh token is read from the httpOnly rm_refresh_token cookie set by ' +
+      '/auth/login when present. A caller with no such cookie (the packaged Capacitor app -- see Task ' +
+      '15b) sends the token via the X-Refresh-Token header instead, and must also repeat ' +
+      'X-Client-Platform: native to receive the rotated refresh token back in tokens.refreshToken ' +
+      'rather than a new Set-Cookie. A refresh authenticated by the cookie always answers with a new ' +
+      'cookie and never puts the token in the body, whatever X-Client-Platform says.',
     responses: {
       200: { description: 'Session rotated', ...json(sessionResponseSchema) },
       401: problem('Missing, unknown, expired or replayed refresh token'),
@@ -313,7 +552,10 @@ export function buildOpenApiDocument() {
     path: '/api/v1/auth/logout',
     tags: ['auth'],
     description:
-      'No request body: the refresh token is read from the rm_refresh_token cookie. Always succeeds (idempotent) and always clears the cookie via Set-Cookie, even when there was no live session.',
+      'No request body: the refresh token is read from the rm_refresh_token cookie, or from the ' +
+      'X-Refresh-Token header for a caller with no such cookie (the packaged Capacitor app -- see Task ' +
+      '15b). Always succeeds (idempotent) and always clears the cookie via Set-Cookie, even when there ' +
+      'was no live session or the caller never had one to begin with.',
     responses: {
       204: { description: 'Session revoked' },
     },
@@ -327,6 +569,57 @@ export function buildOpenApiDocument() {
     responses: {
       200: { description: 'The authenticated caller', ...json(authenticatedUserSchema) },
       401: problem('Missing or invalid access token'),
+    },
+  });
+
+  registry.registerPath({
+    method: 'get',
+    path: '/api/v1/me/profile',
+    tags: ['profile'],
+    security: [{ bearerAuth: [] }],
+    description:
+      "The authenticated customer's own profile. No id in the path: it always acts on the caller. " +
+      'The email is read-only in this phase.',
+    responses: {
+      200: { description: 'Name, phone, email and photo URL', ...json(customerProfileSchema) },
+      401: problem('Missing or invalid access token'),
+      404: problem('NOT_FOUND -- the caller has no customer profile (a staff user)'),
+    },
+  });
+
+  registry.registerPath({
+    method: 'patch',
+    path: '/api/v1/me/profile',
+    tags: ['profile'],
+    security: [{ bearerAuth: [] }],
+    description:
+      'Changes the name and/or the phone, with the same limits as registration. The body is strict: ' +
+      'an email (or any other field) is refused with 422 VALIDATION_FAILED, never silently ignored.',
+    request: { body: requestBody(updateCustomerProfileRequestSchema) },
+    responses: {
+      200: { description: 'The updated profile', ...json(customerProfileSchema) },
+      401: problem('Missing or invalid access token'),
+      404: problem('NOT_FOUND -- the caller has no customer profile (a staff user)'),
+      422: problem('Validation failed, including any field other than fullName and phone'),
+    },
+  });
+
+  registry.registerPath({
+    method: 'post',
+    path: '/api/v1/me/profile/photo',
+    tags: ['profile'],
+    security: [{ bearerAuth: [] }],
+    description:
+      "Replaces the caller's profile photo. Same validation as the trip gallery: the type is sniffed " +
+      'from the bytes (jpeg, png or webp) and the size limit is 8MB.',
+    request: {
+      body: { content: { 'multipart/form-data': { schema: uploadProfilePhotoSchema } }, required: true },
+    },
+    responses: {
+      200: { description: 'The profile with its new photo URL', ...json(customerProfileSchema) },
+      401: problem('Missing or invalid access token'),
+      404: problem('NOT_FOUND -- the caller has no customer profile (a staff user)'),
+      422: problem('Missing file, oversized file, or a file that is not a jpeg/png/webp image'),
     },
   });
 
@@ -623,6 +916,292 @@ export function buildOpenApiDocument() {
       401: problem('Missing or invalid access token'),
       403: problem('Missing trip.budget.manage'),
       404: problem('Budget item not found'),
+    },
+  });
+
+  // --- webhooks ------------------------------------------------------------
+  registry.registerPath({
+    method: 'post',
+    path: '/api/v1/webhooks/stripe',
+    tags: ['webhooks'],
+    description:
+      "Stripe's webhook endpoint, and the only public route that writes. Not authenticated and not " +
+      'permission-checked: the Stripe-Signature header, an HMAC over the exact request bytes computed ' +
+      'with STRIPE_WEBHOOK_SECRET, is the only thing that authorises it. The body is therefore modelled ' +
+      'here as an opaque string rather than a schema -- it is signed bytes to verify, not a client shape ' +
+      'to validate, and it is read raw so the signature still covers it. Idempotent by the Stripe event ' +
+      'id. Answers 200 both to a redelivery it has already applied and to an event type it does not ' +
+      'handle, because Stripe retries anything that is not 2xx.',
+    request: {
+      body: {
+        required: true,
+        content: { 'application/json': { schema: { type: 'string', description: "Stripe's raw event body." } } },
+      },
+    },
+    responses: {
+      200: { description: 'Event applied, already applied, or of a type this system ignores' },
+      422: problem('Missing or invalid Stripe-Signature header, or a malformed event body'),
+      502: problem('The payment provider failed while verifying the signature'),
+    },
+  });
+
+  // --- public trip catalogue (no authentication) --------------------------
+  registry.registerPath({
+    method: 'get',
+    path: '/api/v1/public/trips',
+    tags: ['public-trips'],
+    description:
+      'The public trip catalogue, no authentication. Lists only PUBLISHED trips, and deliberately ' +
+      'carries no budget, margin, pre-sold-seats or authorship field -- see ' +
+      '`docs/business-rules/trips.md`, "El catálogo público".',
+    responses: {
+      200: { description: 'Published trips', ...json(publicTripSummarySchema.array()) },
+    },
+  });
+
+  registry.registerPath({
+    method: 'get',
+    path: '/api/v1/public/trips/{slug}',
+    tags: ['public-trips'],
+    description:
+      'A published trip, by slug. A trip that is not PUBLISHED answers 404 -- the same code as a ' +
+      'slug that does not exist at all -- never an empty detail.',
+    request: { params: z.object({ slug: z.string() }) },
+    responses: {
+      200: { description: 'Trip detail: photos, itinerary, price and available seats', ...json(publicTripDetailSchema) },
+      404: problem('Trip not found, or not published'),
+    },
+  });
+
+  // --- reservations (customer, authenticated) -------------------------------
+  registry.registerPath({
+    method: 'get',
+    path: '/api/v1/reservations',
+    tags: ['reservations'],
+    security: [{ bearerAuth: [] }],
+    description: 'The authenticated customer\'s own reservations, newest first. No permission check: the scope is ownership, not the RBAC catalogue.',
+    responses: {
+      200: { description: 'Reservation summaries', ...json(reservationSummarySchema.array()) },
+      401: problem('Missing or invalid access token'),
+    },
+  });
+
+  registry.registerPath({
+    method: 'post',
+    path: '/api/v1/reservations',
+    tags: ['reservations'],
+    security: [{ bearerAuth: [] }],
+    description:
+      'Creates a HELD reservation for the authenticated customer on one PUBLISHED trip (spec §5.2). ' +
+      'A STAFF actor is refused with NOT_FOUND: createReservation requires the caller to own a ' +
+      'CustomerProfile, which no staff user has.',
+    request: { body: requestBody(createReservationRequestSchema) },
+    responses: {
+      201: {
+        description: 'Reservation created in HELD, with the suggested monthly payment',
+        ...json(reservationDetailSchema),
+      },
+      401: problem('Missing or invalid access token'),
+      403: problem('EMAIL_NOT_VERIFIED'),
+      404: problem('Trip not found (includes a STAFF actor, who owns no CustomerProfile)'),
+      409: problem('DUPLICATE_RESERVATION, TRIP_SOLD_OUT, or PAYMENT_DEADLINE_PASSED'),
+      422: problem('TRIP_NOT_PUBLISHED, or validation failed'),
+    },
+  });
+
+  registry.registerPath({
+    method: 'get',
+    path: '/api/v1/reservations/{reservationId}',
+    tags: ['reservations'],
+    security: [{ bearerAuth: [] }],
+    description:
+      'One of the authenticated customer\'s own reservations. A reservation that does not exist and ' +
+      'one that belongs to someone else answer the identical RESERVATION_NOT_OWNED (404, never 403).',
+    request: { params: uuidParam('reservationId') },
+    responses: {
+      200: { description: 'Reservation detail, with the suggested monthly payment', ...json(reservationDetailSchema) },
+      401: problem('Missing or invalid access token'),
+      404: problem('RESERVATION_NOT_OWNED -- no such reservation, or it is not the caller\'s'),
+    },
+  });
+
+  registry.registerPath({
+    method: 'post',
+    path: '/api/v1/reservations/{reservationId}/cancellation-requests',
+    tags: ['reservations'],
+    security: [{ bearerAuth: [] }],
+    description:
+      'Seals cancellation_requested_at and notifies staff -- it never changes the reservation\'s ' +
+      'status (spec §5.6). Asking twice is a no-op, not an error.',
+    request: { params: uuidParam('reservationId'), body: requestBody(requestCancellationRequestSchema) },
+    responses: {
+      200: { description: 'Cancellation request recorded; status unchanged', ...json(reservationSchema) },
+      401: problem('Missing or invalid access token'),
+      404: problem('RESERVATION_NOT_OWNED'),
+      409: problem('INVALID_STATUS_TRANSITION -- the reservation is already CANCELLED or EXPIRED'),
+    },
+  });
+
+  registry.registerPath({
+    method: 'post',
+    path: '/api/v1/reservations/{reservationId}/payment-intents',
+    tags: ['reservations', 'payments'],
+    security: [{ bearerAuth: [] }],
+    description:
+      'The entry point of the payment flow (spec §9). The request carries only `intent` (FULL or ' +
+      'DEPOSIT) and `method` -- never a number of cents: the amount is always computed from the ' +
+      'reservation\'s own balance (`createPaymentIntentForReservation`, @rm/domain-payments). An OXXO ' +
+      'intent\'s voucher never outlives the reservation\'s hold; when less than a day remains, the ' +
+      'request is refused with VALIDATION_FAILED rather than rounded up past the hold.',
+    request: { params: uuidParam('reservationId'), body: requestBody(createPaymentIntentRequestSchema) },
+    responses: {
+      201: { description: 'Payment Intent created and a matching PENDING payment recorded', ...json(createdPaymentIntentSchema) },
+      401: problem('Missing or invalid access token'),
+      404: problem('RESERVATION_NOT_OWNED'),
+      409: problem('INVALID_STATUS_TRANSITION -- the reservation is CANCELLED or EXPIRED'),
+      422: problem('Nothing left to charge, or an OXXO window shorter than a day'),
+      502: problem('PAYMENT_PROVIDER_ERROR'),
+    },
+  });
+
+  // --- reservations (staff, panel -- Task 19) -------------------------------
+  registry.registerPath({
+    method: 'get',
+    path: '/api/v1/admin/reservations',
+    tags: ['reservations', 'admin'],
+    security: [{ bearerAuth: [] }],
+    description:
+      'Every customer\'s reservations for the panel, filtered by trip, status and pending cancellation ' +
+      'request. Unresolved cancellation requests come first, oldest request first; the rest follow ' +
+      'newest first. Requires reservation.view; a CUSTOMER actor is refused whatever roles they hold.',
+    // The exact schema object the route validates against, as for /notifications.
+    request: { query: listStaffReservationsQuerySchema },
+    responses: {
+      200: { description: 'Reservations', ...json(staffReservationSummarySchema.array()) },
+      401: problem('Missing or invalid access token'),
+      403: problem('PERMISSION_DENIED -- requires reservation.view'),
+      422: problem('VALIDATION_FAILED -- a malformed filter'),
+    },
+  });
+
+  registry.registerPath({
+    method: 'get',
+    path: '/api/v1/admin/reservations/{reservationId}',
+    tags: ['reservations', 'admin'],
+    security: [{ bearerAuth: [] }],
+    description:
+      'One reservation, any customer\'s, with the customer\'s contact details and the cancellation ' +
+      'request reason. Requires reservation.view. The payment history is a separate endpoint.',
+    request: { params: uuidParam('reservationId') },
+    responses: {
+      200: { description: 'Reservation detail', ...json(staffReservationDetailSchema) },
+      401: problem('Missing or invalid access token'),
+      403: problem('PERMISSION_DENIED -- requires reservation.view'),
+      404: problem('NOT_FOUND'),
+    },
+  });
+
+  registry.registerPath({
+    method: 'get',
+    path: '/api/v1/admin/reservations/{reservationId}/payments',
+    tags: ['reservations', 'payments', 'admin'],
+    security: [{ bearerAuth: [] }],
+    description:
+      'One reservation\'s payments, newest first, pending, failed and expired ones included. ' +
+      'Requires payment.view.',
+    request: { params: uuidParam('reservationId') },
+    responses: {
+      200: { description: 'Payments', ...json(paymentSchema.array()) },
+      401: problem('Missing or invalid access token'),
+      403: problem('PERMISSION_DENIED -- requires payment.view'),
+      404: problem('NOT_FOUND'),
+    },
+  });
+
+  registry.registerPath({
+    method: 'post',
+    path: '/api/v1/admin/reservations/{reservationId}/cancel',
+    tags: ['reservations', 'admin'],
+    security: [{ bearerAuth: [] }],
+    description:
+      'Cancels a HELD or ACTIVE reservation (spec §5.6): releases its seat, keeps paid_cents and every ' +
+      'payment, cancels pending payment intents, notifies the customer with RESERVATION_CANCELLED and ' +
+      'audits the actor and the reason. Idempotent: an already CANCELLED reservation is answered as it ' +
+      'is. Requires reservation.cancel.',
+    request: { params: uuidParam('reservationId'), body: requestBody(cancelReservationRequestSchema) },
+    responses: {
+      200: { description: 'Reservation cancelled (or already cancelled)', ...json(staffReservationDetailSchema) },
+      401: problem('Missing or invalid access token'),
+      403: problem('PERMISSION_DENIED -- requires reservation.cancel'),
+      404: problem('NOT_FOUND'),
+      409: problem('INVALID_STATUS_TRANSITION -- the reservation already EXPIRED'),
+      422: problem('VALIDATION_FAILED -- the reason is missing or longer than 500 characters'),
+    },
+  });
+
+  registry.registerPath({
+    method: 'post',
+    path: '/api/v1/admin/reservations/{reservationId}/decline-cancellation',
+    tags: ['reservations', 'admin'],
+    security: [{ bearerAuth: [] }],
+    description:
+      'Declines the customer\'s pending cancellation request (spec §5.6): the reservation stays exactly as ' +
+      'it is, the request leaves the pending queue, the customer is notified with CANCELLATION_DECLINED and ' +
+      'can ask again. Idempotent. Requires reservation.cancel.',
+    request: { params: uuidParam('reservationId'), body: requestBody(declineCancellationRequestSchema) },
+    responses: {
+      200: { description: 'Request declined (or already declined)', ...json(staffReservationDetailSchema) },
+      401: problem('Missing or invalid access token'),
+      403: problem('PERMISSION_DENIED -- requires reservation.cancel'),
+      404: problem('NOT_FOUND'),
+      409: problem('NO_CANCELLATION_REQUEST, or INVALID_STATUS_TRANSITION -- already CANCELLED or EXPIRED'),
+      422: problem('VALIDATION_FAILED -- the reason is missing or longer than 500 characters'),
+    },
+  });
+
+  // --- payments (customer, authenticated) -----------------------------------
+  registry.registerPath({
+    method: 'get',
+    path: '/api/v1/payments',
+    tags: ['payments'],
+    security: [{ bearerAuth: [] }],
+    description: 'Every payment of the authenticated customer, across all their reservations, newest first.',
+    responses: {
+      200: { description: 'Payments', ...json(paymentSchema.array()) },
+      401: problem('Missing or invalid access token'),
+    },
+  });
+
+  // --- notifications (customer inbox, authenticated) ------------------------
+  registry.registerPath({
+    method: 'get',
+    path: '/api/v1/notifications',
+    tags: ['notifications'],
+    security: [{ bearerAuth: [] }],
+    description: 'The authenticated customer\'s own in-app inbox, newest first, paginated by an opaque cursor.',
+    // The exact schema object the route handler validates against at
+    // request time (`apps/api/.../notifications/route.ts`) -- not a second,
+    // separately-typed-out copy of the same shape, which is what let the
+    // documented contract and the real validation drift apart in the first
+    // place.
+    request: { query: listInboxQuerySchema },
+    responses: {
+      200: { description: 'One page of the inbox', ...json(inboxPageSchema) },
+      401: problem('Missing or invalid access token'),
+    },
+  });
+
+  registry.registerPath({
+    method: 'post',
+    path: '/api/v1/notifications/{deliveryId}/read',
+    tags: ['notifications'],
+    security: [{ bearerAuth: [] }],
+    description: 'Marks one of the authenticated customer\'s own INBOX deliveries as read.',
+    request: { params: uuidParam('deliveryId') },
+    responses: {
+      204: { description: 'Marked read' },
+      401: problem('Missing or invalid access token'),
+      404: problem('DELIVERY_NOT_OWNED -- no such delivery, or it is not the caller\'s'),
     },
   });
 

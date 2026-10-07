@@ -25,6 +25,11 @@ const ALL_DOMAIN_ERROR_CODES: readonly DomainErrorCode[] = [
   'EMAIL_ALREADY_REGISTERED',
   'ACCOUNT_DISABLED',
   'RATE_LIMITED',
+  'PROVIDER_DISABLED',
+  'OTP_EXPIRED',
+  'OTP_INVALID',
+  'OTP_MAX_ATTEMPTS',
+  'OTP_RESEND_TOO_SOON',
   'PERMISSION_DENIED',
   'SYSTEM_ROLE_IMMUTABLE',
   'ROLE_IN_USE',
@@ -37,11 +42,18 @@ const ALL_DOMAIN_ERROR_CODES: readonly DomainErrorCode[] = [
   'TRIP_NOT_PUBLISHABLE',
   'INVALID_STATUS_TRANSITION',
   'TRIP_SOLD_OUT',
+  'TRIP_NOT_PUBLISHED',
   'MISSING_REQUIRED_TRANSLATION',
   'DUPLICATE_RESERVATION',
+  'RESERVATION_NOT_OWNED',
+  'PAYMENT_DEADLINE_PASSED',
   'HOLD_EXPIRED',
   'PAYMENT_EXCEEDS_BALANCE',
   'DEPOSIT_BELOW_MINIMUM',
+  'NO_CANCELLATION_REQUEST',
+  'DELIVERY_NOT_OWNED',
+  'EMAIL_PROVIDER_ERROR',
+  'PAYMENT_PROVIDER_ERROR',
 ];
 
 /** Compile-time guard: fails to build if `DomainErrorCode` gains a case not listed above. */
@@ -54,6 +66,11 @@ function assertKnownCode(code: DomainErrorCode): void {
     case 'EMAIL_ALREADY_REGISTERED':
     case 'ACCOUNT_DISABLED':
     case 'RATE_LIMITED':
+    case 'PROVIDER_DISABLED':
+    case 'OTP_EXPIRED':
+    case 'OTP_INVALID':
+    case 'OTP_MAX_ATTEMPTS':
+    case 'OTP_RESEND_TOO_SOON':
     case 'PERMISSION_DENIED':
     case 'SYSTEM_ROLE_IMMUTABLE':
     case 'ROLE_IN_USE':
@@ -66,11 +83,18 @@ function assertKnownCode(code: DomainErrorCode): void {
     case 'TRIP_NOT_PUBLISHABLE':
     case 'INVALID_STATUS_TRANSITION':
     case 'TRIP_SOLD_OUT':
+    case 'TRIP_NOT_PUBLISHED':
     case 'MISSING_REQUIRED_TRANSLATION':
     case 'DUPLICATE_RESERVATION':
+    case 'RESERVATION_NOT_OWNED':
+    case 'PAYMENT_DEADLINE_PASSED':
     case 'HOLD_EXPIRED':
     case 'PAYMENT_EXCEEDS_BALANCE':
     case 'DEPOSIT_BELOW_MINIMUM':
+    case 'NO_CANCELLATION_REQUEST':
+    case 'DELIVERY_NOT_OWNED':
+    case 'EMAIL_PROVIDER_ERROR':
+    case 'PAYMENT_PROVIDER_ERROR':
       return;
     default: {
       const exhaustive: never = code;

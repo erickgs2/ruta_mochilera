@@ -48,11 +48,58 @@ export type DbTransactionClient = Prisma.TransactionClient;
 
 export interface CreatePrismaClientOptions {
   /**
-   * PostgreSQL schema every generated query is qualified with. Defaults to
-   * `public`. The integration test helpers use it to give each Vitest worker
-   * its own isolated copy of the schema inside the same test database.
+   * PostgreSQL schema every query is resolved against. Defaults to `public`.
+   * The integration test helpers use it to give each Vitest worker its own
+   * isolated copy of the schema inside the same test database.
    */
   schema?: string;
+}
+
+/**
+ * Throws unless `schema` is a PostgreSQL schema name this workspace is willing
+ * to drop into SQL and into a connection startup string unquoted.
+ *
+ * Lowercase on purpose, not merely "safe characters". An unquoted identifier
+ * is case-folded to lowercase by PostgreSQL, so accepting `MySchema` here
+ * would silently resolve to `myschema` and fail to match a schema actually
+ * created as `"MySchema"` -- a mismatch that would surface as "relation does
+ * not exist" far from its cause. Rejecting the name outright is the honest
+ * answer; a caller that truly needs a mixed-case schema has to quote it
+ * everywhere, which is a different design.
+ *
+ * The single definition both callers share: this file, building the
+ * `search_path` startup option, and the test harness, naming each worker's
+ * schema.
+ */
+export function assertSchemaIdentifier(schema: string): void {
+  if (!/^[a-z0-9_]+$/.test(schema)) {
+    throw new Error(`Refusing to use "${schema}" as a schema name: expected [a-z0-9_]+`);
+  }
+}
+
+/**
+ * Builds the libpq startup option that puts `schema` on the connection's
+ * `search_path`.
+ *
+ * The driver adapter's own `schema` option only qualifies the SQL Prisma
+ * *generates*; a `$queryRaw` naming a table without a schema is resolved by
+ * the server's `search_path`, which otherwise stays `public`. Domain code
+ * does issue such raw statements -- `lockTripForCapacity`'s
+ * `SELECT ... FOR UPDATE` is the first -- and a test pointed at a worker
+ * schema would have quietly read and locked rows in `public` instead, which
+ * is the worst possible failure mode for a lock: silent, and green.
+ *
+ * The name is interpolated into a startup string, where quoting would not
+ * save it anyway (a space splits the option), so it is validated rather than
+ * escaped.
+ *
+ * Exported so the test harness's query-counting client, which builds its own
+ * adapter to wire up Prisma's `log` events, resolves raw SQL against the
+ * same schema as every other client instead of restating the string.
+ */
+export function searchPathStartupOption(schema: string): string {
+  assertSchemaIdentifier(schema);
+  return `-c search_path=${schema}`;
 }
 
 /**
@@ -67,7 +114,10 @@ export function createPrismaClient(
   options: CreatePrismaClientOptions = {}
 ): Db {
   const adapter = new PrismaPg(
-    { connectionString: databaseUrl },
+    {
+      connectionString: databaseUrl,
+      ...(options.schema === undefined ? {} : { options: searchPathStartupOption(options.schema) }),
+    },
     options.schema === undefined ? undefined : { schema: options.schema }
   );
   return new PrismaClient({ adapter });

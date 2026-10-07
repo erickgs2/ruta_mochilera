@@ -42,11 +42,15 @@ export class ApiClient {
     return this.http.put<TResponse>(`${this.baseUrl}${path}`, body, { withCredentials: true });
   }
 
+  patch<TResponse, TBody = unknown>(path: string, body: TBody): Observable<TResponse> {
+    return this.http.patch<TResponse>(`${this.baseUrl}${path}`, body, { withCredentials: true });
+  }
+
   delete<TResponse>(path: string): Observable<TResponse> {
     return this.http.delete<TResponse>(`${this.baseUrl}${path}`, { withCredentials: true });
   }
 
-  /** Posts a `FormData` body (multipart), for the one endpoint that accepts a file. */
+  /** Posts a `FormData` body (multipart), for the endpoints that accept a file. */
   upload<TResponse>(path: string, form: FormData): Observable<TResponse> {
     return this.http.post<TResponse>(`${this.baseUrl}${path}`, form, { withCredentials: true });
   }

@@ -1,7 +1,14 @@
 import { execFileSync } from 'node:child_process';
 import { existsSync, readdirSync, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { createPrismaClient, type Db } from '../lib/client';
+import { PrismaPg } from '@prisma/adapter-pg';
+import { PrismaClient } from '../generated/prisma/client';
+import {
+  assertSchemaIdentifier,
+  createPrismaClient,
+  searchPathStartupOption,
+  type Db,
+} from '../lib/client';
 
 const DEFAULT_TEST_DATABASE_URL = 'postgresql://rm:rm@localhost:5432/rm_test';
 
@@ -84,6 +91,43 @@ export async function resetDatabase(db: Db): Promise<void> {
 }
 
 /**
+ * Runs `run` against a throwaway client on this worker's schema that counts
+ * every SQL statement it sends to PostgreSQL, and returns what `run` returns.
+ *
+ * Exists so a suite can assert that an operation's query count does not grow
+ * with the size of its input -- an N+1 regression. Counting at the client is
+ * the only place the difference is observable: a service that loops and a
+ * service that batches are identical from the outside, and `vi.mock(module,
+ * { spy: true })` does not intercept a module calling its own function in
+ * ESM, so spying on the inner helper proves nothing.
+ *
+ * It is a second client rather than the shared one because query events need
+ * `log` wired up at construction. It sees the same committed rows, so a test
+ * seeds through `withTestDb()` as usual and only runs the measured call in
+ * here. The client is disconnected on the way out, including on failure:
+ * `pg` keeps a pool per client and the suites run in parallel against one
+ * PostgreSQL.
+ */
+export async function withQueryCountingDb<T>(
+  run: (db: Db, queryCount: () => number) => Promise<T>
+): Promise<T> {
+  const adapter = new PrismaPg(
+    { connectionString: TEST_DATABASE_URL, options: searchPathStartupOption(TEST_SCHEMA) },
+    { schema: TEST_SCHEMA }
+  );
+  const client = new PrismaClient({ adapter, log: [{ emit: 'event', level: 'query' }] });
+  let queries = 0;
+  client.$on('query', () => {
+    queries += 1;
+  });
+  try {
+    return await run(client, () => queries);
+  } finally {
+    await client.$disconnect();
+  }
+}
+
+/**
  * Re-exported for existing callers that imported it from here: the
  * implementation now lives in `../lib/prisma-errors` so production domain
  * code can use it too without pulling in this module's module-load-time
@@ -146,7 +190,9 @@ function projectKey(): string {
  * character outside `[a-z0-9_]` folded to `_`, and truncated with a hash
  * suffix so it can never exceed PostgreSQL's 63-byte identifier limit. The
  * validation applies to the fully composed name because a project name may
- * legally contain characters an identifier may not.
+ * legally contain characters an identifier may not, and it is the same
+ * `assertSchemaIdentifier` the connection builder applies, so a name this
+ * function accepts can never be one `search_path` rejects.
  */
 function composeSchemaName(project: string, workerId: string): string {
   const slug = `test_${project}_w${workerId}`
@@ -154,9 +200,7 @@ function composeSchemaName(project: string, workerId: string): string {
     .replace(/[^a-z0-9_]+/g, '_')
     .replace(/_+/g, '_');
   const name = slug.length <= 63 ? slug : `${slug.slice(0, 54)}_${fingerprint(slug)}`;
-  if (!/^[a-z0-9_]+$/.test(name)) {
-    throw new Error(`Refusing to use "${name}" as a schema name: expected [a-z0-9_]+`);
-  }
+  assertSchemaIdentifier(name);
   return name;
 }
 

@@ -1,0 +1,60 @@
+<header class="brand-bar">
+  <a routerLink="/" class="brand-home" aria-label="La Ruta Mochilera">
+    <img src="brand/logo-on-light.png" alt="" width="40" height="40" />
+    <span>La Ruta <strong>Mochilera</strong></span>
+  </a>
+  @if (isAuthenticated()) {
+    <a routerLink="/account" class="brand-pill-link">{{ 'catalogue.myAccount' | translate }}</a>
+  } @else {
+    <a routerLink="/login" class="brand-pill-link">{{ 'auth.signIn' | translate }}</a>
+  }
+</header>
+
+<section class="catalogue-hero">
+  <div class="catalogue-hero-inner">
+    <h1>{{ 'catalogue.title' | translate }}</h1>
+    <p>{{ 'brand.tagline' | translate }}</p>
+  </div>
+</section>
+
+<div class="catalogue-page">
+  @switch (status()) {
+    @case ('loading') {
+      <p class="catalogue-status">{{ 'common.loading' | translate }}</p>
+    }
+    @case ('error') {
+      <p class="catalogue-error">{{ error() | rmErrorCode }}</p>
+    }
+    @case ('ready') {
+      @if (trips().length === 0) {
+        <p class="catalogue-status">{{ 'catalogue.empty' | translate }}</p>
+      }
+      <ul class="trip-grid">
+        @for (trip of trips(); track trip.slug) {
+          <li class="trip-card">
+            @if (coverImage(trip.images); as cover) {
+              <img [src]="cover.url" [alt]="cover.altText ?? trip.name" loading="lazy" />
+            }
+            <div class="trip-card-body">
+              <h2>
+                <a [routerLink]="['/trips', trip.slug]">{{ trip.name }}</a>
+              </h2>
+              <p class="trip-dates">
+                {{ trip.departureDate | rmCalendarDate }}@if (trip.returnDate !== trip.departureDate) {
+                  – {{ trip.returnDate | rmCalendarDate }}
+                }
+              </p>
+              <p class="trip-price">{{ trip.pricePerSeatCents | rmMoney }}</p>
+              @if (trip.availableSeats > 0) {
+                <p class="trip-seats">{{ 'catalogue.seatsLeft' | translate: { count: trip.availableSeats } }}</p>
+                <a class="trip-reserve" [routerLink]="['/trips', trip.slug]">{{ 'catalogue.reserve' | translate }}</a>
+              } @else {
+                <p class="trip-sold-out">{{ 'catalogue.soldOut' | translate }}</p>
+              }
+            </div>
+          </li>
+        }
+      </ul>
+    }
+  }
+</div>

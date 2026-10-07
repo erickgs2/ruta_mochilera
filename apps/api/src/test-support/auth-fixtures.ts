@@ -54,3 +54,50 @@ export async function loginAs(db: Db, email: string, permissionKeys: string[]): 
   const body = await response.json();
   return body.tokens.accessToken as string;
 }
+
+/**
+ * Creates a CUSTOMER user (with a `CustomerProfile`, the row
+ * `@rm/domain-reservations`' `createReservation` requires), logs in through
+ * the real login route, and returns both the access token and the user's
+ * id -- callers almost always need the id too, to seed a reservation
+ * directly against this exact customer.
+ *
+ * Email is verified by default: most of the reservations/payments/inbox
+ * suite is not testing the verification gate itself, and login never checks
+ * `emailVerifiedAt` (only `createReservation` does, per business rule 5.2),
+ * so leaving it unset here would make every other test implicitly depend on
+ * that gate too. Pass `emailVerified: false` for the one test that is about
+ * the gate.
+ */
+export async function loginAsCustomer(
+  db: Db,
+  email: string,
+  options: { emailVerified?: boolean } = {}
+): Promise<{ userId: string; token: string }> {
+  const user = await db.user.create({
+    data: {
+      email,
+      type: 'CUSTOMER',
+      passwordHash: await hashPassword('Correct-Horse-1'),
+      emailVerifiedAt: options.emailVerified === false ? null : new Date(),
+      customerProfile: {
+        create: {
+          fullName: email,
+          phone: '5512345678',
+          birthDate: new Date('1990-01-01'),
+          origin: 'SELF_SIGNUP',
+        },
+      },
+    },
+  });
+
+  const response = await loginRoute(
+    new Request('http://localhost/api/v1/auth/login', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ email, password: 'Correct-Horse-1' }),
+    })
+  );
+  const body = await response.json();
+  return { userId: user.id, token: body.tokens.accessToken as string };
+}

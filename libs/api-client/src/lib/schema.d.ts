@@ -24,6 +24,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** @description The refresh token rides an httpOnly, Secure, SameSite=Strict Set-Cookie, never the JSON body -- unless the caller sends X-Client-Platform: native (the packaged Capacitor app; see Task 15b), in which case no cookie is set and tokens.refreshToken is populated instead, for that one caller to persist in native secure storage (Keychain/Keystore). */
         post: {
             parameters: {
                 query?: never;
@@ -72,6 +73,447 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/auth/register": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Always responds 200 with a null body, whether or not the email is already registered -- see `registerCustomer`'s doc comment in @rm/domain-identity for the enumeration argument. A new account receives a six-digit email verification code; an existing one receives a different, code-free notice instead. */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["RegisterRequest"];
+                };
+            };
+            responses: {
+                /** @description Registration accepted (same response either way) */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": null;
+                    };
+                };
+                /** @description Validation failed */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description Rate limited */
+                429: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/verify-email": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["VerifyEmailRequest"];
+                };
+            };
+            responses: {
+                /** @description Email verified */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": null;
+                    };
+                };
+                /** @description OTP_EXPIRED, OTP_INVALID, OTP_MAX_ATTEMPTS, or validation failed */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description Rate limited */
+                429: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/resend-code": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Does not reveal whether the email has an account, or whether it is already verified -- either case returns the same response with nothing sent. */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["ResendCodeRequest"];
+                };
+            };
+            responses: {
+                /** @description A fresh code was sent, or nothing to resend to (same response either way) */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": null;
+                    };
+                };
+                /** @description OTP_RESEND_TOO_SOON, or validation failed */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description Rate limited (the shared in-memory limiter, or otp.max_resends_per_hour) */
+                429: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/forgot-password": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Always responds 200 with a null body and comparable timing, whether or not the email has an account -- see `requestPasswordReset`'s doc comment in @rm/domain-identity. */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["ForgotPasswordRequest"];
+                };
+            };
+            responses: {
+                /** @description Reset email sent, or nothing to send to (same response either way) */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": null;
+                    };
+                };
+                /** @description Validation failed */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description Rate limited */
+                429: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/reset-password": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Revokes every live session for the account on success. Not rate-limited: the token is a 256-bit random value from a one-time link, not a guessable secret. */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["ResetPasswordRequest"];
+                };
+            };
+            responses: {
+                /** @description Password changed and every session revoked */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": null;
+                    };
+                };
+                /** @description Unknown, expired or already-used token (TOKEN_INVALID) */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description Validation failed */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/oauth/google": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Signs in (or signs up) with a Google id token, verified against signature, issuer, audience (our own client id) and expiry. Responds 503 PROVIDER_DISABLED, never a 500, when GOOGLE_OAUTH_CLIENT_ID is unconfigured. */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["SocialLoginRequest"];
+                };
+            };
+            responses: {
+                /** @description Session issued */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Session"];
+                    };
+                };
+                /** @description TOKEN_INVALID -- the id token failed signature, issuer, audience or expiry verification */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description ACCOUNT_DISABLED, or EMAIL_NOT_VERIFIED if the provider itself marks the email unverified */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description Validation failed */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description PROVIDER_DISABLED -- Google sign-in is not configured */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/oauth/apple": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Signs in (or signs up) with an Apple id token, verified against signature, issuer, audience (our own client id) and expiry. Responds 503 PROVIDER_DISABLED, never a 500, when APPLE_OAUTH_CLIENT_ID is unconfigured. */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["SocialLoginRequest"];
+                };
+            };
+            responses: {
+                /** @description Session issued */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Session"];
+                    };
+                };
+                /** @description TOKEN_INVALID -- the id token failed signature, issuer, audience or expiry verification */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description ACCOUNT_DISABLED, or EMAIL_NOT_VERIFIED if the provider itself marks the email unverified */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description Validation failed */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description PROVIDER_DISABLED -- Apple sign-in is not configured */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/auth/refresh": {
         parameters: {
             query?: never;
@@ -81,7 +523,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** @description No request body: the refresh token is read from the httpOnly rm_refresh_token cookie set by /auth/login, never from JSON. The response sets a fresh cookie via Set-Cookie. */
+        /** @description No request body: the refresh token is read from the httpOnly rm_refresh_token cookie set by /auth/login when present. A caller with no such cookie (the packaged Capacitor app -- see Task 15b) sends the token via the X-Refresh-Token header instead, and must also repeat X-Client-Platform: native to receive the rotated refresh token back in tokens.refreshToken rather than a new Set-Cookie. A refresh authenticated by the cookie always answers with a new cookie and never puts the token in the body, whatever X-Client-Platform says. */
         post: {
             parameters: {
                 query?: never;
@@ -135,7 +577,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** @description No request body: the refresh token is read from the rm_refresh_token cookie. Always succeeds (idempotent) and always clears the cookie via Set-Cookie, even when there was no live session. */
+        /** @description No request body: the refresh token is read from the rm_refresh_token cookie, or from the X-Refresh-Token header for a caller with no such cookie (the packaged Capacitor app -- see Task 15b). Always succeeds (idempotent) and always clears the cookie via Set-Cookie, even when there was no live session or the caller never had one to begin with. */
         post: {
             parameters: {
                 query?: never;
@@ -198,6 +640,187 @@ export interface paths {
         };
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/me/profile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description The authenticated customer's own profile. No id in the path: it always acts on the caller. The email is read-only in this phase. */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Name, phone, email and photo URL */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["CustomerProfile"];
+                    };
+                };
+                /** @description Missing or invalid access token */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description NOT_FOUND -- the caller has no customer profile (a staff user) */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** @description Changes the name and/or the phone, with the same limits as registration. The body is strict: an email (or any other field) is refused with 422 VALIDATION_FAILED, never silently ignored. */
+        patch: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        fullName?: string;
+                        phone?: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description The updated profile */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["CustomerProfile"];
+                    };
+                };
+                /** @description Missing or invalid access token */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description NOT_FOUND -- the caller has no customer profile (a staff user) */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description Validation failed, including any field other than fullName and phone */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+            };
+        };
+        trace?: never;
+    };
+    "/api/v1/me/profile/photo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Replaces the caller's profile photo. Same validation as the trip gallery: the type is sniffed from the bytes (jpeg, png or webp) and the size limit is 8MB. */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "multipart/form-data": {
+                        /**
+                         * Format: binary
+                         * @description Image bytes (jpeg, png or webp; max 8MB).
+                         */
+                        file: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description The profile with its new photo URL */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["CustomerProfile"];
+                    };
+                };
+                /** @description Missing or invalid access token */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description NOT_FOUND -- the caller has no customer profile (a staff user) */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description Missing file, oversized file, or a file that is not a jpeg/png/webp image */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+            };
+        };
         delete?: never;
         options?: never;
         head?: never;
@@ -1514,6 +2137,989 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/webhooks/stripe": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Stripe's webhook endpoint, and the only public route that writes. Not authenticated and not permission-checked: the Stripe-Signature header, an HMAC over the exact request bytes computed with STRIPE_WEBHOOK_SECRET, is the only thing that authorises it. The body is therefore modelled here as an opaque string rather than a schema -- it is signed bytes to verify, not a client shape to validate, and it is read raw so the signature still covers it. Idempotent by the Stripe event id. Answers 200 both to a redelivery it has already applied and to an event type it does not handle, because Stripe retries anything that is not 2xx. */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": string;
+                };
+            };
+            responses: {
+                /** @description Event applied, already applied, or of a type this system ignores */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Missing or invalid Stripe-Signature header, or a malformed event body */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description The payment provider failed while verifying the signature */
+                502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/public/trips": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description The public trip catalogue, no authentication. Lists only PUBLISHED trips, and deliberately carries no budget, margin, pre-sold-seats or authorship field -- see `docs/business-rules/trips.md`, "El catálogo público". */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Published trips */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["PublicTripSummary"][];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/public/trips/{slug}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description A published trip, by slug. A trip that is not PUBLISHED answers 404 -- the same code as a slug that does not exist at all -- never an empty detail. */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    slug: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Trip detail: photos, itinerary, price and available seats */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["PublicTripDetail"];
+                    };
+                };
+                /** @description Trip not found, or not published */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/reservations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description The authenticated customer's own reservations, newest first. No permission check: the scope is ownership, not the RBAC catalogue. */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Reservation summaries */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ReservationSummary"][];
+                    };
+                };
+                /** @description Missing or invalid access token */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        /** @description Creates a HELD reservation for the authenticated customer on one PUBLISHED trip (spec §5.2). A STAFF actor is refused with NOT_FOUND: createReservation requires the caller to own a CustomerProfile, which no staff user has. */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["CreateReservationRequest"];
+                };
+            };
+            responses: {
+                /** @description Reservation created in HELD, with the suggested monthly payment */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ReservationDetail"];
+                    };
+                };
+                /** @description Missing or invalid access token */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description EMAIL_NOT_VERIFIED */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description Trip not found (includes a STAFF actor, who owns no CustomerProfile) */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description DUPLICATE_RESERVATION, TRIP_SOLD_OUT, or PAYMENT_DEADLINE_PASSED */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description TRIP_NOT_PUBLISHED, or validation failed */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/reservations/{reservationId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description One of the authenticated customer's own reservations. A reservation that does not exist and one that belongs to someone else answer the identical RESERVATION_NOT_OWNED (404, never 403). */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    reservationId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Reservation detail, with the suggested monthly payment */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ReservationDetail"];
+                    };
+                };
+                /** @description Missing or invalid access token */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description RESERVATION_NOT_OWNED -- no such reservation, or it is not the caller's */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/reservations/{reservationId}/cancellation-requests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Seals cancellation_requested_at and notifies staff -- it never changes the reservation's status (spec §5.6). Asking twice is a no-op, not an error. */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    reservationId: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["RequestCancellationRequest"];
+                };
+            };
+            responses: {
+                /** @description Cancellation request recorded; status unchanged */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Reservation"];
+                    };
+                };
+                /** @description Missing or invalid access token */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description RESERVATION_NOT_OWNED */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description INVALID_STATUS_TRANSITION -- the reservation is already CANCELLED or EXPIRED */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/reservations/{reservationId}/payment-intents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description The entry point of the payment flow (spec §9). The request carries only `intent` (FULL or DEPOSIT) and `method` -- never a number of cents: the amount is always computed from the reservation's own balance (`createPaymentIntentForReservation`, @rm/domain-payments). An OXXO intent's voucher never outlives the reservation's hold; when less than a day remains, the request is refused with VALIDATION_FAILED rather than rounded up past the hold. */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    reservationId: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["CreatePaymentIntentRequest"];
+                };
+            };
+            responses: {
+                /** @description Payment Intent created and a matching PENDING payment recorded */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["CreatedPaymentIntent"];
+                    };
+                };
+                /** @description Missing or invalid access token */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description RESERVATION_NOT_OWNED */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description INVALID_STATUS_TRANSITION -- the reservation is CANCELLED or EXPIRED */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description Nothing left to charge, or an OXXO window shorter than a day */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description PAYMENT_PROVIDER_ERROR */
+                502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/reservations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Every customer's reservations for the panel, filtered by trip, status and pending cancellation request. Unresolved cancellation requests come first, oldest request first; the rest follow newest first. Requires reservation.view; a CUSTOMER actor is refused whatever roles they hold. */
+        get: {
+            parameters: {
+                query?: {
+                    tripId?: string;
+                    status?: "HELD" | "ACTIVE" | "CANCELLED" | "EXPIRED";
+                    cancellationPending?: "true" | "false";
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Reservations */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["StaffReservationSummary"][];
+                    };
+                };
+                /** @description Missing or invalid access token */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description PERMISSION_DENIED -- requires reservation.view */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description VALIDATION_FAILED -- a malformed filter */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/reservations/{reservationId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description One reservation, any customer's, with the customer's contact details and the cancellation request reason. Requires reservation.view. The payment history is a separate endpoint. */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    reservationId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Reservation detail */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["StaffReservationDetail"];
+                    };
+                };
+                /** @description Missing or invalid access token */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description PERMISSION_DENIED -- requires reservation.view */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description NOT_FOUND */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/reservations/{reservationId}/payments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description One reservation's payments, newest first, pending, failed and expired ones included. Requires payment.view. */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    reservationId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Payments */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Payment"][];
+                    };
+                };
+                /** @description Missing or invalid access token */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description PERMISSION_DENIED -- requires payment.view */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description NOT_FOUND */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/reservations/{reservationId}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Cancels a HELD or ACTIVE reservation (spec §5.6): releases its seat, keeps paid_cents and every payment, cancels pending payment intents, notifies the customer with RESERVATION_CANCELLED and audits the actor and the reason. Idempotent: an already CANCELLED reservation is answered as it is. Requires reservation.cancel. */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    reservationId: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["CancelReservationRequest"];
+                };
+            };
+            responses: {
+                /** @description Reservation cancelled (or already cancelled) */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["StaffReservationDetail"];
+                    };
+                };
+                /** @description Missing or invalid access token */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description PERMISSION_DENIED -- requires reservation.cancel */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description NOT_FOUND */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description INVALID_STATUS_TRANSITION -- the reservation already EXPIRED */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description VALIDATION_FAILED -- the reason is missing or longer than 500 characters */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/reservations/{reservationId}/decline-cancellation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Declines the customer's pending cancellation request (spec §5.6): the reservation stays exactly as it is, the request leaves the pending queue, the customer is notified with CANCELLATION_DECLINED and can ask again. Idempotent. Requires reservation.cancel. */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    reservationId: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["DeclineCancellationRequest"];
+                };
+            };
+            responses: {
+                /** @description Request declined (or already declined) */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["StaffReservationDetail"];
+                    };
+                };
+                /** @description Missing or invalid access token */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description PERMISSION_DENIED -- requires reservation.cancel */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description NOT_FOUND */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description NO_CANCELLATION_REQUEST, or INVALID_STATUS_TRANSITION -- already CANCELLED or EXPIRED */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description VALIDATION_FAILED -- the reason is missing or longer than 500 characters */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/payments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Every payment of the authenticated customer, across all their reservations, newest first. */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Payments */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Payment"][];
+                    };
+                };
+                /** @description Missing or invalid access token */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/notifications": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description The authenticated customer's own in-app inbox, newest first, paginated by an opaque cursor. */
+        get: {
+            parameters: {
+                query?: {
+                    cursor?: string;
+                    limit?: number;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description One page of the inbox */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["InboxPage"];
+                    };
+                };
+                /** @description Missing or invalid access token */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/notifications/{deliveryId}/read": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Marks one of the authenticated customer's own INBOX deliveries as read. */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    deliveryId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Marked read */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Missing or invalid access token */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description DELIVERY_NOT_OWNED -- no such delivery, or it is not the caller's */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/files/{key}": {
         parameters: {
             query?: never;
@@ -1576,10 +3182,12 @@ export interface components {
                 locale: "es" | "en";
                 fullName: string;
                 permissions: string[];
+                emailVerified: boolean;
             };
             tokens: {
                 accessToken: string;
                 expiresInSeconds: number;
+                refreshToken?: string;
             };
         };
         Problem: {
@@ -1597,6 +3205,38 @@ export interface components {
             password: string;
             deviceId?: string;
         };
+        RegisterRequest: {
+            /** Format: email */
+            email: string;
+            password: string;
+            fullName: string;
+            phone: string;
+            /** Format: date */
+            birthDate: string;
+            /** @enum {boolean} */
+            acceptTerms: true;
+        };
+        VerifyEmailRequest: {
+            /** Format: email */
+            email: string;
+            code: string;
+        };
+        ResendCodeRequest: {
+            /** Format: email */
+            email: string;
+        };
+        ForgotPasswordRequest: {
+            /** Format: email */
+            email: string;
+        };
+        ResetPasswordRequest: {
+            token: string;
+            newPassword: string;
+        };
+        SocialLoginRequest: {
+            idToken: string;
+            deviceId?: string;
+        };
         AuthenticatedUser: {
             /** Format: uuid */
             id: string;
@@ -1608,6 +3248,14 @@ export interface components {
             locale: "es" | "en";
             fullName: string;
             permissions: string[];
+            emailVerified: boolean;
+        };
+        CustomerProfile: {
+            fullName: string;
+            phone: string;
+            /** Format: email */
+            email: string;
+            photoUrl: string | null;
         };
         Permission: {
             key: string;
@@ -1828,6 +3476,258 @@ export interface components {
             quantity: number;
             unitAmountCents: number;
             notes?: string;
+        };
+        PublicTripSummary: {
+            slug: string;
+            name: string;
+            /** Format: date-time */
+            departureDate: string;
+            /** Format: date-time */
+            returnDate: string;
+            pricePerSeatCents: number;
+            availableSeats: number;
+            images: {
+                /** Format: uuid */
+                id: string;
+                storageKey: string;
+                position: number;
+                isCover: boolean;
+                altText: string | null;
+                url: string;
+            }[];
+        };
+        PublicTripDetail: {
+            /** Format: uuid */
+            id: string;
+            slug: string;
+            /** Format: date-time */
+            departureDate: string;
+            /** Format: date-time */
+            returnDate: string;
+            pricePerSeatCents: number;
+            availableSeats: number;
+            translations: {
+                /** @enum {string} */
+                locale: "es" | "en";
+                name: string;
+                description: string;
+                itinerary: string;
+                includes: string;
+                excludes: string;
+            }[];
+            images: {
+                /** Format: uuid */
+                id: string;
+                storageKey: string;
+                position: number;
+                isCover: boolean;
+                altText: string | null;
+                url: string;
+            }[];
+        };
+        ReservationSummary: {
+            /** Format: uuid */
+            id: string;
+            code: string;
+            /** Format: uuid */
+            tripId: string;
+            tripName: string;
+            /** Format: date-time */
+            tripDepartureDate: string;
+            /** @enum {string} */
+            status: "HELD" | "ACTIVE" | "CANCELLED" | "EXPIRED";
+            /** Format: date-time */
+            holdExpiresAt: string | null;
+            totalPriceCents: number;
+            paidCents: number;
+            balanceCents: number;
+            /** Format: date-time */
+            paymentDeadline: string;
+            /** Format: date-time */
+            createdAt: string;
+        };
+        ReservationDetail: {
+            /** Format: uuid */
+            id: string;
+            code: string;
+            /** Format: uuid */
+            tripId: string;
+            /** Format: uuid */
+            customerId: string;
+            /** @enum {string} */
+            status: "HELD" | "ACTIVE" | "CANCELLED" | "EXPIRED";
+            /** Format: date-time */
+            holdExpiresAt: string | null;
+            totalPriceCents: number;
+            minimumDepositCents: number;
+            paidCents: number;
+            creditCents: number;
+            balanceCents: number;
+            /** Format: date-time */
+            paymentDeadline: string;
+            /** Format: date-time */
+            cancellationRequestedAt: string | null;
+            /** Format: date-time */
+            createdAt: string;
+            suggestedMonthlyCents: number;
+        };
+        CreateReservationRequest: {
+            /** Format: uuid */
+            tripId: string;
+        };
+        Reservation: {
+            /** Format: uuid */
+            id: string;
+            code: string;
+            /** Format: uuid */
+            tripId: string;
+            /** Format: uuid */
+            customerId: string;
+            /** @enum {string} */
+            status: "HELD" | "ACTIVE" | "CANCELLED" | "EXPIRED";
+            /** Format: date-time */
+            holdExpiresAt: string | null;
+            totalPriceCents: number;
+            minimumDepositCents: number;
+            paidCents: number;
+            creditCents: number;
+            balanceCents: number;
+            /** Format: date-time */
+            paymentDeadline: string;
+            /** Format: date-time */
+            cancellationRequestedAt: string | null;
+            /** Format: date-time */
+            createdAt: string;
+        };
+        RequestCancellationRequest: {
+            reason?: string;
+        };
+        CreatedPaymentIntent: {
+            providerIntentId: string;
+            clientSecret: string;
+            amountCents: number;
+            /** @enum {string} */
+            method: "CARD" | "OXXO" | "SPEI";
+            voucherUrl?: string;
+            /** Format: date-time */
+            voucherExpiresAt?: string;
+        };
+        CreatePaymentIntentRequest: {
+            /** @enum {string} */
+            intent: "FULL" | "DEPOSIT";
+            /** @enum {string} */
+            method: "CARD" | "OXXO" | "SPEI";
+        };
+        StaffReservationSummary: {
+            /** Format: uuid */
+            id: string;
+            code: string;
+            /** Format: uuid */
+            tripId: string;
+            tripName: string;
+            /** Format: date-time */
+            tripDepartureDate: string;
+            /** Format: uuid */
+            customerId: string;
+            customerName: string;
+            /** @enum {string} */
+            status: "HELD" | "ACTIVE" | "CANCELLED" | "EXPIRED";
+            /** Format: date-time */
+            holdExpiresAt: string | null;
+            totalPriceCents: number;
+            paidCents: number;
+            balanceCents: number;
+            /** Format: date-time */
+            paymentDeadline: string;
+            /** Format: date-time */
+            cancellationRequestedAt: string | null;
+            cancellationPending: boolean;
+            /** Format: date-time */
+            createdAt: string;
+        };
+        StaffReservationDetail: {
+            /** Format: uuid */
+            id: string;
+            code: string;
+            /** Format: uuid */
+            tripId: string;
+            /** Format: uuid */
+            customerId: string;
+            /** @enum {string} */
+            status: "HELD" | "ACTIVE" | "CANCELLED" | "EXPIRED";
+            /** Format: date-time */
+            holdExpiresAt: string | null;
+            totalPriceCents: number;
+            minimumDepositCents: number;
+            paidCents: number;
+            creditCents: number;
+            balanceCents: number;
+            /** Format: date-time */
+            paymentDeadline: string;
+            /** Format: date-time */
+            cancellationRequestedAt: string | null;
+            /** Format: date-time */
+            createdAt: string;
+            tripName: string;
+            /** Format: date-time */
+            tripDepartureDate: string;
+            customerName: string;
+            customerEmail: string;
+            customerPhone: string;
+            cancellationReason: string | null;
+            cancellationPending: boolean;
+            /** Format: date-time */
+            cancelledAt: string | null;
+            cancelledByName: string | null;
+            /** Format: date-time */
+            cancellationDeclinedAt: string | null;
+            cancellationDeclinedByName: string | null;
+            cancellationDeclineReason: string | null;
+        };
+        Payment: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            reservationId: string;
+            amountCents: number;
+            /** @enum {string} */
+            method: "CARD" | "OXXO" | "SPEI" | "CASH" | "LEGACY";
+            /** @enum {string} */
+            status: "PENDING" | "SUCCEEDED" | "FAILED" | "EXPIRED" | "REFUNDED";
+            /** @enum {string} */
+            provider: "STRIPE" | "MANUAL";
+            /** Format: date-time */
+            paidAt: string | null;
+            /** Format: date-time */
+            recordedAt: string;
+            providerVoucherUrl: string | null;
+            /** Format: date-time */
+            voucherExpiresAt: string | null;
+        };
+        CancelReservationRequest: {
+            reason: string;
+        };
+        DeclineCancellationRequest: {
+            reason: string;
+        };
+        InboxPage: {
+            items: {
+                /** Format: uuid */
+                id: string;
+                eventType: string;
+                title: string;
+                body: string;
+                /** @enum {string} */
+                status: "PENDING" | "SENT" | "FAILED" | "READ";
+                /** Format: date-time */
+                sentAt: string | null;
+                /** Format: date-time */
+                readAt: string | null;
+                /** Format: date-time */
+                createdAt: string;
+            }[];
+            nextCursor: string | null;
+            unreadCount: number;
         };
     };
     responses: never;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isPastDate, monthStartsBetween } from './calendar';
+import { endOfCalendarDay, isPastDate, monthStartsBetween } from './calendar';
 
 const TZ = 'America/Mexico_City';
 const at = (iso: string) => new Date(iso);
@@ -56,5 +56,21 @@ describe('isPastDate', () => {
     // ticked over into the 29th. Naively comparing `departureDate < now` as
     // raw instants gets this wrong for six hours every day.
     expect(isPastDate(at('2026-09-28T00:00:00Z'), at('2026-09-29T02:00:00Z'), TZ)).toBe(false);
+  });
+});
+
+describe('endOfCalendarDay', () => {
+  it('re-anchors a @db.Date UTC-midnight value to the end of that same calendar day in the given timezone', () => {
+    // payment_deadline stored as 2026-03-01 round-trips from Prisma as UTC
+    // midnight. Read naively as an instant in America/Mexico_City (UTC-6),
+    // that instant is 2026-02-28T18:00 -- the wrong calendar day entirely.
+    // endOfCalendarDay re-anchors it to the end of 2026-03-01 in that zone.
+    const deadline = at('2026-03-01T00:00:00Z');
+    expect(endOfCalendarDay(deadline, TZ).toISOString()).toBe('2026-03-02T05:59:59.999Z');
+  });
+
+  it('keys off the UTC calendar day, ignoring any time-of-day component', () => {
+    const deadline = at('2026-03-01T12:00:00Z');
+    expect(endOfCalendarDay(deadline, TZ).toISOString()).toBe('2026-03-02T05:59:59.999Z');
   });
 });

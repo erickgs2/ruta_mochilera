@@ -40,3 +40,61 @@ stateDiagram-v2
     COMPLETED --> [*]
     CANCELLED --> [*]
 ```
+
+## Cupo en el listado de viajes
+
+`listTrips` no recalcula el cupo disponible viaje por viaje: junta todos los
+ids de la página y los resuelve en una sola llamada a
+`committedSeatsForTrips`, la variante agrupada de `committedSeats` (ver
+`docs/business-rules/trips.md`, sección «Cupo disponible»). El detalle de un
+viaje sigue usando la variante de un solo id. Ambas delegan en
+`libs/domain/reservations`, que es también de donde `trip-service.ts` importa
+`availableSeats`, la resta que aparece en el último nodo del diagrama; el
+conteo real se documenta en `docs/diagrams/trip-reservation.md`.
+
+```mermaid
+flowchart TD
+    A[listTrips] --> B[Busca viajes de la página]
+    B --> C["committedSeatsForTrips(db, ids)<br/>una sola llamada"]
+    C --> D[Mapa id → comprometido]
+    D --> E["Para cada viaje:<br/>availableSeats = cupo − pre-vendido − comprometido"]
+```
+
+Medido: 3 consultas para un viaje y 3 para cinco. Un conteo por viaje daría 7
+para cinco.
+
+La «timezone de la organización» del nodo H se lee con `organizationTimeZone`
+(`@rm/domain-settings`) — antes copiada aquí, en `reservations` y en
+`payments`; sin cambio de regla.
+
+## Editar el cupo bloquea la fila del viaje
+
+```mermaid
+flowchart TD
+    A[updateTrip] --> B[(BEGIN)]
+    B --> C["lockTripForCapacity (FOR UPDATE)"]
+    C --> D["committedSeats: reservas ACTIVE + apartados vigentes"]
+    D --> E{"¿total_capacity nuevo ≥<br/>pre-vendido + comprometido?"}
+    E -- No --> F["CAPACITY_BELOW_COMMITTED<br/>details.alreadyTaken"]
+    E -- Sí --> G[Actualiza viaje y traducciones]
+    G --> H{"¿Cambió total_capacity?"}
+    H -- Sí --> I["repriceTrip (ver trip-costing.md)"]
+    H -- No --> J[(COMMIT)]
+    I --> J
+```
+
+## Catálogo público: dos DTOs distintos, no el mismo `TripDto` recortado
+
+Ver `docs/business-rules/trips.md`, sección "El catálogo público", para la
+regla completa. El diagrama es sólo la bifurcación: la misma tabla `trips`,
+dos lecturas con formas de salida que nunca convergen.
+
+```mermaid
+flowchart TD
+    A[(tabla trips)] --> B["getTrip / listTrips<br/>(panel, autenticado)"]
+    A --> C["getPublishedTripBySlug / listPublishedTrips<br/>(público, sin autenticación)"]
+    B --> D["TripDto / TripSummaryDto<br/>incluye budgetTotalCents, marginMode,<br/>marginValue, preSoldSeats, createdById"]
+    C --> E{"¿status = PUBLISHED?"}
+    E -- No --> F[NOT_FOUND]
+    E -- Sí --> G["PublicTripDetailDto / PublicTripSummaryDto<br/>fotos, itinerario, precio, fechas,<br/>cupo disponible — nada de costeo ni autoría<br/>(sólo el detalle lleva el id del viaje)"]
+```

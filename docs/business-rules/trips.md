@@ -92,21 +92,42 @@ available_seats = total_capacity − pre_sold_seats − reservas ACTIVE − apar
 ```
 
 **Nunca se almacena.** Un contador mutable es donde aparece la sobreventa cuando
-dos personas reservan el último lugar en el mismo segundo. En la Fase 2, el
-cálculo ocurre dentro de una transacción que bloquea la fila del viaje; hoy,
-con `committedSeats` siempre en cero, no hay nada que ese bloqueo protegería
-todavía, así que no existe (ver más abajo).
+dos personas reservan el último lugar en el mismo segundo.
 
 `pre_sold_seats` son los lugares vendidos fuera del sistema durante el arranque
 en caliente, que la agencia no quiso capturar uno por uno.
 
-En la Fase 1 todavía no existe el modelo `Reservation`, así que las reservas
-activas y los apartados vigentes se calculan con un stub (`committedSeats` en
-`trip-service.ts`) que siempre regresa cero. **Los tres puntos donde se calcula
-el cupo** — el detalle de un viaje, el listado (`listTrips`) y la validación de
-cupo al editar — pasan por este mismo stub, así que los tres cambian en
-conjunto el día que la Fase 2 lo sustituya por las consultas reales contra
-`Reservation`; ninguno calcula por su cuenta.
+La fórmula entera vive en `libs/domain/reservations`, que es donde viven las
+reglas del modelo `Reservation`: tanto el conteo de reservas activas y
+apartados vigentes (`countCommittedSeats` y su forma agrupada) como la resta
+final (`availableSeats`). `trip-service.ts` la importa de ahí; hasta la
+Tarea 4 la resta vivía en `libs/domain/trips/src/lib/capacity.ts` y el conteo
+en reservas, de modo que cada librería importaba la mitad de la otra —un ciclo
+en el grafo de dependencias por partir una sola fórmula en dos. Ahora la única
+arista es `trips → reservations`. **Los tres puntos donde se calcula el
+cupo** — el detalle de un viaje, el listado (`listTrips`) y la
+validación de cupo al editar — pasan por los mismos dos ayudantes de
+`trip-service.ts` (`committedSeats` y `committedSeatsForTrips`), que no hacen
+más que delegar ahí; ninguno cuenta por su cuenta.
+
+`listTrips` no llama a `committedSeats` una vez por viaje: usa la variante
+agrupada, `committedSeatsForTrips(db, tripIds)`, que recibe todos los ids de la
+página y devuelve un mapa, de modo que el listado no emite una consulta por
+viaje (un N+1 por el tamaño de la página). Está medido en
+`trip-service.spec.ts`, contando las consultas del cliente de base de datos:
+listar cinco viajes cuesta las mismas 3 consultas que listar uno; con un conteo
+por viaje serían 7. El detalle de un viaje (`toDto`) y la validación de cupo al
+editar (`updateTrip`) usan la variante de un solo viaje, porque ahí sólo hace
+falta un id.
+
+**Escribir contra el cupo exige bloquear la fila del viaje.** `updateTrip` toma
+`lockTripForCapacity` antes de comprobar `CAPACITY_BELOW_COMMITTED`, igual que
+lo hace una reserva antes de tomar un lugar: sin el bloqueo, una edición de
+cupo y una reserva simultáneas leen cada una un conteo que la otra está a punto
+de invalidar. El porqué completo está en
+`docs/business-rules/reservations.md`, sección «Por qué el cálculo exige el
+bloqueo». Leer el cupo sólo para mostrarlo (`toDto`, `listTrips`) no necesita
+bloqueo: es un número que por naturaleza es una foto del momento.
 
 ## Validaciones al crear y editar
 
@@ -194,3 +215,54 @@ calendario de "hoy" en `SystemSetting.organization.timezone` (por defecto
 comparación ingenua clasificaría mal un viaje que sale "hoy" durante las
 primeras horas del día en UTC, seis horas antes de que empiece el día en
 Ciudad de México. Implementado en `isPastDate` (`@rm/shared-utils/calendar.ts`).
+La lectura de `SystemSetting['organization.timezone']` en sí vive en
+`organizationTimeZone` (`@rm/domain-settings`) — antes copiada aquí, en
+`reservations` y en `payments`; sin cambio de regla.
+
+## El catálogo público (Tarea 14): dos DTOs aparte, no un `select` sobre los existentes
+
+`GET /api/v1/public/trips` y `GET /api/v1/public/trips/{slug}`
+(`listPublishedTrips` / `getPublishedTripBySlug`,
+`libs/domain/trips/src/lib/public-trip-service.ts`) son las dos únicas rutas
+de toda la Fase 2A sin autenticación que leen de la base de datos. Cualquiera
+en Internet puede llamarlas.
+
+Por eso no reutilizan `TripDto`/`TripSummaryDto` con un `select` recortado en
+la capa HTTP: ese recorte viviría en un solo sitio frágil, un `select` de más
+en un commit futuro bastaría para filtrar el costeo de la agencia al público,
+y nada lo haría fallar. En su lugar hay dos tipos propios,
+`PublicTripSummaryDto` y `PublicTripDetailDto`, que **no tienen** los campos
+que no deben salir — no están vacíos, no existen como propiedad en el tipo:
+
+- `budgetTotalCents`, `marginMode`, `marginValue` (el costeo completo, ver
+  `docs/business-rules/costing.md`).
+- `preSoldSeats` (cuánto de la venta es, en realidad, inventario ya
+  colocado fuera del sistema).
+- `createdById` / `createdBy` (quién, dentro de la agencia, dio de alta el
+  viaje).
+
+Lo que sí exponen: fotos (`images[]`, con la misma forma que
+`TripImageDto` salvo `tripId` — `url` se calcula igual en la frontera HTTP,
+ver `withImageUrls` en `apps/api/src/lib/http/trip-response.ts`), itinerario
+y el resto de las traducciones, precio por asiento, fechas de salida y
+regreso, y cupo disponible (la misma `availableSeats` de
+`@rm/domain-reservations` que usa el panel de administración).
+
+**Sólo el detalle lleva el `id` del viaje (Tarea 17).** `POST /reservations`
+recibe un `tripId`, y la pantalla de reserva de la app parte del detalle, así
+que `PublicTripDetailDto` expone el UUID del viaje. Un UUID no dice nada del
+costeo ni de la autoría. El resumen del listado no lo lleva: sigue indexado
+por `slug`, y una prueba afirma que el `id` no aparece ahí.
+
+**Un viaje que no está `PUBLISHED` responde 404, nunca un detalle vacío.**
+`getPublishedTripBySlug` devuelve el mismo `NOT_FOUND` tanto para un slug que
+no existe como para uno que existe pero está en `DRAFT`, `IN_PROGRESS`,
+`COMPLETED` o `CANCELLED` — un visitante que encuentre (o adivine) el slug de
+un borrador no puede distinguirlo de una errata, el mismo razonamiento que
+`RESERVATION_NOT_OWNED` usa en `@rm/domain-reservations` para una reserva que
+no es del cliente que pregunta.
+
+`libs/domain/trips` ya depende de `@rm/domain-reservations` (ver "Cupo
+disponible" arriba); este archivo reutiliza esa misma dependencia para
+`availableSeats`/`countCommittedSeats`/`countCommittedSeatsForTrips` en vez
+de reinventar el cálculo.

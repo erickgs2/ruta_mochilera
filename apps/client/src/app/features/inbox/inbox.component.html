@@ -1,0 +1,39 @@
+<div class="inbox-page">
+  <header class="inbox-header">
+    <a routerLink="/account">← {{ 'inbox.backToAccount' | translate }}</a>
+    <h1>
+      {{ 'inbox.title' | translate }}
+      @if (unreadCount() > 0) {
+        <span class="inbox-unread-count" [attr.aria-label]="'inbox.unreadLabel' | translate">{{ unreadCount() }}</span>
+      }
+    </h1>
+  </header>
+
+  @if (error()) {
+    <p class="inbox-error">{{ error() | rmErrorCode }}</p>
+  }
+
+  @if (!loading() && items().length === 0) {
+    <p class="inbox-empty">{{ 'inbox.empty' | translate }}</p>
+  }
+
+  <ul class="inbox-list">
+    @for (item of items(); track item.id) {
+      <li class="inbox-item" [class.inbox-item--unread]="item.readAt === null" [attr.data-delivery-id]="item.id">
+        <button type="button" class="inbox-item-toggle" [attr.aria-expanded]="openedId() === item.id" (click)="open(item)">
+          <span class="inbox-item-title">{{ item.title }}</span>
+          <span class="inbox-item-date">{{ item.createdAt | date: 'medium' }}</span>
+        </button>
+        @if (openedId() === item.id) {
+          <p class="inbox-item-body">{{ item.body }}</p>
+        }
+      </li>
+    }
+  </ul>
+
+  @if (nextCursor()) {
+    <button type="button" class="inbox-more" [disabled]="loading()" (click)="loadMore()">
+      {{ 'inbox.loadMore' | translate }}
+    </button>
+  }
+</div>

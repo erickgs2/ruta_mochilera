@@ -26,13 +26,15 @@ import { Component, input } from '@angular/core';
       align-items: center;
       justify-content: space-between;
       gap: 0.75rem;
-      margin-bottom: 1rem;
+      margin: 0.5rem 0 1.25rem;
     }
 
     .rm-page-header__title {
       margin: 0;
-      font-size: 1.25rem;
-      font-weight: 500;
+      font-size: 1.625rem;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      line-height: 1.15;
     }
 
     .rm-page-header__actions {

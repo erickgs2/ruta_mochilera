@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type { Db, DbTransactionClient } from '@rm/db';
 import { loadActorPermissions } from '@rm/domain-rbac';
 import { fail, ok, type Result } from '@rm/shared-utils';
-import { clearLoginRateLimit, isLoginRateLimited, recordFailedLoginAttempt } from './login-rate-limiter';
+import { clearRateLimit, isRateLimited, recordFailedAttempt } from './rate-limiter';
 import { verifyPassword } from './password';
 import { generateRefreshToken, hashRefreshToken, signAccessToken } from './tokens';
 
@@ -25,9 +25,12 @@ export interface AuthenticatedUser {
   locale: 'es' | 'en';
   fullName: string;
   permissions: string[];
+  /** Whether `email_verified_at` is set. The client app shows "verify your email" instead of the reserve button when it is not. */
+  emailVerified: boolean;
 }
 
-interface SessionInput {
+/** Shared by every flow that ends in `issueSession`: a password login, a token refresh, and (Task 13) a social login. */
+export interface SessionInput {
   deviceId?: string;
   userAgent?: string;
 }
@@ -55,7 +58,12 @@ const DUMMY_PASSWORD_HASH =
  * (refresh rotation) with no cast at either call site: a full `Db` is
  * structurally assignable to `DbTransactionClient`.
  */
-async function issueSession(
+/**
+ * Exported so `loginWithProvider` (Task 13, `./social-login.ts`) issues a
+ * session the exact same way a password login does -- no social-login-only
+ * copy of refresh-token generation or access-token signing.
+ */
+export async function issueSession(
   db: DbTransactionClient,
   config: AuthConfig,
   userId: string,
@@ -103,6 +111,7 @@ export async function describeUser(db: Db, userId: string): Promise<Authenticate
     locale: user.locale,
     fullName: user.staffProfile?.fullName ?? user.customerProfile?.fullName ?? '',
     permissions: user.type === 'STAFF' ? await loadActorPermissions(db, user.id) : [],
+    emailVerified: user.emailVerifiedAt !== null,
   };
 }
 
@@ -120,7 +129,7 @@ export async function login(
   // Checked before any password work at all -- including the dummy-hash
   // timing defence below -- so a rate-limited burst never spends argon2 time,
   // which is the whole point of limiting it.
-  if (isLoginRateLimited(email, ip)) return fail('RATE_LIMITED');
+  if (isRateLimited('login', email, ip)) return fail('RATE_LIMITED');
 
   const user = await db.user.findFirst({
     where: { email: { equals: email, mode: 'insensitive' } },
@@ -133,16 +142,16 @@ export async function login(
   // through timing what the shared error code hides.
   if (!user?.passwordHash) {
     await verifyPassword(DUMMY_PASSWORD_HASH, input.password);
-    recordFailedLoginAttempt(email, ip);
+    recordFailedAttempt('login', email, ip);
     return fail('INVALID_CREDENTIALS');
   }
   if (!(await verifyPassword(user.passwordHash, input.password))) {
-    recordFailedLoginAttempt(email, ip);
+    recordFailedAttempt('login', email, ip);
     return fail('INVALID_CREDENTIALS');
   }
   if (user.status === 'DISABLED') return fail('ACCOUNT_DISABLED');
 
-  clearLoginRateLimit(email, ip);
+  clearRateLimit('login', email, ip);
   const tokens = await issueSession(db, config, user.id, randomUUID(), input);
   return ok({ user: await describeUser(db, user.id), tokens });
 }

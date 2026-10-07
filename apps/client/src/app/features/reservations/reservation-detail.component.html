@@ -1,0 +1,58 @@
+<div class="reservation-page">
+  <header class="reservation-header">
+    <a routerLink="/">← {{ 'catalogue.backToCatalogue' | translate }}</a>
+  </header>
+
+  @if (error() && !reservation()) {
+    <p class="reservation-error">{{ error() | rmErrorCode }}</p>
+  } @else if (reservation(); as reservation) {
+    <h1>{{ 'reservation.title' | translate }} {{ reservation.code }}</h1>
+    <p class="reservation-state">{{ 'reservation.status.' + reservation.status | translate }}</p>
+
+    @if (holdLeftMs() !== null) {
+      @if (holdLeftMs()! > 0) {
+        <p class="hold-countdown">{{ 'reservation.holdExpiresIn' | translate }} {{ countdown() }}</p>
+      } @else {
+        <p class="reservation-hint">{{ 'reservation.holdExpired' | translate }}</p>
+      }
+    }
+
+    <section class="reservation-amounts">
+      <dl>
+        <dt>{{ 'reservation.total' | translate }}</dt>
+        <dd>{{ reservation.totalPriceCents | rmMoney }}</dd>
+        <dt>{{ 'reservation.paid' | translate }}</dt>
+        <dd>{{ reservation.paidCents | rmMoney }}</dd>
+        <dt>{{ 'reservation.balance' | translate }}</dt>
+        <dd>{{ reservation.balanceCents | rmMoney }}</dd>
+        <dt>{{ 'reservation.minimumDeposit' | translate }}</dt>
+        <dd>{{ reservation.minimumDepositCents | rmMoney }}</dd>
+        <dt>{{ 'reservation.suggestedMonthly' | translate }}</dt>
+        <dd>{{ reservation.suggestedMonthlyCents | rmMoney }}</dd>
+        <dt>{{ 'reservation.paymentDeadline' | translate }}</dt>
+        <dd>{{ reservation.paymentDeadline | rmCalendarDate }}</dd>
+      </dl>
+    </section>
+
+    @switch (processing()) {
+      @case ('polling') {
+        <p class="reservation-status">{{ 'reservation.processing' | translate }}</p>
+      }
+      @case ('slow') {
+        <p class="reservation-status">{{ 'reservation.processingSlow' | translate }}</p>
+      }
+    }
+
+    @if (canPay()) {
+      <rm-payment-method [reservation]="reservation" (cardConfirmed)="onCardConfirmed()" />
+    }
+
+    @if (error()) {
+      <p class="reservation-error">{{ error() | rmErrorCode }}</p>
+    }
+    <a [routerLink]="['/reservations', reservation.id, 'payments']">{{ 'reservation.paymentHistory' | translate }}</a>
+    <button type="button" class="reservation-refresh" (click)="refresh()">{{ 'reservation.refresh' | translate }}</button>
+  } @else {
+    <p class="reservation-status">{{ 'common.loading' | translate }}</p>
+  }
+</div>

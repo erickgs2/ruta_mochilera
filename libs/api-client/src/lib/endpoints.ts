@@ -30,6 +30,45 @@ type Ok<P extends keyof paths, M extends keyof paths[P]> = paths[P][M] extends {
 export class AuthApi {
   private readonly api = inject(ApiClient);
 
+  /**
+   * Always responds the same way whether or not `body.email` is already
+   * registered -- see `registerCustomer`'s doc comment in `@rm/domain-identity`.
+   * Responds with a `null` body on success; there is nothing to return.
+   */
+  register(body: Body<'/api/v1/auth/register', 'post'>): Observable<Ok<'/api/v1/auth/register', 'post'>> {
+    return this.api.post('/api/v1/auth/register', body);
+  }
+
+  /** Same `null`-body contract as `register()`. Fails with `OTP_INVALID`, `OTP_EXPIRED` or `OTP_MAX_ATTEMPTS`. */
+  verifyEmail(body: Body<'/api/v1/auth/verify-email', 'post'>): Observable<Ok<'/api/v1/auth/verify-email', 'post'>> {
+    return this.api.post('/api/v1/auth/verify-email', body);
+  }
+
+  /**
+   * Answers the same way whether or not `body.email` has an account or is
+   * already verified. Fails with `OTP_RESEND_TOO_SOON` inside the cooldown.
+   */
+  resendCode(body: Body<'/api/v1/auth/resend-code', 'post'>): Observable<Ok<'/api/v1/auth/resend-code', 'post'>> {
+    return this.api.post('/api/v1/auth/resend-code', body);
+  }
+
+  /** Answers the same way whether or not `body.email` has an account -- see `requestPasswordReset`. */
+  forgotPassword(
+    body: Body<'/api/v1/auth/forgot-password', 'post'>
+  ): Observable<Ok<'/api/v1/auth/forgot-password', 'post'>> {
+    return this.api.post('/api/v1/auth/forgot-password', body);
+  }
+
+  /**
+   * Fails with `TOKEN_INVALID` (401) for an unknown, expired or already-used
+   * token. On success the server revokes every live session of the account.
+   */
+  resetPassword(
+    body: Body<'/api/v1/auth/reset-password', 'post'>
+  ): Observable<Ok<'/api/v1/auth/reset-password', 'post'>> {
+    return this.api.post('/api/v1/auth/reset-password', body);
+  }
+
   login(body: Body<'/api/v1/auth/login', 'post'>): Observable<Ok<'/api/v1/auth/login', 'post'>> {
     return this.api.post('/api/v1/auth/login', body);
   }
@@ -101,6 +140,152 @@ export class StaffApi {
     body: Body<'/api/v1/staff/{userId}', 'put'>
   ): Observable<Ok<'/api/v1/staff/{userId}', 'put'>> {
     return this.api.put(`/api/v1/staff/${userId}`, body);
+  }
+}
+
+/**
+ * The public trip catalogue: no authentication, PUBLISHED trips only, and
+ * none of the internal fields (budget, margin, pre-sold seats) `TripsApi`
+ * exposes to staff.
+ */
+@Injectable({ providedIn: 'root' })
+export class PublicCatalogueApi {
+  private readonly api = inject(ApiClient);
+
+  list(): Observable<Ok<'/api/v1/public/trips', 'get'>> {
+    return this.api.get('/api/v1/public/trips');
+  }
+
+  /** Answers 404 `NOT_FOUND` both for an unknown slug and for a trip that is not PUBLISHED. */
+  get(slug: string): Observable<Ok<'/api/v1/public/trips/{slug}', 'get'>> {
+    return this.api.get(`/api/v1/public/trips/${encodeURIComponent(slug)}`);
+  }
+}
+
+/**
+ * The authenticated customer's own reservations and the payment flow that
+ * starts from one. Ownership is checked by the API on every call.
+ */
+@Injectable({ providedIn: 'root' })
+export class ReservationsApi {
+  private readonly api = inject(ApiClient);
+
+  /** The customer's own reservations, newest first, cancelled and expired ones included. */
+  list(): Observable<Ok<'/api/v1/reservations', 'get'>> {
+    return this.api.get('/api/v1/reservations');
+  }
+
+  /** Creates a `HELD` reservation (the hold). The answer carries total, minimum deposit and `suggestedMonthlyCents`. */
+  create(tripId: string): Observable<Ok<'/api/v1/reservations', 'post'>> {
+    return this.api.post('/api/v1/reservations', { tripId });
+  }
+
+  get(reservationId: string): Observable<Ok<'/api/v1/reservations/{reservationId}', 'get'>> {
+    return this.api.get(`/api/v1/reservations/${reservationId}`);
+  }
+
+  /**
+   * The body is an intent (`FULL` or `DEPOSIT`) and a method, never a number
+   * of cents: the API decides the amount from the reservation's own balance
+   * and echoes it back as `amountCents`.
+   */
+  createPaymentIntent(
+    reservationId: string,
+    body: Body<'/api/v1/reservations/{reservationId}/payment-intents', 'post'>
+  ): Observable<Ok<'/api/v1/reservations/{reservationId}/payment-intents', 'post'>> {
+    return this.api.post(`/api/v1/reservations/${reservationId}/payment-intents`, body);
+  }
+}
+
+/**
+ * The authenticated customer's own profile. No id anywhere: the API always
+ * acts on the caller. The email is read-only -- `update` cannot carry it.
+ */
+@Injectable({ providedIn: 'root' })
+export class ProfileApi {
+  private readonly api = inject(ApiClient);
+
+  get(): Observable<Ok<'/api/v1/me/profile', 'get'>> {
+    return this.api.get('/api/v1/me/profile');
+  }
+
+  update(body: Body<'/api/v1/me/profile', 'patch'>): Observable<Ok<'/api/v1/me/profile', 'patch'>> {
+    return this.api.patch('/api/v1/me/profile', body);
+  }
+
+  /** The `file` field name matches what `me/profile/photo/route.ts` reads. */
+  uploadPhoto(file: File): Observable<Ok<'/api/v1/me/profile/photo', 'post'>> {
+    const form = new FormData();
+    form.append('file', file);
+    return this.api.upload('/api/v1/me/profile/photo', form);
+  }
+}
+
+/** The authenticated customer's own payments, across all their reservations, newest first. */
+@Injectable({ providedIn: 'root' })
+export class PaymentsApi {
+  private readonly api = inject(ApiClient);
+
+  list(): Observable<Ok<'/api/v1/payments', 'get'>> {
+    return this.api.get('/api/v1/payments');
+  }
+}
+
+/** The authenticated customer's own in-app inbox. */
+@Injectable({ providedIn: 'root' })
+export class NotificationsApi {
+  private readonly api = inject(ApiClient);
+
+  /** Newest first; pass the previous page's `nextCursor` to continue. */
+  list(cursor?: string): Observable<Ok<'/api/v1/notifications', 'get'>> {
+    return this.api.get('/api/v1/notifications', { cursor });
+  }
+
+  markRead(deliveryId: string): Observable<Ok<'/api/v1/notifications/{deliveryId}/read', 'post'>> {
+    return this.api.post(`/api/v1/notifications/${deliveryId}/read`, {});
+  }
+}
+
+/** The query `AdminReservationsApi.list` accepts: the generated query type of `GET /api/v1/admin/reservations`. */
+type AdminReservationsQuery = NonNullable<paths['/api/v1/admin/reservations']['get']['parameters']['query']>;
+
+/**
+ * The panel's view of every customer's reservations (Task 19). Each call is
+ * gated by the API on its own permission -- `reservation.view` to read,
+ * `payment.view` for the payment history, `reservation.cancel` to cancel --
+ * whatever the screen chooses to show.
+ */
+@Injectable({ providedIn: 'root' })
+export class AdminReservationsApi {
+  private readonly api = inject(ApiClient);
+
+  /** Unresolved cancellation requests first, oldest request first; the rest newest first. */
+  list(query: AdminReservationsQuery = {}): Observable<Ok<'/api/v1/admin/reservations', 'get'>> {
+    return this.api.get('/api/v1/admin/reservations', query);
+  }
+
+  get(reservationId: string): Observable<Ok<'/api/v1/admin/reservations/{reservationId}', 'get'>> {
+    return this.api.get(`/api/v1/admin/reservations/${reservationId}`);
+  }
+
+  payments(reservationId: string): Observable<Ok<'/api/v1/admin/reservations/{reservationId}/payments', 'get'>> {
+    return this.api.get(`/api/v1/admin/reservations/${reservationId}/payments`);
+  }
+
+  /** Idempotent on the API side: cancelling twice answers the already-cancelled reservation. */
+  cancel(
+    reservationId: string,
+    reason: string
+  ): Observable<Ok<'/api/v1/admin/reservations/{reservationId}/cancel', 'post'>> {
+    return this.api.post(`/api/v1/admin/reservations/${reservationId}/cancel`, { reason });
+  }
+
+  /** Closes the customer's pending request without cancelling; the customer is told why and may ask again. */
+  declineCancellation(
+    reservationId: string,
+    reason: string
+  ): Observable<Ok<'/api/v1/admin/reservations/{reservationId}/decline-cancellation', 'post'>> {
+    return this.api.post(`/api/v1/admin/reservations/${reservationId}/decline-cancellation`, { reason });
   }
 }
 

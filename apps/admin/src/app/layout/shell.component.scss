@@ -9,9 +9,29 @@
   z-index: 10;
 }
 
+.shell-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-left: 0.25rem;
+  color: inherit;
+  text-decoration: none;
+}
+
+.shell-logo {
+  display: block;
+  width: 40px;
+  height: 40px;
+}
+
 .shell-title {
-  margin-left: 0.5rem;
-  font-weight: 500;
+  font-size: 1.05rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+
+  strong {
+    font-weight: 800;
+  }
 }
 
 .shell-spacer {
@@ -20,6 +40,8 @@
 
 .shell-user {
   margin-right: 0.5rem;
+  font: var(--mat-sys-label-large);
+  font-weight: 600;
 }
 
 .shell-container {
@@ -28,12 +50,23 @@
 
 .shell-sidenav {
   width: 240px;
+  border-right: 1px solid var(--rm-line);
 }
 
 .shell-content {
-  padding: 1rem;
+  padding: 1rem 1.25rem 2rem;
 }
 
 .active-link {
-  font-weight: 600;
+  font-weight: 700;
+}
+
+@media (max-width: 599px) {
+  .shell-title {
+    display: none;
+  }
+
+  .shell-user {
+    display: none;
+  }
 }

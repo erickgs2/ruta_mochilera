@@ -18,6 +18,20 @@ const DEFAULT_SETTINGS: Record<string, Prisma.InputJsonValue> = {
   'reminder.hour_local': 10,
   'organization.timezone': 'America/Mexico_City',
   'receipt.prefix': 'RM',
+  // Task 11 (customer registration / email verification): exact values from
+  // the brief. See `otp.ts`'s `DEFAULT_OTP_SETTINGS` for the same numbers
+  // used as a fallback when a database has run migrations but never this
+  // seed.
+  'otp.ttl_minutes': 15,
+  'otp.max_attempts': 5,
+  'otp.resend_cooldown_seconds': 60,
+  'otp.max_resends_per_hour': 5,
+  // Task 12 (password reset): the brief gives no exact value for this one
+  // (unlike the four OTP settings above) -- 60 minutes is a reasonable,
+  // common default for a reset link's lifetime, chosen here and documented
+  // rather than silently hardcoded. See `password-reset.ts`'s
+  // `DEFAULT_PASSWORD_RESET_TTL_MINUTES`.
+  'password_reset.ttl_minutes': 60,
 };
 
 async function main() {

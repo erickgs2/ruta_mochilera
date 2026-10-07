@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { closeTestDb, prepareTestDb, resetDatabase, withTestDb } from '@rm/db/testing';
-import { resetLoginRateLimiterForTesting } from './login-rate-limiter';
+import { resetRateLimiterForTesting } from './rate-limiter';
 import { hashPassword } from './password';
 import { hashRefreshToken, verifyAccessToken } from './tokens';
 import { login, logout, refreshSession, type AuthConfig } from './auth-service';
@@ -45,7 +45,7 @@ describe('login', () => {
     // The rate limiter is in-memory, module-level state (see its own doc
     // comment): without this reset, failed-login tests below would bleed
     // into each other and eventually trip RATE_LIMITED for the wrong reason.
-    resetLoginRateLimiterForTesting();
+    resetRateLimiterForTesting();
     return resetDatabase(db);
   });
 

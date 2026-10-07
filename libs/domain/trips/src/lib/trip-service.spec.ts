@@ -1,8 +1,14 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { closeTestDb, prepareTestDb, resetDatabase, withTestDb } from '@rm/db/testing';
+import {
+  closeTestDb,
+  prepareTestDb,
+  resetDatabase,
+  withQueryCountingDb,
+  withTestDb,
+} from '@rm/db/testing';
 import { addBudgetItem } from '@rm/domain-costing';
 import type { Actor } from '@rm/domain-rbac';
-import { changeTripStatus, createTrip, listTrips, updateTrip } from './trip-service';
+import { changeTripStatus, createTrip, getTrip, listTrips, updateTrip } from './trip-service';
 
 const db = withTestDb();
 
@@ -150,8 +156,8 @@ describe('trip service', () => {
 
   it('reads the backfill date gate from the configured organization.timezone, not the fallback constant', async () => {
     // Every other test in this file runs with no `SystemSetting` row at all,
-    // so `organizationTimeZone` (trip-service.ts) always falls back to its
-    // `America/Mexico_City` constant -- the fallback branch is exercised
+    // so `organizationTimeZone` (`@rm/domain-settings`) always falls back to
+    // its `America/Mexico_City` constant -- the fallback branch is exercised
     // everywhere, the configured-row branch nowhere. This test seeds a row
     // with a different timezone and proves the gate's decision actually
     // changes with it.
@@ -369,6 +375,59 @@ describe('trip service', () => {
     expect(search.ok && search.value).toHaveLength(1);
   });
 
+  it('summarizes five trips with correct availableSeats and departure-date ordering', async () => {
+    // Regression guard for `listTrips` over several trips at once: each
+    // summary's shape, its `availableSeats` (derived through the batched
+    // `committedSeatsForTrips`), and the overall ordering by `departureDate`
+    // ascending. None of these trips has reservations, so this pins the
+    // pre-sold arithmetic on its own; the query count that tells a batched
+    // lookup apart from a per-trip loop is asserted separately below.
+    const seeds = [
+      { name: 'Trip E', departureDate: new Date('2026-12-05'), totalCapacity: 10, preSoldSeats: 2 },
+      { name: 'Trip A', departureDate: new Date('2026-12-01'), totalCapacity: 20, preSoldSeats: 0 },
+      { name: 'Trip D', departureDate: new Date('2026-12-04'), totalCapacity: 15, preSoldSeats: 15 },
+      { name: 'Trip B', departureDate: new Date('2026-12-02'), totalCapacity: 8, preSoldSeats: 3 },
+      { name: 'Trip C', departureDate: new Date('2026-12-03'), totalCapacity: 5, preSoldSeats: 1 },
+    ];
+
+    for (const seed of seeds) {
+      const result = await createTrip(db, actorWith(['trip.create', 'data.backfill']), {
+        ...baseInput,
+        departureDate: seed.departureDate,
+        returnDate: new Date(seed.departureDate.getTime() + 6 * 24 * 60 * 60 * 1000),
+        totalCapacity: seed.totalCapacity,
+        preSoldSeats: seed.preSoldSeats,
+        isBackfilled: seed.preSoldSeats > 0,
+        translations: [
+          { locale: 'es', name: seed.name, description: 'd', itinerary: 'i', includes: 'inc', excludes: 'exc' },
+        ],
+      });
+      expect(result.ok).toBe(true);
+    }
+
+    const listed = await listTrips(db, {});
+    expect(listed.ok).toBe(true);
+    if (!listed.ok) return;
+
+    expect(listed.value).toHaveLength(5);
+    expect(listed.value.map((trip) => trip.name)).toEqual([
+      'Trip A',
+      'Trip B',
+      'Trip C',
+      'Trip D',
+      'Trip E',
+    ]);
+    expect(listed.value.map((trip) => trip.availableSeats)).toEqual([20, 5, 4, 0, 8]);
+    for (const trip of listed.value) {
+      expect(trip).toMatchObject({
+        id: expect.any(String),
+        slug: expect.any(String),
+        status: 'DRAFT',
+        pricePerSeatCents: expect.any(Number),
+      });
+    }
+  });
+
   it('reprices the trip when totalCapacity changes through updateTrip', async () => {
     // Regression test for a cross-domain gap found in Task 13: capacity is a
     // divisor in the per-seat price formula, but `updateTrip` lives here and
@@ -411,5 +470,171 @@ describe('trip service', () => {
     const actions = (await db.auditLog.findMany({ where: { entityType: 'Trip' }, orderBy: { createdAt: 'asc' } }))
       .map((entry) => entry.action);
     expect(actions).toEqual(['trip.created', 'trip.status_changed']);
+  });
+  async function seedCustomer(email: string): Promise<string> {
+    const user = await db.user.create({
+      data: {
+        email,
+        type: 'CUSTOMER',
+        customerProfile: {
+          create: {
+            fullName: 'Cliente',
+            phone: '5512345678',
+            birthDate: new Date('1990-01-01'),
+            origin: 'SELF_SIGNUP',
+          },
+        },
+      },
+    });
+    return user.id;
+  }
+
+  async function seedReservation(
+    tripId: string,
+    code: string,
+    customerId: string,
+    status: 'HELD' | 'ACTIVE' | 'CANCELLED' | 'EXPIRED',
+    holdExpiresAt: Date | null = null
+  ): Promise<void> {
+    await db.reservation.create({
+      data: {
+        code,
+        tripId,
+        customerId,
+        status,
+        holdExpiresAt,
+        totalPriceCents: 500_000,
+        minimumDepositCents: 100_000,
+        paymentDeadline: new Date('2026-11-01'),
+        source: 'APP',
+      },
+    });
+  }
+
+  const IN_ONE_HOUR = () => new Date(Date.now() + 60 * 60 * 1000);
+  const ONE_HOUR_AGO = () => new Date(Date.now() - 60 * 60 * 1000);
+
+  it('subtracts real reservations from a trip detail\'s available seats', async () => {
+    const created = await createTrip(db, actorWith(['trip.create']), {
+      ...baseInput,
+      totalCapacity: 10,
+      preSoldSeats: 0,
+    });
+    if (!created.ok) throw new Error('setup failed');
+
+    await seedReservation(created.value.id, 'R-1', await seedCustomer('a@agency.test'), 'ACTIVE');
+    await seedReservation(
+      created.value.id, 'R-2', await seedCustomer('b@agency.test'), 'HELD', IN_ONE_HOUR()
+    );
+    // Neither of these takes a seat: one hold ran out, one was cancelled.
+    await seedReservation(
+      created.value.id, 'R-3', await seedCustomer('c@agency.test'), 'HELD', ONE_HOUR_AGO()
+    );
+    await seedReservation(created.value.id, 'R-4', await seedCustomer('d@agency.test'), 'CANCELLED');
+
+    const detail = await getTrip(db, created.value.id);
+    expect(detail.ok).toBe(true);
+    if (detail.ok) expect(detail.value.availableSeats).toBe(8);
+  });
+
+  it('subtracts real reservations from a trip summary\'s available seats', async () => {
+    // Pre-sold seats make this a backfilled trip, which needs data.backfill.
+    const created = await createTrip(db, actorWith(['trip.create', 'data.backfill']), {
+      ...baseInput,
+      totalCapacity: 10,
+      preSoldSeats: 1,
+    });
+    if (!created.ok) throw new Error('setup failed');
+
+    await seedReservation(created.value.id, 'R-1', await seedCustomer('a@agency.test'), 'ACTIVE');
+    await seedReservation(
+      created.value.id, 'R-2', await seedCustomer('b@agency.test'), 'HELD', IN_ONE_HOUR()
+    );
+
+    const listed = await listTrips(db, {});
+    expect(listed.ok).toBe(true);
+    // 10 total - 1 pre-sold - 1 active - 1 live hold.
+    if (listed.ok) expect(listed.value[0]?.availableSeats).toBe(7);
+  });
+
+  it('refuses to shrink capacity below the seats real reservations already hold', async () => {
+    const created = await createTrip(db, actorWith(['trip.create']), {
+      ...baseInput,
+      totalCapacity: 10,
+      preSoldSeats: 0,
+    });
+    if (!created.ok) throw new Error('setup failed');
+
+    await seedReservation(created.value.id, 'R-1', await seedCustomer('a@agency.test'), 'ACTIVE');
+    await seedReservation(
+      created.value.id, 'R-2', await seedCustomer('b@agency.test'), 'HELD', IN_ONE_HOUR()
+    );
+    await seedReservation(created.value.id, 'R-3', await seedCustomer('c@agency.test'), 'ACTIVE');
+
+    const shrunk = await updateTrip(db, actorWith(['trip.update']), created.value.id, {
+      ...baseInput,
+      totalCapacity: 2,
+      preSoldSeats: 0,
+    });
+
+    expect(shrunk.ok).toBe(false);
+    if (!shrunk.ok) {
+      expect(shrunk.error.code).toBe('CAPACITY_BELOW_COMMITTED');
+      expect(shrunk.error.details).toMatchObject({ alreadyTaken: 3 });
+    }
+  });
+
+  it('does not issue more queries to list five trips than to list one', async () => {
+    // The N+1 guard Task 1 could not write: with `committedSeatsForTrips`
+    // stubbed out it issued no queries at all, so a per-trip loop and a
+    // single batched lookup were indistinguishable at the database. Now that
+    // the lookup is real, the count is observable -- and it is counted at
+    // the client, because `vi.mock(module, { spy: true })` does not
+    // intercept a module calling its own function in ESM.
+    const seedTripWithReservation = async (index: number): Promise<void> => {
+      const created = await createTrip(db, actorWith(['trip.create']), {
+        ...baseInput,
+        departureDate: new Date(`2026-12-0${index}`),
+        returnDate: new Date(`2026-12-1${index}`),
+        translations: [
+          {
+            locale: 'es',
+            name: `Viaje ${index}`,
+            description: 'd',
+            itinerary: 'i',
+            includes: 'inc',
+            excludes: 'exc',
+          },
+        ],
+      });
+      if (!created.ok) throw new Error('setup failed');
+      await seedReservation(
+        created.value.id,
+        `R-${index}`,
+        await seedCustomer(`customer-${index}@agency.test`),
+        'ACTIVE'
+      );
+    };
+
+    await seedTripWithReservation(1);
+    const forOne = await withQueryCountingDb(async (countingDb, queryCount) => {
+      const listed = await listTrips(countingDb, {});
+      expect(listed.ok && listed.value).toHaveLength(1);
+      return queryCount();
+    });
+
+    for (const index of [2, 3, 4, 5]) await seedTripWithReservation(index);
+    const forFive = await withQueryCountingDb(async (countingDb, queryCount) => {
+      const listed = await listTrips(countingDb, {});
+      if (!listed.ok) throw new Error('listTrips failed');
+      expect(listed.value).toHaveLength(5);
+      // 20 seats each, one ACTIVE reservation each.
+      expect(listed.value.every((trip) => trip.availableSeats === 19)).toBe(true);
+      return queryCount();
+    });
+
+    // The assertion that matters: the count is flat in the number of trips.
+    // A per-trip lookup would make this 1 + 5 against 1 + 1.
+    expect(forFive).toBe(forOne);
   });
 });

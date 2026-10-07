@@ -2,8 +2,14 @@ import { uniqueViolationIndex, type Db, type DbTransactionClient } from '@rm/db'
 import { recordAudit } from '@rm/domain-audit';
 import { repriceTrip } from '@rm/domain-costing';
 import { requirePermission, type Actor } from '@rm/domain-rbac';
+import {
+  availableSeats,
+  countCommittedSeats,
+  countCommittedSeatsForTrips,
+  lockTripForCapacity,
+} from '@rm/domain-reservations';
+import { organizationTimeZone } from '@rm/domain-settings';
 import { fail, isPastDate, ok, type Result } from '@rm/shared-utils';
-import { availableSeats } from './capacity';
 import { slugify } from './slug';
 import { canTransition, type TripStatus } from './trip-status';
 
@@ -73,29 +79,10 @@ const TRIP_SHAPE = {
   images: { orderBy: { position: 'asc' } },
 } as const;
 
-const DEFAULT_TIMEZONE = 'America/Mexico_City';
-const TIMEZONE_SETTING_KEY = 'organization.timezone';
-
 /**
- * Reads the organisation's IANA timezone from `SystemSetting`, falling back
- * to the seed's own default when the row is missing -- e.g. a database that
- * has run migrations but never the seed, which is exactly this file's own
- * test suite. Calendar rules must never hardcode a timezone (a workspace-wide
- * constraint), so every date comparison below resolves it through here
- * instead of a literal.
- */
-async function organizationTimeZone(db: Db): Promise<string> {
-  const setting = await db.systemSetting.findUnique({ where: { key: TIMEZONE_SETTING_KEY } });
-  return typeof setting?.value === 'string' ? setting.value : DEFAULT_TIMEZONE;
-}
-
-/**
- * Stub for Phase 2. Phase 1 has no `Reservation` model yet, so this always
- * reports zero commitments; the real queries against `Reservation` (ACTIVE
- * status and live HELD rows within their TTL) land with the reservations
- * domain task. Every caller in this file -- `toDto`, `listTrips`, and
- * `updateTrip`'s capacity check -- already routes through this function, so
- * that swap is the only change needed later.
+ * The seats a trip has already committed: `ACTIVE` reservations plus `HELD`
+ * ones still inside their TTL. Counted in `@rm/domain-reservations`, which
+ * owns the `Reservation` model's rules; this file only subtracts the result.
  *
  * Typed to accept `DbTransactionClient` rather than `Db`, the same reasoning
  * `recordAudit` uses: `updateTrip` calls this from inside its transaction,
@@ -103,8 +90,21 @@ async function organizationTimeZone(db: Db): Promise<string> {
  * every call site -- inside a transaction or not -- passes its client
  * through with no cast.
  */
-async function committedSeats(_db: DbTransactionClient, _tripId: string) {
-  return { activeReservations: 0, liveHolds: 0 };
+async function committedSeats(db: DbTransactionClient, tripId: string) {
+  return countCommittedSeats(db, tripId);
+}
+
+/**
+ * Batched sibling of `committedSeats`, for callers that need the figure for
+ * several trips at once -- today only `listTrips`. One grouped query for the
+ * whole page instead of one per trip; `toDto` and `updateTrip` keep using the
+ * single-trip form since they only ever need one id.
+ */
+async function committedSeatsForTrips(
+  db: Db,
+  tripIds: string[]
+): Promise<Map<string, { activeReservations: number; liveHolds: number }>> {
+  return countCommittedSeatsForTrips(db, tripIds);
 }
 
 async function toDto(db: Db, tripId: string): Promise<TripDto> {
@@ -358,19 +358,17 @@ export async function updateTrip(
     // snapshot of what it used to be.
     //
     // This subsumes the plain "pre-sold seats over capacity" check for
-    // updates: exceeding capacity through pre-sold seats alone now surfaces
-    // as the more specific CAPACITY_BELOW_COMMITTED (folding in real
-    // reservations and holds too, once Phase 2 supplies them) instead of the
-    // generic INVALID_CAPACITY that `createTrip` still returns for that same
-    // shape of mistake -- a brand-new trip has no committed state yet for it
-    // to be "below".
+    // updates: exceeding capacity through pre-sold seats alone surfaces as
+    // the more specific CAPACITY_BELOW_COMMITTED (folding in real
+    // reservations and holds) instead of the generic INVALID_CAPACITY that
+    // `createTrip` still returns for that same shape of mistake -- a
+    // brand-new trip has no committed state yet for it to be "below".
     //
-    // Not guarded by `SELECT ... FOR UPDATE`: `committedSeats` is still the
-    // Phase 1 stub returning zero, so there is no concurrent write for a row
-    // lock to protect against today. Phase 2 must add that lock once
-    // `committedSeats` reads real `Reservation` rows -- otherwise two
-    // concurrent updates could each read a stale commitment count and both
-    // pass this check.
+    // Guarded by the trip's row lock, now that `committedSeats` reads real
+    // `Reservation` rows: without it this check and a concurrent reservation
+    // could each read a commitment count that the other is about to
+    // invalidate, and capacity would land below what is actually booked.
+    await lockTripForCapacity(tx, tripId);
     const committed = await committedSeats(tx, tripId);
     const alreadyTaken = input.preSoldSeats + committed.activeReservations + committed.liveHolds;
     if (input.totalCapacity < alreadyTaken) {
@@ -500,30 +498,32 @@ export async function listTrips(
     orderBy: { departureDate: 'asc' },
   });
 
-  // Routed through `committedSeats`, the same stub `toDto` and `updateTrip`
-  // use, so the list view's numbers move in lockstep with the detail view's
-  // once Phase 2 fills the stub in -- an inline `{ activeReservations: 0,
-  // liveHolds: 0 }` here would silently diverge from the rest of this file
-  // the day that happens.
-  const summaries = await Promise.all(
-    trips.map(async (trip) => {
-      const committed = await committedSeats(db, trip.id);
-      return {
-        id: trip.id,
-        slug: trip.slug,
-        status: trip.status,
-        name: trip.translations[0]?.name ?? trip.slug,
-        departureDate: trip.departureDate,
+  // Routed through `committedSeatsForTrips`, the batched sibling of the
+  // stub `toDto` and `updateTrip` use, so the list view's numbers move in
+  // lockstep with the detail view's once Phase 2 fills both stubs in -- an
+  // inline `{ activeReservations: 0, liveHolds: 0 }` here would silently
+  // diverge from the rest of this file the day that happens. Called once for
+  // every trip in the page rather than once per trip inside the `map` below,
+  // so this list does not grow a query per trip once the stub is filled.
+  const committedByTripId = await committedSeatsForTrips(db, trips.map((trip) => trip.id));
+
+  const summaries = trips.map((trip) => {
+    const committed = committedByTripId.get(trip.id) ?? { activeReservations: 0, liveHolds: 0 };
+    return {
+      id: trip.id,
+      slug: trip.slug,
+      status: trip.status,
+      name: trip.translations[0]?.name ?? trip.slug,
+      departureDate: trip.departureDate,
+      totalCapacity: trip.totalCapacity,
+      availableSeats: availableSeats({
         totalCapacity: trip.totalCapacity,
-        availableSeats: availableSeats({
-          totalCapacity: trip.totalCapacity,
-          preSoldSeats: trip.preSoldSeats,
-          ...committed,
-        }),
-        pricePerSeatCents: trip.pricePerSeatCents,
-      };
-    })
-  );
+        preSoldSeats: trip.preSoldSeats,
+        ...committed,
+      }),
+      pricePerSeatCents: trip.pricePerSeatCents,
+    };
+  });
 
   return ok(summaries);
 }

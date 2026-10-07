@@ -4,8 +4,43 @@ import { Router } from '@angular/router';
 import { catchError, finalize, map, Observable, of, shareReplay, switchMap, throwError } from 'rxjs';
 import { AuthApi } from '@rm/api-client';
 import { AuthService, type SessionUser } from './auth.service';
+import { REFRESH_TOKEN_STORE, WebRefreshTokenStore, type RefreshTokenStore } from './refresh-token-store';
 
 const REFRESH_PATH = '/api/v1/auth/refresh';
+const LOGOUT_PATH = '/api/v1/auth/logout';
+
+/**
+ * The only two calls that consume the refresh token itself: the server
+ * rotates it on one and revokes it on the other. Everything else
+ * authenticates with the short-lived bearer token alone, so the store is
+ * asked to add the refresh token (native only; the web store adds nothing)
+ * just for these. Deciding by URL here is not platform branching -- the
+ * interceptor asks the same question of whichever store it was given.
+ */
+function consumesRefreshToken(url: string): boolean {
+  return url.includes(REFRESH_PATH) || url.includes(LOGOUT_PATH);
+}
+
+/**
+ * Public auth endpoints whose 401 is an answer about the request itself --
+ * a wrong password, a bad code, a used reset token -- never about the
+ * session. A refresh cannot fix any of them, and a failed refresh would
+ * clear the session and navigate to /login before the screen that made the
+ * call could show its own error.
+ */
+const PUBLIC_AUTH_PATHS = [
+  '/api/v1/auth/login',
+  '/api/v1/auth/register',
+  '/api/v1/auth/verify-email',
+  '/api/v1/auth/resend-code',
+  '/api/v1/auth/forgot-password',
+  '/api/v1/auth/reset-password',
+  '/api/v1/auth/oauth/',
+] as const;
+
+function isPublicAuthCall(url: string): boolean {
+  return PUBLIC_AUTH_PATHS.some((path) => url.includes(path));
+}
 
 /**
  * Shared module-level state so a burst of requests that all fail with 401 at
@@ -31,30 +66,53 @@ export const authInterceptor: HttpInterceptorFn = (request, next) => {
   const auth = inject(AuthService);
   const api = inject(AuthApi);
   const router = inject(Router);
+  // `{ optional: true }`, same reasoning as `AuthService`'s own fallback:
+  // `apps/admin` never provides this token, and must get the exact no-op
+  // behaviour it would get if this concept did not exist.
+  const store = inject(REFRESH_TOKEN_STORE, { optional: true }) ?? new WebRefreshTokenStore();
 
   const token = auth.accessToken();
-  const authorized = token ? request.clone({ setHeaders: { Authorization: `Bearer ${token}` } }) : request;
+  // `store.requestHeaders()` is synchronous and `{}` on the web -- attaching
+  // it here never delays the request the way a Promise-based read would
+  // (see the single-flight comment above `inFlightRefresh`: this whole file
+  // depends on `HttpTestingController.flush()` staying synchronous).
+  const storeHeaders = store.requestHeaders({ includeRefreshToken: consumesRefreshToken(request.url) });
+  const headers = token ? { ...storeHeaders, Authorization: `Bearer ${token}` } : storeHeaders;
+  const authorized = Object.keys(headers).length > 0 ? request.clone({ setHeaders: headers }) : request;
 
   return next(authorized).pipe(
     catchError((error: unknown) => {
       const isUnauthorized = error instanceof HttpErrorResponse && error.status === 401;
       // Never attempt to refresh the refresh call itself: that would be an
       // infinite loop. The refresh token itself is no longer readable here
-      // (it lives in an httpOnly cookie) so "was there ever a session" is now
-      // judged from `isAuthenticated()` -- a visitor who never logged in on
-      // this device has no local session to refresh, cookie or not.
-      if (!isUnauthorized || request.url.includes(REFRESH_PATH) || !auth.isAuthenticated()) {
+      // (it lives in an httpOnly cookie, or -- native only -- inside
+      // `store`) so "was there ever a session" is now judged from
+      // `isAuthenticated()` -- a visitor who never logged in on this device
+      // has no local session to refresh, cookie or not. A public auth call's
+      // 401 goes straight back to its caller -- see `PUBLIC_AUTH_PATHS`.
+      if (
+        !isUnauthorized ||
+        request.url.includes(REFRESH_PATH) ||
+        isPublicAuthCall(request.url) ||
+        !auth.isAuthenticated()
+      ) {
         return throwError(() => error);
       }
 
-      return refreshOnce(auth, api).pipe(
+      return refreshOnce(auth, api, store).pipe(
         switchMap((refreshed) => {
           if (!refreshed) {
             auth.clear();
             void router.navigate(['/login']);
             return throwError(() => error) as Observable<never>;
           }
-          return next(request.clone({ setHeaders: { Authorization: `Bearer ${auth.accessToken()}` } }));
+          // Re-read rather than reusing `storeHeaders`: a native refresh
+          // just rotated the token the store holds.
+          const retryHeaders = {
+            ...store.requestHeaders({ includeRefreshToken: consumesRefreshToken(request.url) }),
+            Authorization: `Bearer ${auth.accessToken()}`,
+          };
+          return next(request.clone({ setHeaders: retryHeaders }));
         })
       );
     })
@@ -63,13 +121,22 @@ export const authInterceptor: HttpInterceptorFn = (request, next) => {
 
 /**
  * Starts a refresh call if none is in flight, otherwise returns the one
- * already running. Takes no refresh token argument: `ApiClient`'s
- * `withCredentials` attaches the httpOnly cookie automatically.
+ * already running. `api.refresh()` itself still takes no argument: the
+ * refresh token travels either as the httpOnly cookie `ApiClient`'s
+ * `withCredentials` attaches automatically (web), or as the
+ * `X-Refresh-Token` header `store.requestHeaders()` already put on this
+ * very request above (native) -- either way, this function does not need to
+ * know which.
  */
-function refreshOnce(auth: AuthService, api: AuthApi): Observable<boolean> {
+function refreshOnce(auth: AuthService, api: AuthApi, store: RefreshTokenStore): Observable<boolean> {
   inFlightRefresh ??= api.refresh().pipe(
     map((response) => {
       auth.applyRefreshedSession(response.tokens.accessToken, response.user as SessionUser);
+      // Fire-and-forget: a web no-op (there is no `refreshToken` in a web
+      // response body to persist), and native's write to Keychain/Keystore
+      // need not block handing the already-rotated access token back to the
+      // caller that triggered this refresh.
+      void store.persist(response.tokens).catch(() => undefined);
       return true;
     }),
     catchError(() => of(false)),

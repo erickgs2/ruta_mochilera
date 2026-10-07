@@ -25,6 +25,10 @@
       "@rm/contracts": ["./libs/contracts/src/index.ts"],
       "@rm/storage": ["./libs/storage/src/index.ts"],
       "@rm/storage/testing": ["./libs/storage/src/testing/index.ts"],
+      "@rm/email": ["./libs/email/src/index.ts"],
+      "@rm/email/testing": ["./libs/email/src/testing/index.ts"],
+      "@rm/payments-stripe": ["./libs/payments-stripe/src/index.ts"],
+      "@rm/payments-stripe/testing": ["./libs/payments-stripe/src/testing/index.ts"],
       "@rm/api-client": ["./libs/api-client/src/index.ts"],
       "@rm/auth-web": ["./libs/auth-web/src/index.ts"],
       "@rm/i18n": ["./libs/i18n/src/index.ts"],
@@ -32,8 +36,14 @@
       "@rm/domain-rbac": ["./libs/domain/rbac/src/index.ts"],
       "@rm/domain-staff": ["./libs/domain/staff/src/index.ts"],
       "@rm/domain-trips": ["./libs/domain/trips/src/index.ts"],
+      "@rm/domain-reservations": ["./libs/domain/reservations/src/index.ts"],
+      "@rm/domain-payments": ["./libs/domain/payments/src/index.ts"],
+      "@rm/domain-notifications": ["./libs/domain/notifications/src/index.ts"],
       "@rm/domain-costing": ["./libs/domain/costing/src/index.ts"],
       "@rm/domain-audit": ["./libs/domain/audit/src/index.ts"],
+      "@rm/domain-settings": ["./libs/domain/settings/src/index.ts"],
+      "@rm/jobs": ["./libs/jobs/src/index.ts"],
+      "@rm/jobs/testing": ["./libs/jobs/src/testing/index.ts"],
       "@rm/ui": ["./libs/ui/src/index.ts"]
     }
   }

@@ -1,0 +1,42 @@
+<div class="history-page">
+  <header>
+    <a [routerLink]="['/reservations', id]">← {{ 'payments.history.backToReservation' | translate }}</a>
+  </header>
+
+  @if (error()) {
+    <p class="payments-error">{{ error() | rmErrorCode }}</p>
+  } @else if (reservation(); as reservation) {
+    <h1>{{ 'payments.history.title' | translate }} {{ reservation.code }}</h1>
+
+    <dl class="history-summary">
+      <dt>{{ 'reservation.paid' | translate }}</dt>
+      <dd class="history-paid">{{ reservation.paidCents | rmMoney }}</dd>
+      <dt>{{ 'reservation.balance' | translate }}</dt>
+      <dd class="history-balance">{{ reservation.balanceCents | rmMoney }}</dd>
+      <dt>{{ 'reservation.paymentDeadline' | translate }}</dt>
+      <dd class="history-deadline">{{ reservation.paymentDeadline | rmCalendarDate }}</dd>
+    </dl>
+
+    @if (payments().length === 0) {
+      <p class="payments-unavailable">{{ 'payments.history.empty' | translate }}</p>
+    } @else {
+      <ul class="payment-list">
+        @for (payment of payments(); track payment.id) {
+          <li class="payment-row" [class.payment-row--pending]="payment.status === 'PENDING'">
+            <span class="payment-method">{{ 'payments.method.' + payment.method | translate }}</span>
+            <span class="payment-date">{{ payment.paidAt ?? payment.recordedAt | date: 'medium' }}</span>
+            <span class="payment-row-amount">{{ payment.amountCents | rmMoney }}</span>
+            <span class="payment-status">{{ 'payments.status.' + payment.status | translate }}</span>
+            @if (payment.status === 'PENDING' && payment.providerVoucherUrl) {
+              <a [href]="payment.providerVoucherUrl" target="_blank" rel="noopener noreferrer">
+                {{ 'payments.voucher.open' | translate }}
+              </a>
+            }
+          </li>
+        }
+      </ul>
+    }
+  } @else {
+    <p class="payments-unavailable">{{ 'common.loading' | translate }}</p>
+  }
+</div>

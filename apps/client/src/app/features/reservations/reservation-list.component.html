@@ -1,0 +1,32 @@
+<div class="reservation-page">
+  <header class="reservation-header">
+    <a routerLink="/account">← {{ 'inbox.backToAccount' | translate }}</a>
+    <h1>{{ 'reservations.title' | translate }}</h1>
+  </header>
+
+  @if (error()) {
+    <p class="reservation-error">{{ error() | rmErrorCode }}</p>
+  } @else if (reservations(); as reservations) {
+    @if (reservations.length === 0) {
+      <p class="reservation-status">{{ 'reservations.empty' | translate }}</p>
+      <a routerLink="/">{{ 'catalogue.backToCatalogue' | translate }}</a>
+    } @else {
+      <ul class="reservation-list">
+        @for (reservation of reservations; track reservation.id) {
+          <li class="reservation-row">
+            <a [routerLink]="['/reservations', reservation.id]">
+              <span class="reservation-row-trip">{{ reservation.tripName }}</span>
+              <span class="reservation-row-date">{{ reservation.tripDepartureDate | rmCalendarDate }}</span>
+              <span class="reservation-row-status">{{ 'reservation.status.' + reservation.status | translate }}</span>
+              <span class="reservation-row-balance">
+                {{ 'reservation.balance' | translate }}: {{ reservation.balanceCents | rmMoney }}
+              </span>
+            </a>
+          </li>
+        }
+      </ul>
+    }
+  } @else {
+    <p class="reservation-status">{{ 'common.loading' | translate }}</p>
+  }
+</div>

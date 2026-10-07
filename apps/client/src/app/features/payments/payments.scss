@@ -1,0 +1,117 @@
+// Shared by every screen under features/payments.
+:host {
+  display: block;
+}
+
+form,
+.voucher,
+.payment-method {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+fieldset {
+  border: 1px solid var(--rm-line);
+  border-radius: var(--rm-radius-control);
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+label.payment-option {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.payment-amount {
+  font-weight: 600;
+}
+
+.card-element {
+  min-height: 3rem;
+}
+
+.payments-error {
+  color: var(--rm-danger);
+}
+
+.payments-unavailable,
+.voucher-notice {
+  color: var(--rm-ink-soft);
+}
+
+button {
+  padding: 0.875rem;
+  font-size: 1rem;
+  border: none;
+  border-radius: var(--rm-radius-control);
+  background: var(--rm-yellow);
+  color: var(--rm-ink);
+
+  &:disabled {
+    opacity: 0.6;
+  }
+}
+
+.voucher-open {
+  align-self: flex-start;
+}
+
+.history-page {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+
+  h1 {
+    font-size: 1.375rem;
+    margin: 0;
+  }
+}
+
+.history-summary {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.25rem 1rem;
+  margin: 0;
+
+  dd {
+    margin: 0;
+    text-align: right;
+    font-weight: 600;
+  }
+}
+
+.payment-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.payment-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.25rem 1rem;
+  padding: 0.75rem;
+  border: 1px solid var(--rm-line);
+  border-radius: var(--rm-radius-control);
+}
+
+// Not money received yet: an unpaid OXXO voucher or an unconfirmed card.
+.payment-row--pending {
+  border-style: dashed;
+  background: var(--rm-cream);
+  color: var(--rm-ink-soft);
+}
+
+.payment-row-amount {
+  text-align: right;
+  font-weight: 600;
+}

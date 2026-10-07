@@ -1,0 +1,116 @@
+import { describe, expect, it } from 'vitest';
+import { DELIVERY_EVENT_TYPES, renderTemplate, type DeliveryEventType } from './templates';
+
+describe('renderTemplate', () => {
+  it('renders every event type in Spanish with params interpolated', () => {
+    for (const eventType of DELIVERY_EVENT_TYPES) {
+      const rendered = renderTemplate(eventType, 'es', {
+        tripName: 'Oaxaca',
+        holdExpiresAt: '2027-01-01T00:00:00.000Z',
+        amount: '$500.00',
+        balance: '$0.00',
+        reason: 'fondos insuficientes',
+        reservationCode: 'RM-0001',
+        customerName: 'Erick',
+        provider: 'OXXO',
+        intentId: 'pi_123',
+        expected: '$100.00',
+        actual: '$80.00',
+      });
+      expect(rendered.subject.length).toBeGreaterThan(0);
+      expect(rendered.body.length).toBeGreaterThan(0);
+    }
+  });
+
+  it('renders every event type in English with params interpolated', () => {
+    for (const eventType of DELIVERY_EVENT_TYPES) {
+      const rendered = renderTemplate(eventType, 'en', {
+        tripName: 'Oaxaca',
+        holdExpiresAt: '2027-01-01T00:00:00.000Z',
+        amount: '$500.00',
+        balance: '$0.00',
+        reason: 'insufficient funds',
+        reservationCode: 'RM-0001',
+        customerName: 'Erick',
+        provider: 'OXXO',
+        intentId: 'pi_123',
+        expected: '$100.00',
+        actual: '$80.00',
+      });
+      expect(rendered.subject.length).toBeGreaterThan(0);
+      expect(rendered.body.length).toBeGreaterThan(0);
+    }
+  });
+
+  it('interpolates a param into both subject and body', () => {
+    const rendered = renderTemplate('PAYMENT_CONFIRMED', 'en', {
+      tripName: 'Oaxaca Adventure',
+      amount: '$500.00',
+      balance: '$0.00',
+    });
+    expect(rendered.subject).toContain('Oaxaca Adventure');
+    expect(rendered.body).toContain('$500.00');
+  });
+
+  it('renders Spanish and English differently for the same event type', () => {
+    const params = { tripName: 'Oaxaca', amount: '$500.00', balance: '$0.00' };
+    const es = renderTemplate('PAYMENT_CONFIRMED', 'es', params);
+    const en = renderTemplate('PAYMENT_CONFIRMED', 'en', params);
+    expect(es.subject).not.toBe(en.subject);
+    expect(es.body).not.toBe(en.body);
+  });
+
+  it('leaves an unresolved placeholder visible rather than throwing when a param is missing', () => {
+    const rendered = renderTemplate('PAYMENT_CONFIRMED', 'en', { balance: '$0.00' });
+    expect(rendered.body).toContain('{{tripName}}');
+  });
+
+  it('type-checks DeliveryEventType as the exact union from the brief', () => {
+    const sample: DeliveryEventType = 'ORPHAN_PAYMENT';
+    expect(DELIVERY_EVENT_TYPES).toContain(sample);
+    // Eight from Task 7, plus the two the Stripe webhook needs (Task 10):
+    // an expired OXXO voucher and a payment that landed after its hold had
+    // already expired; and Task 19's payment that landed after staff had
+    // cancelled the reservation; and the customer's notice that staff
+    // declined their cancellation request.
+    expect(DELIVERY_EVENT_TYPES).toHaveLength(12);
+  });
+
+  it('tells the customer their OXXO voucher expired, not that a payment was declined', () => {
+    // Business rule 5.3: an unpaid voucher reaching its deadline leaves the
+    // payment `EXPIRED`, which is a different thing from a card being
+    // refused, and the notice has to say so in the customer's own language.
+    const es = renderTemplate('VOUCHER_EXPIRED', 'es', { tripName: 'Oaxaca' });
+    const en = renderTemplate('VOUCHER_EXPIRED', 'en', { tripName: 'Oaxaca' });
+
+    expect(es.subject).toContain('Oaxaca');
+    expect(es.body.toLowerCase()).toContain('ficha');
+    expect(en.body.toLowerCase()).toContain('voucher');
+  });
+
+  it('tells a customer whose hold had already expired that the seat was not given back', () => {
+    // Business rule 5.3 again, the other half: the money is recorded, the
+    // reservation is not revived, and the customer must not be told a
+    // balance that implies they are still going.
+    const rendered = renderTemplate('PAYMENT_AFTER_EXPIRY', 'es', {
+      tripName: 'Oaxaca',
+      amount: '$1,000.00 MXN',
+    });
+
+    expect(rendered.body).toContain('$1,000.00 MXN');
+    expect(rendered.body).not.toContain('{{');
+  });
+
+  it('tells a customer who paid after staff cancelled that the payment is recorded, in both locales', () => {
+    for (const locale of ['es', 'en'] as const) {
+      const rendered = renderTemplate('PAYMENT_AFTER_CANCELLATION', locale, {
+        tripName: 'Oaxaca',
+        amount: '$1,000.00 MXN',
+      });
+
+      expect(rendered.body).toContain('$1,000.00 MXN');
+      expect(rendered.body).toContain('Oaxaca');
+      expect(`${rendered.subject} ${rendered.body}`).not.toContain('{{');
+    }
+  });
+});

@@ -17,7 +17,7 @@ esté actualizado **en el mismo commit**.
 | `libs/domain/trips/**` | `docs/business-rules/trips.md` y `docs/diagrams/trip-creation.md` |
 | `libs/domain/costing/**` | `docs/business-rules/costing.md` y `docs/diagrams/trip-costing.md` |
 | `libs/domain/reservations/**` | `docs/business-rules/reservations.md` y `docs/diagrams/trip-reservation.md` |
-| `libs/domain/payments/**` | `docs/business-rules/payments.md` |
+| `libs/domain/payments/**` | `docs/business-rules/payments.md` y `docs/diagrams/payment-flow.md` |
 | `libs/domain/notifications/**` | `docs/business-rules/notifications.md` |
 | `libs/domain/rbac/**` | `docs/business-rules/rbac.md` |
 
@@ -47,6 +47,24 @@ Un Route Handler hace cuatro cosas y nada más:
 Consecuencia buscada: registrar un pago desde el mostrador, desde un webhook de
 Stripe o desde una importación CSV recorre el mismo código.
 
+### La verdad de un pago llega por webhook
+
+Un pago sólo existe cuando Stripe lo confirma por el webhook
+(`/api/v1/webhooks/stripe`), **nunca** porque la app del cliente diga que el
+cobro salió bien. La app muestra «procesando» y espera; el webhook es el único
+camino que mueve `paid_cents` y activa una reserva. Lo mismo vale para OXXO y
+SPEI, que además tardan horas o días. Ver `docs/diagrams/payment-flow.md`.
+
+### `apps/worker`: los trabajos en segundo plano
+
+`expireHolds`, `warnExpiringHolds`, `reconcilePaidCents` y el envío de correos
+(la bandeja de salida de avisos) corren en `apps/worker`, un proceso aparte de
+la API sobre pg-boss. Está separado a propósito: cada despliegue de Next.js
+mata los procesos en curso, y un `expireHolds` a medias es justo el trabajo que
+un reinicio no debe interrumpir. Cada job es una función pura del cliente de
+base (`src/jobs/*.ts`) que se prueba sin levantar pg-boss; `main.ts` sólo
+agenda. En producción es su propio servicio en `infra/compose/compose.prod.yml`.
+
 ## Convenciones
 
 - Dinero: `Int` en centavos MXN. Nunca `Float`.
@@ -72,6 +90,26 @@ tipado sobre `HttpClient` que sí se edita a mano; no se genera un cliente
 `fetch` completo porque eso saltaría los interceptores de Angular (refresh de
 token, manejo central de errores).
 
+## Las dos apps y dónde se sirven
+
+| App | Ruta en producción | `baseHref` |
+|---|---|---|
+| `apps/client` (clientes, también empaquetada con Capacitor) | `/app/` — la raíz `/` redirige aquí | `/app/` |
+| `apps/admin` (panel del personal) | `/admin/` | `/admin/` |
+
+Las dos las sirve el mismo Nginx (`infra/nginx/nginx.conf.template`,
+`infra/docker/Dockerfile.web`). El `baseHref` se fija en la configuración
+`production` de cada `project.json`; el build de Capacitor usa su propia
+configuración y queda en `/`. Por eso **ninguna ruta de assets puede ser
+absoluta** (`/assets/...`): siempre relativa, para que resuelva contra el
+`base href` de cada app.
+
+## Identidad visual
+
+`docs/brand.md`. Colores, tipografía y radios salen de los tokens de
+`libs/ui/src/styles/_brand.scss` (`--rm-*`) o de los tokens de sistema de
+Material (`--mat-sys-*`); nunca un color escrito a mano en un componente.
+
 ## Comandos
 
 ```bash
@@ -79,6 +117,8 @@ pnpm nx run-many -t lint test build   # todo el workspace
 pnpm nx test shared-utils             # una librería
 pnpm db:migrate                       # aplicar migraciones
 pnpm db:seed                          # sembrar permisos, rol y usuario inicial
+pnpm db:seed:demo                     # las 7 rutas de los carteles, para desarrollo
+pnpm nx e2e client-e2e                # extremo a extremo (base rm_e2e, puertos 3100/4300)
 ```
 
 ### Postgres en esta máquina
@@ -86,8 +126,9 @@ pnpm db:seed                          # sembrar permisos, rol y usuario inicial
 - Dev y pruebas corren contra un **PostgreSQL 15 nativo** en `localhost:5432`, no en Docker.
 - `DATABASE_URL=postgresql://rm:rm@localhost:5432/rm_dev`
 - `TEST_DATABASE_URL=postgresql://rm:rm@localhost:5432/rm_test`
+- `E2E_DATABASE_URL=postgresql://rm:rm@localhost:5432/rm_e2e` (por omisión en `apps/client-e2e`)
 - El rol `rm` y ambas bases ya existen en esta máquina.
-- `compose.dev.yml` y `compose.test.yml` ya existen como artefactos de despliegue para Raspberry Pi y EC2 y no se ejecutan en esta máquina; la Tarea 19 añade `compose.prod.yml` y los Dockerfiles.
+- `compose.dev.yml`, `compose.test.yml` y `compose.prod.yml` (`infra/compose/`) son artefactos de despliegue para Raspberry Pi y EC2 y no se ejecutan en esta máquina.
 
 ## Spec y planes
 

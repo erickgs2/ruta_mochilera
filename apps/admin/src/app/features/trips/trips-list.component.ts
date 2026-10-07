@@ -1,5 +1,4 @@
 import { BreakpointObserver } from '@angular/cdk/layout';
-import { DatePipe } from '@angular/common';
 import { Component, computed, inject } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { FormBuilder, ReactiveFormsModule } from '@angular/forms';
@@ -15,6 +14,7 @@ import { TranslatePipe } from '@ngx-translate/core';
 import { TripsApi } from '@rm/api-client';
 import type { components } from '@rm/api-client';
 import { HasPermissionDirective } from '@rm/auth-web';
+import { CalendarDatePipe } from '@rm/i18n';
 import { MoneyPipe, PageHeaderComponent } from '@rm/ui';
 import { combineLatest, debounceTime, distinctUntilChanged, map, startWith, switchMap } from 'rxjs';
 
@@ -56,7 +56,7 @@ const STATUS_COLOR: Record<TripStatus, 'primary' | 'accent' | 'warn' | undefined
   selector: 'rm-trips-list',
   standalone: true,
   imports: [
-    DatePipe,
+    CalendarDatePipe,
     ReactiveFormsModule,
     RouterLink,
     MatButtonModule,
