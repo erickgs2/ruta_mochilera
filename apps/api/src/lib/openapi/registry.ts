@@ -8,6 +8,7 @@ import {
   cancelReservationRequestSchema as cancelReservationRequestSchemaImport,
   declineCancellationRequestSchema as declineCancellationRequestSchemaImport,
   adjustCreditRequestSchema as adjustCreditRequestSchemaImport,
+  organizationProfileSchema as organizationProfileSchemaImport,
   importBatchSchema as importBatchSchemaImport,
   importBatchSummarySchema as importBatchSummarySchemaImport,
   validateImportRequestSchema as validateImportRequestSchemaImport,
@@ -140,6 +141,7 @@ const createPaymentIntentRequestSchema = createPaymentIntentRequestSchemaImport.
 });
 const paymentSchema = paymentSchemaImport.meta({ id: 'Payment' });
 const creditEntrySchema = creditEntrySchemaImport.meta({ id: 'CreditEntry' });
+const organizationProfileSchema = organizationProfileSchemaImport.meta({ id: 'OrganizationProfile' });
 const importBatchSchema = importBatchSchemaImport.meta({ id: 'ImportBatch' });
 const importBatchSummarySchema = importBatchSummarySchemaImport.meta({ id: 'ImportBatchSummary' });
 const validateImportRequestSchema = validateImportRequestSchemaImport.meta({ id: 'ValidateImportRequest' });
@@ -1367,6 +1369,37 @@ export function buildOpenApiDocument() {
       404: problem('NOT_FOUND'),
       409: problem('INVALID_STATUS_TRANSITION -- the reservation is not live'),
       422: problem('VALIDATION_FAILED, or PAYMENT_EXCEEDS_BALANCE'),
+    },
+  });
+
+  // --- agency details (Phase 2B) ---------------------------------------------
+  registry.registerPath({
+    method: 'get',
+    path: '/api/v1/admin/settings/organization',
+    tags: ['settings', 'admin'],
+    security: [{ bearerAuth: [] }],
+    description: 'The agency details receipts print. Requires settings.manage.',
+    responses: {
+      200: { description: 'Agency details', ...json(organizationProfileSchema) },
+      401: problem('Missing or invalid access token'),
+      403: problem('PERMISSION_DENIED -- requires settings.manage'),
+    },
+  });
+
+  registry.registerPath({
+    method: 'put',
+    path: '/api/v1/admin/settings/organization',
+    tags: ['settings', 'admin'],
+    security: [{ bearerAuth: [] }],
+    description:
+      'Saves the agency details. Only receipts generated afterwards use them; issued receipts keep the ' +
+      'details they were drawn with. Requires settings.manage.',
+    request: { body: requestBody(organizationProfileSchema) },
+    responses: {
+      200: { description: 'Saved', ...json(organizationProfileSchema) },
+      401: problem('Missing or invalid access token'),
+      403: problem('PERMISSION_DENIED -- requires settings.manage'),
+      422: problem('VALIDATION_FAILED'),
     },
   });
 

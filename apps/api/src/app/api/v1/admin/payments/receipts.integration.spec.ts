@@ -17,6 +17,7 @@ import { setStorage } from '../../../../../lib/storage';
 import { GET as myReceiptRoute } from '../../payments/[paymentId]/receipt/route';
 import { POST as resendRoute } from './[paymentId]/receipt/resend/route';
 import { GET as staffReceiptRoute } from './[paymentId]/receipt/route';
+import { GET as getSettingsRoute, PUT as putSettingsRoute } from '../settings/organization/route';
 
 const db = withTestDb();
 
@@ -136,6 +137,49 @@ describe('receipt endpoints', () => {
     expect(mine.status).toBe(200);
     expect(theirs.status).toBe(404);
     expect((await theirs.json()).code).toBe('RESERVATION_NOT_OWNED');
+  });
+
+  it('lets settings.manage edit the agency details: later receipts use them, issued ones do not change', async () => {
+    const { userId } = await loginAsCustomer(db, 'traveler@example.com');
+    const first = await seedPaidReservation(userId);
+    const viewer = await loginAs(db, 'cashier@agency.test', ['payment.view']);
+    const admin = await loginAs(db, 'owner@agency.test', ['settings.manage']);
+    await db.systemSetting.create({ data: { key: 'organization.name', value: 'Nombre anterior' } });
+
+    const before = await (await staffReceiptRoute(request(`/api/v1/admin/payments/${first.id}/receipt`, viewer), withPayment(first.id))).text();
+
+    const forbidden = await putSettingsRoute(
+      new Request('http://localhost/api/v1/admin/settings/organization', {
+        method: 'PUT',
+        body: JSON.stringify({ name: 'X', address: '', phone: '', website: '' }),
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${viewer}` },
+      }),
+      { params: Promise.resolve({}) }
+    );
+    expect(forbidden.status).toBe(403);
+
+    const saved = await putSettingsRoute(
+      new Request('http://localhost/api/v1/admin/settings/organization', {
+        method: 'PUT',
+        body: JSON.stringify({ name: 'Casa Mochilera', address: 'Mariano Jiménez 551 B', phone: '352 100 80 79', website: 'www.fb.com/larutamochilera' }),
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${admin}` },
+      }),
+      { params: Promise.resolve({}) }
+    );
+    expect(saved.status).toBe(200);
+    const read = await getSettingsRoute(request('/api/v1/admin/settings/organization', admin), { params: Promise.resolve({}) });
+    expect((await read.json()).name).toBe('Casa Mochilera');
+
+    const after = await (await staffReceiptRoute(request(`/api/v1/admin/payments/${first.id}/receipt`, viewer), withPayment(first.id))).text();
+    expect(after).toBe(before);
+    expect(FakeReceiptRenderer.parse(new TextEncoder().encode(after)).organization.name).toBe('Nombre anterior');
+
+    const second = await db.$transaction((tx: DbTransactionClient) =>
+      recordPayment(tx, { reservationId: first.reservationId, amountCents: 1_000, method: 'CASH', status: 'SUCCEEDED', provider: 'MANUAL' })
+    );
+    if (!second.ok) throw new Error(second.error.code);
+    const fresh = await (await staffReceiptRoute(request(`/api/v1/admin/payments/${second.value.id}/receipt`, viewer), withPayment(second.value.id))).text();
+    expect(FakeReceiptRenderer.parse(new TextEncoder().encode(fresh)).organization.name).toBe('Casa Mochilera');
   });
 
   it('queues a resend with payment.view', async () => {

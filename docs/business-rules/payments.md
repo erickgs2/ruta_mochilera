@@ -665,6 +665,11 @@ saldo a favor e históricos.
   fechas, el folio de la reserva, el monto y la forma de pago, y el estado de
   cuenta **de ese momento** (total, pagado y saldo pendiente tras este pago).
   En el idioma del cliente. Aclara que no es un comprobante fiscal (CFDI).
+- **Los datos de la agencia se editan en el panel** (`GET`/`PUT
+  /admin/settings/organization`, permiso `settings.manage`; sembrados con los
+  de los carteles). Sólo los recibos que se generen después los usan: un PDF
+  ya guardado conserva los datos con que se emitió. El cambio se audita
+  (`settings.organization_updated`).
 - **La foto del saldo no se recalcula**: sale de `receipt_total_cents` y
   `receipt_paid_cents`. Para un pago confirmado antes de que existieran esas
   columnas se reconstruye con los pagos `SUCCEEDED` hasta su `paid_at`.

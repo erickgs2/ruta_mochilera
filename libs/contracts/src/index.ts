@@ -10,6 +10,7 @@ export * from './lib/payments';
 export * from './lib/profile';
 export * from './lib/public-trips';
 export * from './lib/rbac';
+export * from './lib/settings';
 export * from './lib/reservations';
 export * from './lib/staff';
 export * from './lib/trips';

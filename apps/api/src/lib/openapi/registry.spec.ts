@@ -22,6 +22,7 @@ const EVERY_ROUTE_FILE_PATH = [
   '/api/v1/admin/customers',
   '/api/v1/admin/backfill/reservations',
   '/api/v1/admin/imports',
+  '/api/v1/admin/settings/organization',
   '/api/v1/admin/imports/{batchId}',
   '/api/v1/admin/imports/{batchId}/apply',
   '/api/v1/admin/imports/templates/{type}',
