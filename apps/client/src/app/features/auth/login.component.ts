@@ -2,7 +2,7 @@ import { Component, inject, signal } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { TranslatePipe } from '@ngx-translate/core';
-import { AuthService } from '@rm/auth-web';
+import { AuthService, parseReturnUrl, RETURN_URL_PARAM } from '@rm/auth-web';
 import { ErrorCodePipe } from '../../shared/error-code.pipe';
 
 /**
@@ -12,7 +12,9 @@ import { ErrorCodePipe } from '../../shared/error-code.pipe';
  * consume `@rm/ui`.
  *
  * `?email=` prefills the address -- the invitation screen links here with
- * the account it just activated.
+ * the account it just activated. `?returnUrl=` (a same-app path, validated by
+ * `parseReturnUrl`) is where a successful sign-in goes; without it, the
+ * catalogue.
  */
 @Component({
   selector: 'rm-login',
@@ -25,11 +27,15 @@ export class LoginComponent {
   private readonly router = inject(Router);
   private readonly formBuilder = inject(FormBuilder);
 
+  private readonly queryParams = inject(ActivatedRoute).snapshot.queryParamMap;
+
+  /** Validated `?returnUrl=`, or `null`; the screens that link onward pass it along. */
+  readonly returnUrl = parseReturnUrl(this.queryParams.get(RETURN_URL_PARAM));
   readonly loading = signal(false);
   readonly error = signal<unknown>(null);
 
   readonly form = this.formBuilder.nonNullable.group({
-    email: [inject(ActivatedRoute).snapshot.queryParamMap.get('email') ?? '', [Validators.required, Validators.email]],
+    email: [this.queryParams.get('email') ?? '', [Validators.required, Validators.email]],
     password: ['', Validators.required],
   });
 
@@ -42,7 +48,7 @@ export class LoginComponent {
 
     try {
       await this.auth.login(email, password);
-      await this.router.navigate(['/']);
+      await this.router.navigateByUrl(this.returnUrl ?? '/');
     } catch (error) {
       this.error.set(error);
     } finally {

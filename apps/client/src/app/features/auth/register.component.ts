@@ -1,9 +1,10 @@
 import { Component, inject, signal } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
-import { Router, RouterLink } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
 import { TranslatePipe } from '@ngx-translate/core';
 import { AuthApi } from '@rm/api-client';
+import { parseReturnUrl, RETURN_URL_PARAM } from '@rm/auth-web';
 import { ErrorCodePipe } from '../../shared/error-code.pipe';
 import { emailAddress, pastIsoDate } from './auth-validators';
 
@@ -18,7 +19,8 @@ import { emailAddress, pastIsoDate } from './auth-validators';
  * registered (see `registerCustomer`'s doc comment in `@rm/domain-identity`)
  * and sends a verification code either way, so this screen never learns
  * which branch happened -- it always moves on to `/verify-email` for the
- * address that was typed.
+ * address that was typed. `?returnUrl=` rides along to `/verify-email` and the
+ * sign-in link so the visitor ends up where they were going.
  */
 @Component({
   selector: 'rm-register',
@@ -31,6 +33,8 @@ export class RegisterComponent {
   private readonly router = inject(Router);
   private readonly formBuilder = inject(FormBuilder);
 
+  /** Validated `?returnUrl=`, or `null`. */
+  readonly returnUrl = parseReturnUrl(inject(ActivatedRoute).snapshot.queryParamMap.get(RETURN_URL_PARAM));
   readonly loading = signal(false);
   readonly error = signal<unknown>(null);
 
@@ -66,7 +70,13 @@ export class RegisterComponent {
 
     try {
       await firstValueFrom(this.api.register({ email, password, fullName, phone, birthDate, acceptTerms: true }));
-      await this.router.navigate(['/verify-email'], { queryParams: { email } });
+      // `codeSent` tells the verify screen a code is on its way, so it starts
+      // the resend cooldown; arriving any other way (the reserve screen's
+      // invitation) has no such state and starts with resend available.
+      await this.router.navigate(['/verify-email'], {
+        queryParams: { email, returnUrl: this.returnUrl },
+        state: { codeSent: true },
+      });
     } catch (error) {
       this.error.set(error);
     } finally {

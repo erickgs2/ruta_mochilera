@@ -50,7 +50,8 @@
       "success": "Correo verificado. Ya puedes iniciar sesión.",
       "resend": "Reenviar código",
       "resendIn": "Reenviar código en {{seconds}} s",
-      "resent": "Te enviamos un código nuevo."
+      "resent": "Te enviamos un código nuevo.",
+      "continue": "Continuar"
     },
     "forgot": {
       "title": "Recupera tu contraseña",

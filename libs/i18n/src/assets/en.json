@@ -50,7 +50,8 @@
       "success": "Email verified. You can now sign in.",
       "resend": "Resend code",
       "resendIn": "Resend code in {{seconds}} s",
-      "resent": "We sent you a new code."
+      "resent": "We sent you a new code.",
+      "continue": "Continue"
     },
     "forgot": {
       "title": "Reset your password",

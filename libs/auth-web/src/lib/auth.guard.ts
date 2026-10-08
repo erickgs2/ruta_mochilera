@@ -1,6 +1,7 @@
 import { inject } from '@angular/core';
 import { Router, type CanActivateFn } from '@angular/router';
 import { AuthService } from './auth.service';
+import { parseReturnUrl, RETURN_URL_PARAM } from './return-url';
 
 /**
  * Blocks navigation into the authenticated area when there is no session,
@@ -8,11 +9,17 @@ import { AuthService } from './auth.service';
  * browser UI, not a security boundary: every API endpoint independently
  * checks the access token on every request, so a guard that failed to run
  * (or was bypassed) would still not grant access to any data.
+ *
+ * The attempted URL travels in `?returnUrl=` so the login, register and
+ * verify screens can bring the visitor back to what they were doing.
  */
-export const authGuard: CanActivateFn = () => {
+export const authGuard: CanActivateFn = (_route, state) => {
   const auth = inject(AuthService);
   const router = inject(Router);
-  return auth.isAuthenticated() ? true : router.createUrlTree(['/login']);
+  if (auth.isAuthenticated()) return true;
+  const returnUrl = parseReturnUrl(state?.url);
+  const queryParams = returnUrl && returnUrl !== '/' ? { [RETURN_URL_PARAM]: returnUrl } : undefined;
+  return router.createUrlTree(['/login'], { queryParams });
 };
 
 /**

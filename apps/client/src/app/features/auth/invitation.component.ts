@@ -11,6 +11,7 @@ import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
 import { TranslatePipe } from '@ngx-translate/core';
 import { AuthApi } from '@rm/api-client';
+import { parseReturnUrl, RETURN_URL_PARAM } from '@rm/auth-web';
 import { ErrorCodePipe } from '../../shared/error-code.pipe';
 
 function passwordsMatch(group: AbstractControl): ValidationErrors | null {
@@ -24,7 +25,8 @@ function passwordsMatch(group: AbstractControl): ValidationErrors | null {
  * account is active. Same token handling as `/reset-password` -- read once,
  * removed from the address bar, `TOKEN_INVALID` shown as "this link no
  * longer works" -- and on success the way to sign in, with the account's
- * email the API answered with.
+ * email the API answered with. A `?returnUrl=` (same-app path only) is passed
+ * on to that sign-in link, so activating from a reserve flow lands back there.
  */
 @Component({
   selector: 'rm-invitation',
@@ -38,6 +40,8 @@ export class InvitationComponent {
   private readonly router = inject(Router);
 
   readonly token = this.route.snapshot.queryParamMap.get('token') ?? '';
+  /** Validated `?returnUrl=`, or `null`. */
+  readonly returnUrl = parseReturnUrl(this.route.snapshot.queryParamMap.get(RETURN_URL_PARAM));
   readonly loading = signal(false);
   readonly activatedEmail = signal<string | null>(null);
   readonly linkInvalid = signal(this.token === '');
