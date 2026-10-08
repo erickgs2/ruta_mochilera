@@ -158,6 +158,62 @@ describe('ShellComponent', () => {
     });
   });
 
+  describe('saving the language picked from the menu', () => {
+    async function open(locale: 'es' | 'en') {
+      configure();
+      const auth = TestBed.inject(AuthService);
+      const language = TestBed.inject(LanguageService);
+      language.use(locale);
+      auth.setSessionForTesting('access-1', userWith(locale));
+      const fixture = TestBed.createComponent(ShellComponent);
+      fixture.detectChanges();
+      await fixture.whenStable();
+      const trigger = (fixture.nativeElement as HTMLElement).querySelector('button[aria-label="Change language"]') as HTMLButtonElement;
+      trigger.click();
+      fixture.detectChanges();
+      await fixture.whenStable();
+      return { auth, language, fixture, http: TestBed.inject(HttpTestingController) };
+    }
+
+    it('switches at once, saves it with PATCH /me, and stores it on the session', async () => {
+      const { auth, language, fixture, http } = await open('es');
+
+      (document.body.querySelector('.shell-language-en') as HTMLButtonElement).click();
+      expect(language.current()).toBe('en');
+      const request = http.expectOne('/api/v1/me');
+      expect(request.request.method).toBe('PATCH');
+      expect(request.request.body).toEqual({ locale: 'en' });
+      request.flush({ ...userWith('en') });
+      await fixture.whenStable();
+
+      expect(language.current()).toBe('en');
+      expect(auth.user()?.locale).toBe('en');
+    });
+
+    it('goes back to the previous language and shows a toast when saving fails', async () => {
+      const { auth, language, fixture, http } = await open('es');
+
+      (document.body.querySelector('.shell-language-en') as HTMLButtonElement).click();
+      expect(language.current()).toBe('en');
+      http.expectOne('/api/v1/me').flush({ code: 'INTERNAL' }, { status: 500, statusText: 'Server Error' });
+      await fixture.whenStable();
+      fixture.detectChanges();
+
+      expect(language.current()).toBe('es');
+      expect(auth.user()?.locale).toBe('es');
+      expect(document.body.querySelector('mat-snack-bar-container')).not.toBeNull();
+    });
+
+    it('does not call the server when the picked language is already the current one', async () => {
+      const { language, http } = await open('es');
+
+      (document.body.querySelector('.shell-language-es') as HTMLButtonElement).click();
+
+      http.expectNone('/api/v1/me');
+      expect(language.current()).toBe('es');
+    });
+  });
+
   describe('signing out', () => {
     it('clears the session and navigates to /login when the sign-out button is clicked', async () => {
       configure();

@@ -126,6 +126,18 @@ export class AuthService {
     this.persist({ accessToken, user: user ?? this.user() });
   }
 
+  /**
+   * Saves the caller's own language on the server, then mirrors it in the
+   * stored session so a reload, or a refresh that returns the same user, agrees
+   * with what was picked. Rejects when the server call fails and leaves the
+   * session untouched -- the caller decides how to revert.
+   */
+  async saveLocale(locale: 'es' | 'en'): Promise<void> {
+    await firstValueFrom(this.api!.updateMe({ locale }));
+    const session = this.session();
+    if (session?.user) this.persist({ ...session, user: { ...session.user, locale } });
+  }
+
   clear(): void {
     this.session.set(null);
     localStorage.removeItem(STORAGE_KEY);

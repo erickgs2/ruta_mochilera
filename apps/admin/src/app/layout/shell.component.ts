@@ -5,10 +5,11 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatListModule } from '@angular/material/list';
 import { MatMenuModule } from '@angular/material/menu';
+import { MatSnackBar } from '@angular/material/snack-bar';
 import { MatSidenavModule } from '@angular/material/sidenav';
 import { MatToolbarModule } from '@angular/material/toolbar';
 import { Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
-import { TranslatePipe } from '@ngx-translate/core';
+import { TranslatePipe, TranslateService } from '@ngx-translate/core';
 import { AuthService, HasPermissionDirective } from '@rm/auth-web';
 import { LanguageService } from '@rm/i18n';
 import { map } from 'rxjs';
@@ -48,6 +49,8 @@ const SIDE_MODE_BREAKPOINT = '(min-width: 960px)';
 export class ShellComponent {
   private readonly breakpointObserver = inject(BreakpointObserver);
   private readonly router = inject(Router);
+  private readonly snackBar = inject(MatSnackBar);
+  private readonly translate = inject(TranslateService);
 
   protected readonly auth = inject(AuthService);
   protected readonly language = inject(LanguageService);
@@ -67,8 +70,8 @@ export class ShellComponent {
     // a token refresh hands back a fresh user object with the same locale, and
     // that must not undo a language the person picked from the menu. Nor may
     // the current language be tracked here, or picking one re-runs this and
-    // forces the stored locale straight back. There is no endpoint yet to save
-    // a staff user's own locale, so a pick lasts for the session.
+    // forces the stored locale straight back. A pick is saved through
+    // `switchLanguage`, which also updates the stored locale.
     effect(() => {
       const locale = this.userLocale();
       if (locale && locale !== untracked(() => this.language.current())) {
@@ -77,8 +80,21 @@ export class ShellComponent {
     });
   }
 
-  protected switchLanguage(locale: 'es' | 'en'): void {
+  /**
+   * Optimistic: the interface switches at once and the choice is saved in the
+   * background. If saving fails the previous language comes back and a toast
+   * says so, in the language the person was already reading.
+   */
+  protected async switchLanguage(locale: 'es' | 'en'): Promise<void> {
+    const previous = this.language.current();
+    if (locale === previous) return;
     this.language.use(locale);
+    try {
+      await this.auth.saveLocale(locale);
+    } catch {
+      this.language.use(previous);
+      this.snackBar.open(this.translate.instant('shell.languageSaveFailed'), undefined, { duration: 6000 });
+    }
   }
 
   protected async signOut(): Promise<void> {
