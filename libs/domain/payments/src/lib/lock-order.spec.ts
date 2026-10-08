@@ -101,13 +101,13 @@ function clientPausingAfter(client: Db, point: PausePoint, pause: Promise<void>,
   }) as Db;
 }
 
-function succeeded(providerIntentId: string): WebhookEvent {
+function succeeded(providerIntentId: string, amountCents = 50_000): WebhookEvent {
   return {
     id: `evt_${providerIntentId}`,
     type: 'payment_intent.succeeded',
     occurredAt: new Date(),
     payload: { stub: true },
-    intent: { providerIntentId, amountCents: 50_000, method: 'OXXO' },
+    intent: { providerIntentId, amountCents, method: 'OXXO' },
   };
 }
 
@@ -153,6 +153,19 @@ async function webhookThenOther<T>(
 function failureOf(outcome: { status: string; reason?: string }): string | null {
   return outcome.status === 'rejected' ? (outcome.reason ?? 'rejected') : null;
 }
+
+/**
+ * Stand-in for the counter's `reviveReservationSeat` on a live hold
+ * (`@rm/domain-payments` cannot import the real hook, it is a leaf): it locks
+ * the trip `FOR UPDATE` and then the reservation, which is what makes the
+ * trip lock order matter. `cash-vs-webhook.race.integration.spec.ts` in
+ * apps/api runs the real one.
+ */
+const liveHoldRevival: ReviveReservation = async (tx, input) => {
+  await tx.$queryRaw`SELECT t.id FROM trips t JOIN reservations r ON r.trip_id = t.id WHERE r.id = ${input.reservationId}::uuid FOR UPDATE OF t`;
+  await tx.$queryRaw`SELECT id FROM reservations WHERE id = ${input.reservationId}::uuid FOR UPDATE`;
+  return { ok: true, value: { outcome: 'LIVE' } };
+};
 
 describe('one lock order for every money path', () => {
   beforeAll(async () => {
@@ -202,13 +215,9 @@ describe('one lock order for every money path', () => {
     // PostgreSQL re-checks the foreign keys of a row the same transaction
     // already updated: the second update took FOR KEY SHARE on the trip after
     // the reservation. `@rm/domain-payments` cannot import the real hook (it
-    // is a leaf), so this stand-in takes the same two locks for a live hold;
-    // `cash-vs-webhook.race.integration.spec.ts` in apps/api runs the real one.
-    const liveHoldRevival: ReviveReservation = async (tx, input) => {
-      await tx.$queryRaw`SELECT t.id FROM trips t JOIN reservations r ON r.trip_id = t.id WHERE r.id = ${input.reservationId}::uuid FOR UPDATE OF t`;
-      await tx.$queryRaw`SELECT id FROM reservations WHERE id = ${input.reservationId}::uuid FOR UPDATE`;
-      return { ok: true, value: { outcome: 'LIVE' } };
-    };
+    // is a leaf), so `liveHoldRevival` (above) takes the same two locks for a
+    // live hold; `cash-vs-webhook.race.integration.spec.ts` in apps/api runs
+    // the real one.
     const reservation = await seedReservation(db, staffId, {
       status: 'HELD',
       totalPriceCents: 500_000,
@@ -256,5 +265,47 @@ describe('one lock order for every money path', () => {
     const entries = await db.customerCreditEntry.findMany({ where: { customerId } });
     // 100,000 courtesy − 30,000 applied + 50,000 late money credited.
     expect(entries.reduce((sum, entry) => sum + entry.amountCents, 0)).toBe(120_000);
+  });
+
+  it("lets applied credit and the webhook's overpayment on the same reservation both finish", async () => {
+    // `applyCreditToReservation` must lock the reservation before the customer
+    // (trip -> reservation -> customer): it calls `lockReservationForMoney`
+    // first, ahead of `lockCustomer`. Without that call it would take the
+    // customer first and reach the reservation only inside `recordPayment`.
+    // The webhook holds the reservation and, once it has credited the excess
+    // of an overpayment, asks for the customer: each would hold what the
+    // other wants and PostgreSQL aborts one (40P01). The webhook is parked
+    // after it moved `paid_cents`, still holding the reservation and not yet
+    // the customer.
+    const customerId = await seedCustomer(db);
+    const reservation = await seedReservation(db, staffId, {
+      customerId,
+      status: 'ACTIVE',
+      totalPriceCents: 500_000,
+      minimumDepositCents: 100_000,
+      paidCents: 100_000,
+    });
+    await db.customerCreditEntry.create({
+      data: { customerId, amountCents: 100_000, kind: 'ADJUSTMENT', reason: 'Cortesía' },
+    });
+    // 450,000 against a 400,000 balance: 50,000 of it is excess, credited to the customer.
+    await seedPendingPayment(reservation.id, 'pi_overpaid', 450_000);
+
+    const [webhook, credit] = await webhookThenOther(
+      succeeded('pi_overpaid', 450_000),
+      () => applyCreditToReservation(db, queue, { reservationId: reservation.id, amountCents: 30_000, actorId: staffId }),
+      { model: 'reservation', operation: 'update' }
+    );
+
+    expect(failureOf(webhook)).toBeNull();
+    expect(failureOf(credit)).toBeNull();
+    expect(webhook).toEqual({ status: 'fulfilled', value: { ok: true, value: null } });
+    // Credit waited for the webhook, then found the reservation settled: refused, not deadlocked.
+    expect(credit).toMatchObject({ status: 'fulfilled', value: { ok: false, error: { code: 'PAYMENT_EXCEEDS_BALANCE' } } });
+    const after = await db.reservation.findUniqueOrThrow({ where: { id: reservation.id } });
+    expect(after.paidCents).toBe(500_000);
+    const entries = await db.customerCreditEntry.findMany({ where: { customerId } });
+    // 100,000 courtesy + 50,000 excess; the refused credit left no entry.
+    expect(entries.reduce((sum, entry) => sum + entry.amountCents, 0)).toBe(150_000);
   });
 });
