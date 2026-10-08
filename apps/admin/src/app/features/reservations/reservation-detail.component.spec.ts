@@ -290,6 +290,39 @@ describe('ReservationDetailComponent', () => {
       httpMock.expectNone('/api/v1/admin/customers/cust-1/credit');
     });
 
+    // Phase 2B decision 13: cash or applied credit at the counter revives an EXPIRED reservation.
+    it('offers cash and credit on an EXPIRED reservation, so the counter can revive it', () => {
+      const { fixture, httpMock } = configure([
+        'reservation.view',
+        'payment.view',
+        'payment.register',
+        'payment.credit.apply',
+      ]);
+      httpMock.expectOne(URL).flush(detail({ status: 'EXPIRED', cancellationPending: false }));
+      httpMock.expectOne(`${URL}/payments`).flush(payments);
+      httpMock.expectOne('/api/v1/admin/customers/cust-1/credit').flush({ balanceCents: 50_000, entries: [] });
+      fixture.detectChanges();
+
+      expect(fixture.nativeElement.querySelector('.reservation-cash')).not.toBeNull();
+      expect(fixture.nativeElement.querySelector('.reservation-credit')).not.toBeNull();
+    });
+
+    it('never offers cash or credit on a CANCELLED reservation', () => {
+      const { fixture, httpMock } = configure([
+        'reservation.view',
+        'payment.view',
+        'payment.register',
+        'payment.credit.apply',
+      ]);
+      httpMock.expectOne(URL).flush(detail({ status: 'CANCELLED', cancellationPending: false }));
+      httpMock.expectOne(`${URL}/payments`).flush(payments);
+      httpMock.expectOne('/api/v1/admin/customers/cust-1/credit').flush({ balanceCents: 50_000, entries: [] });
+      fixture.detectChanges();
+
+      expect(fixture.nativeElement.querySelector('.reservation-cash')).toBeNull();
+      expect(fixture.nativeElement.querySelector('.reservation-credit')).toBeNull();
+    });
+
     it('takes cash up to the balance, after confirming', () => {
       const { fixture, httpMock, dialogOpen } = configure(['reservation.view', 'payment.register']);
       httpMock.expectOne(URL).flush(detail());

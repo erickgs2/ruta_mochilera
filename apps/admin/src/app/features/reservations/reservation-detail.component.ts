@@ -116,6 +116,12 @@ export class ReservationDetailComponent implements OnInit {
     return status === 'HELD' || status === 'ACTIVE';
   });
 
+  /** Phase 2B decision 13: counter cash or credit revives an EXPIRED reservation; a CANCELLED one never revives. */
+  readonly canTakePayment = computed(() => {
+    const status = this.reservation()?.status;
+    return status === 'HELD' || status === 'ACTIVE' || status === 'EXPIRED';
+  });
+
   ngOnInit(): void {
     this.route.params.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((params) => {
       this.reservationId = params['reservationId'] as string;

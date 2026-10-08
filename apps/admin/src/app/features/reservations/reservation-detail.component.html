@@ -164,7 +164,7 @@
     </section>
   }
 
-  @if (isCancellable() && reservation.balanceCents > 0) {
+  @if (canTakePayment() && reservation.balanceCents > 0) {
     <div class="reservation-counter">
       @if (canRegisterPayment) {
         <section class="reservation-cash">
