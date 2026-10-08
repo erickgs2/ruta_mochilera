@@ -43,7 +43,7 @@ sequenceDiagram
     W->>W: "verifyWebhook sobre los bytes exactos"
     W->>DB: "BEGIN"
     W->>DB: "INSERT stripe_events (PRIMERO: es el candado)"
-    W->>DB: "reserva FOR UPDATE (orden de bloqueo)"
+    W->>DB: "viaje FOR KEY SHARE, luego reserva FOR UPDATE (orden de bloqueo)"
     W->>DB: "Payment PENDING → SUCCEEDED (condicional)"
     W->>DB: "paid_cents += lo que cabe en el saldo; HELD → ACTIVE si se alcanzó el anticipo"
     W->>DB: "excedente, si lo hay → OVERPAYMENT (candado del cliente)"
@@ -306,18 +306,20 @@ y se prueban por separado.
 ```mermaid
 flowchart TD
     A["payment_intent.succeeded"] --> B["Payment → SUCCEEDED,<br/>paid_cents += lo que cabe (nunca pasa del total);<br/>el excedente → OVERPAYMENT"]
-    B --> C{"Estado de la reserva"}
+    B --> S{"¿Esta entrega lo liquidó?<br/>(settledNow)"}
+    S -- "No: otro evento del mismo intento" --> Z["Nada: ni recibo ni avisos"]
+    S -- Sí --> C{"Estado de la reserva"}
     C -- "HELD o ACTIVE" --> D["HELD → ACTIVE si cubre el anticipo"]
     D --> E["Aviso PAYMENT_CONFIRMED al cliente,<br/>o PAYMENT_EXCESS_CREDITED si hubo excedente"]
     C -- "EXPIRED" --> F["La reserva NO se reactiva: sigue EXPIRED"]
-    F --> G["Aviso PAYMENT_AFTER_EXPIRY al cliente"]
-    F --> H["Aviso ORPHAN_PAYMENT al personal"]
+    F --> Q{"¿Cupo algo del pago?"}
+    Q -- Sí --> G["Aviso PAYMENT_AFTER_EXPIRY al cliente<br/>(nombra lo acreditado, si lo hay)"]
+    Q -- Sí --> H["Aviso ORPHAN_PAYMENT al personal"]
+    Q -- "No: todo es saldo a favor" --> G3["Aviso PAYMENT_EXCESS_CREDITED al cliente;<br/>nada al personal"]
     C -- "CANCELLED (Tarea 19)" --> F2["La reserva NO se reactiva: sigue CANCELLED"]
-    F2 --> CR["Fase 2B: lo que cupo se vuelve saldo a favor<br/>(CANCELLATION con payment_id, una vez por pago),<br/>antes del folio"]
-    CR --> G2["Aviso PAYMENT_AFTER_CANCELLATION al cliente<br/>(«quedó como saldo a favor»)"]
-    F2 --> H
-    G --> I["«El dinero existe y debe verse;<br/>devolverlo o moverlo es decisión humana»"]
-    G2 --> I
+    F2 --> CR["Todo el pago a saldo a favor<br/>(CANCELLATION lo que cupo, OVERPAYMENT el excedente),<br/>antes del folio"]
+    CR --> G2["Aviso PAYMENT_AFTER_CANCELLATION al cliente<br/>(«quedó como saldo a favor»); nada al personal"]
+    G --> I["«Lo que cupo en la reserva vencida:<br/>devolverlo o moverlo es decisión humana»"]
     H --> I
 ```
 
@@ -326,8 +328,9 @@ cancela en el proveedor las fichas pendientes al cancelar, pero una pagada en
 ese mismo minuto puede llegar igual. Desde la Fase 2B ese dinero no queda en
 el limbo: se acredita como saldo a favor del cliente en la misma transacción
 del webhook (ver `customer-credit.md`), mientras se liquida el pago y antes de
-numerar su recibo. El de una reserva `EXPIRED` sigue siendo decisión humana,
-salvo lo que exceda su total, que desde la decisión D7 es `OVERPAYMENT`.
+numerar su recibo, y por eso el personal ya no recibe `ORPHAN_PAYMENT` por él.
+El de una reserva `EXPIRED` sigue siendo decisión humana en la parte que cupo;
+lo que exceda su total, desde la decisión D7, es `OVERPAYMENT`.
 
 ## Sobrepago confirmado (decisión D7)
 
@@ -344,7 +347,7 @@ flowchart TD
     P --> X{"¿excedente > 0?"}
     X -- No --> N1["Aviso PAYMENT_CONFIRMED"]
     X -- Sí --> O["Candado del cliente:<br/>OVERPAYMENT (+excedente, reservation_id, payment_id)<br/>uno por pago (índice único parcial)"]
-    O --> N2["Aviso PAYMENT_EXCESS_CREDITED:<br/>«tu reservación quedó liquidada;<br/>$Z quedaron como saldo a favor»"]
+    O --> N2["Aviso PAYMENT_EXCESS_CREDITED:<br/>«tu reservación ya no debía ese monto;<br/>$Z quedaron como saldo a favor»"]
     N1 --> F["Folio al final"]
     N2 --> F
 ```
@@ -376,8 +379,34 @@ sequenceDiagram
     PG--)W: "40P01 deadlock detected: aborta uno"
 ```
 
-Hoy el webhook bloquea la reserva primero y numera al final, así que el
-mostrador simplemente espera a que termine:
+Con el folio ya al final quedaba un segundo cruce, el que encontró la carrera
+de Charlie. El cobro en mostrador revive a través del viaje
+(`reviveReservationSeat`, inyectado por la ruta: viaje `FOR UPDATE`, luego
+reserva) aun para un apartado vigente. El webhook bloqueaba sólo la reserva y
+la actualizaba dos veces; en la segunda, PostgreSQL vuelve a verificar la llave
+foránea `trip_id`, que toma `FOR KEY SHARE` sobre el viaje:
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant W as "Webhook (antes)"
+    participant PG as PostgreSQL
+    participant M as "Efectivo en mostrador"
+
+    W->>PG: "reserva FOR UPDATE"
+    W->>PG: "UPDATE reservations (paid_cents)"
+    M->>PG: "viaje FOR UPDATE (revive; lo retiene)"
+    M->>PG: "reserva FOR UPDATE"
+    Note over M,PG: "Espera al webhook"
+    W->>PG: "UPDATE reservations (HELD → ACTIVE)"
+    Note over W,PG: "La llave foránea pide el viaje FOR KEY SHARE:<br/>espera al mostrador"
+    PG--)W: "40P01 deadlock detected: aborta uno"
+```
+
+Hoy todo camino de dinero toma el viaje `FOR KEY SHARE` y luego la reserva
+(`lockReservationForMoney`), y numera al final, así que el mostrador
+simplemente espera a que el webhook termine (o el webhook espera al mostrador,
+si éste llegó primero al viaje):
 
 ```mermaid
 sequenceDiagram
@@ -386,21 +415,23 @@ sequenceDiagram
     participant PG as PostgreSQL
     participant M as "Efectivo en mostrador"
 
-    W->>PG: "reserva FOR UPDATE"
-    W->>PG: "Payment → SUCCEEDED, paid_cents, (saldo a favor)"
+    W->>PG: "viaje FOR KEY SHARE, luego reserva FOR UPDATE"
+    M->>PG: "viaje FOR UPDATE (revive)"
+    Note over M,PG: "Espera: el webhook ya tiene el viaje"
+    W->>PG: "Payment → SUCCEEDED, paid_cents, HELD → ACTIVE, (saldo a favor)"
     W->>PG: "folio al final"
-    M->>PG: "reserva FOR UPDATE"
-    Note over M,PG: "Espera: el webhook ya tiene todo lo que necesita"
     W->>PG: "COMMIT"
-    PG-->>M: "reserva"
-    M->>PG: "Payment CASH, paid_cents, folio al final"
+    PG-->>M: "viaje"
+    M->>PG: "reserva, Payment CASH, paid_cents, folio al final"
     M->>PG: "COMMIT"
 ```
 
-Lo mismo con un saldo aplicado en el mostrador frente a un pago tardío de otra
-reserva, ya cancelada, del mismo cliente: el webhook acredita el
-`CANCELLATION` (candado del cliente) antes del folio, no después.
-`lock-order.spec.ts` reproduce las dos intercalaciones.
+Lo mismo con un saldo aplicado en el mostrador frente al webhook, y frente a un
+pago tardío de otra reserva, ya cancelada, del mismo cliente: el webhook
+acredita el `CANCELLATION` (candado del cliente) antes del folio, no después.
+`lock-order.spec.ts` fuerza cada uno de los tres cruces;
+`cash-vs-webhook.race.integration.spec.ts` (apps/api) los corre por las rutas
+reales, 40 rondas por cada camino del mostrador.
 
 Y el caso en que no hay siquiera reserva a la que atar el dinero —un intento
 creado fuera de la app, sin `metadata.reservationId` o con uno que ni siquiera

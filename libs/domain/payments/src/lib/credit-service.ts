@@ -10,6 +10,7 @@ import {
   type CreditEntryDto,
 } from './credit-ledger';
 import { recordPayment, type PaymentDto } from './payment-service';
+import { lockReservationForMoney } from './reservation-lock';
 import { enqueueReceipt, type ReceiptQueue } from './receipt-service';
 import { RollbackWith, rollbackable, type ReviveReservation } from './revival';
 
@@ -169,7 +170,7 @@ export async function applyCreditToReservation(
       revived = brought.value.revived;
     }
 
-    await tx.$queryRaw`SELECT id FROM reservations WHERE id = ${input.reservationId}::uuid FOR UPDATE`;
+    await lockReservationForMoney(tx, input.reservationId);
     const reservation = await tx.reservation.findUnique({ where: { id: input.reservationId } });
     if (!reservation) return fail('NOT_FOUND');
     if (input.customerId !== undefined && reservation.customerId !== input.customerId) {

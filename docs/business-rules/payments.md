@@ -162,10 +162,18 @@ Un pago `FAILED`, `EXPIRED` o `REFUNDED` no se puede confirmar →
 `INVALID_STATUS_TRANSITION`. Esos estados los decide otro camino y un evento
 `succeeded` no los deshace en silencio.
 
-Antes de la transición condicional, `confirmPaymentWithin` toma el candado de
-la **reserva** del pago (lo lee sin candado para saber cuál; la reserva de un
-pago nunca cambia). Así el saldo contra el que se reparte el dinero se lee bajo
-el candado, y el orden de bloqueo es el de todos los caminos (abajo).
+Antes de la transición condicional, `confirmPaymentWithin` toma el candado del
+**viaje** y luego el de la **reserva** del pago (`lockReservationForMoney`; los
+lee sin candado para saber cuáles: la reserva de un pago y el viaje de una
+reserva nunca cambian). Así el saldo contra el que se reparte el dinero se lee
+bajo el candado, y el orden de bloqueo es el de todos los caminos (abajo).
+
+**Los avisos también van una sola vez.** Stripe puede mandar más de un evento
+`succeeded` del mismo intento con `evt_` distintos, y `stripe_events` deja
+pasar cada uno. El dinero se mueve una vez, y `confirmPaymentWithin` responde
+`settledNow`: si **esta** llamada fue la que lo liquidó. Sólo esa encola el
+recibo y manda los avisos, al cliente y al personal. Se decide bajo el
+candado, así que dos entregas simultáneas nunca avisan las dos.
 
 ## Sobrepago confirmado (decisión D7 del dueño, 2026-10-07)
 
@@ -198,6 +206,13 @@ si excedente > 0 → movimiento OVERPAYMENT (+excedente, reservation_id, payment
 - Aviso al cliente: `PAYMENT_EXCESS_CREDITED` en lugar de `PAYMENT_CONFIRMED`
   cuando la reserva viva no pudo absorber todo el pago (ver
   `notifications.md`). Sin aviso al personal: el dinero ya quedó donde debe.
+- **El personal sólo se entera de lo que todavía tiene que decidir.**
+  `ORPHAN_PAYMENT` sale cuando una parte del dinero se queda en una reserva
+  `EXPIRED` (lo que cupo: decisión humana) o no tiene reserva a la que atarse.
+  No sale cuando todo el pago se volvió saldo a favor: una reserva `CANCELLED`
+  (todo es `CANCELLATION` u `OVERPAYMENT`), o una `EXPIRED` cuyo pago no cupo
+  en nada. El dueño decidió que el dinero tardío abrirá un caso de seguimiento
+  (`LatePaymentCase`, siguiente trabajo); mientras, ésta es la regla.
 - **Una vez por pago.** Sólo la entrega que gana la transición
   `PENDING → SUCCEEDED` liquida el pago. El índice único parcial
   `customer_credit_entries_overpayment_payment_id_key` (`payment_id` donde
@@ -226,14 +241,37 @@ una fila por año que incrementa todo pago exitoso de cualquier reserva, el
 candado más disputado del sistema, y retenerlo mientras se espera otro es lo
 que convertía dos pagos sin relación en un bloqueo mutuo.
 
-Hasta que se fijó este orden, el webhook pedía el folio **antes** de bloquear
-la reserva, y en la rama de reserva cancelada acreditaba el saldo a favor
-**después** del folio; el efectivo y el saldo aplicado hacían lo contrario.
-Un cobro en mostrador y una confirmación de Stripe sobre la misma reserva, o un
-saldo aplicado y un pago tardío de otra reserva del mismo cliente, se
-bloqueaban mutuamente y PostgreSQL abortaba uno (`40P01`). Hoy el webhook
-bloquea la reserva, mueve la fila del pago, acredita bajo el candado del
-cliente y numera al final. Lo prueba `lock-order.spec.ts`.
+**El viaje va primero aunque ningún pago lo escriba.** PostgreSQL vuelve a
+verificar las llaves foráneas de una fila cuando la misma transacción la
+actualiza por segunda vez, y un pago actualiza la reserva dos veces
+(`paid_cents`, y luego `HELD → ACTIVE`): la segunda corre la verificación de
+`trip_id`, que toma `FOR KEY SHARE` sobre el viaje. Si nadie lo tomó antes, ese
+candado llega **después** del de la reserva. Por eso todo camino de dinero
+(webhook, efectivo, saldo aplicado) llama a `lockReservationForMoney`
+(`reservation-lock.ts`), que toma el viaje `FOR KEY SHARE` —el mismo candado
+que pediría la verificación, así que dos pagos del mismo viaje no se esperan
+entre sí— y luego la reserva `FOR UPDATE`.
+
+Hasta que se fijó este orden hubo dos bloqueos mutuos (`40P01`, que Prisma
+reporta como `P2034`):
+
+1. El webhook pedía el folio **antes** de bloquear la reserva, y en la rama de
+   reserva cancelada acreditaba el saldo a favor **después** del folio; el
+   efectivo y el saldo aplicado hacían lo contrario.
+2. Con el folio ya al final, quedaba el viaje: el cobro en mostrador revive
+   (`reviveReservationSeat`, inyectado por la ruta) bloqueando el viaje
+   `FOR UPDATE` y luego la reserva, incluso para un apartado vigente; el
+   webhook bloqueaba sólo la reserva y su segunda actualización alcanzaba el
+   viaje después. Lo encontró Charlie con una carrera de 40 rondas sobre la API
+   real (6 de 40 con el arreglo anterior, 80 % en `main`).
+
+Lo prueban `lock-order.spec.ts` (`libs/domain/payments`: las tres
+intercalaciones forzadas, una por cruce, incluida la del efectivo sobre un
+apartado vigente contra el `HELD → ACTIVE` del webhook) y
+`cash-vs-webhook.race.integration.spec.ts` (`apps/api`: efectivo y saldo
+aplicado contra el webhook firmado, por las rutas reales, 40 rondas cada uno;
+`RACE_ROUNDS=200` para una corrida larga). Las dos fallan con `40P01` si se
+quita el candado del viaje.
 
 ## Caso límite: pago confirmado de una reserva ya expirada
 
@@ -245,7 +283,10 @@ apartado expiró:
   «Sobrepago confirmado»).
 - La reserva **no** se reactiva: sigue `EXPIRED`.
 - Se avisa al cliente con `PAYMENT_AFTER_EXPIRY` y al administrador con
-  `ORPHAN_PAYMENT`, en la misma transacción.
+  `ORPHAN_PAYMENT`, en la misma transacción. Si parte del pago excedió el total,
+  el aviso al cliente dice también cuánto quedó ya como saldo a favor. Si
+  **nada** del pago cupo (la reserva ya no debía nada), todo es saldo a favor:
+  el cliente recibe `PAYMENT_EXCESS_CREDITED` y el personal nada.
 
 El dinero existe y debe verse; devolverlo o aplicarlo a otro viaje es decisión
 humana. Ningún movimiento de dinero es automático.
@@ -286,9 +327,11 @@ humana. Ningún movimiento de dinero es automático.
 la reserva mientras una ficha o un intento de tarjeta seguían cobrables (la
 cancelación los cancela en el proveedor, pero una ficha pagada en ese mismo
 minuto, o una caída de Stripe, pueden llegar igual), el pago se registra, la
-reserva sigue `CANCELLED`, el cliente recibe `PAYMENT_AFTER_CANCELLATION` y el
-personal `ORPHAN_PAYMENT`. Una plantilla propia y no `PAYMENT_AFTER_EXPIRY`:
-esa dice «tu apartado venció», que es falso para una reserva cancelada.
+reserva sigue `CANCELLED` y el cliente recibe `PAYMENT_AFTER_CANCELLATION`.
+Una plantilla propia y no `PAYMENT_AFTER_EXPIRY`: esa dice «tu apartado
+venció», que es falso para una reserva cancelada. Desde la Fase 2B todo ese
+dinero se vuelve saldo a favor al liquidarse, así que el personal ya no recibe
+`ORPHAN_PAYMENT` por él: no queda nada que decidir.
 
 El aviso al cliente **no** es `PAYMENT_CONFIRMED`. Esa plantilla cita el saldo
 restante y se leería como "sí vas"; a alguien cuyo lugar se liberó hay que
@@ -344,8 +387,9 @@ desaparecen: nadie recibe un correo sobre un pago que no se registró.
 |---|---|---|
 | `payment_intent.succeeded` | Confirma o registra el pago, sube `paid_cents`, activa la reserva si alcanza el anticipo | `PAYMENT_CONFIRMED` al cliente |
 | `payment_intent.succeeded` que excede el saldo de una reserva viva (decisión D7) | Pago `SUCCEEDED` completo; `paid_cents` sube hasta el total; el excedente es `OVERPAYMENT` | `PAYMENT_EXCESS_CREDITED` al cliente |
-| `payment_intent.succeeded` sobre una reserva `EXPIRED` | Pago `SUCCEEDED`, reserva intacta (§5.3 arriba); lo que exceda el total, `OVERPAYMENT` | `PAYMENT_AFTER_EXPIRY` al cliente y `ORPHAN_PAYMENT` al personal |
-| `payment_intent.succeeded` sobre una reserva `CANCELLED` (Tarea 19) | Pago `SUCCEEDED`, reserva intacta; todo el pago a saldo a favor (`CANCELLATION` lo que cupo, `OVERPAYMENT` el excedente) | `PAYMENT_AFTER_CANCELLATION` al cliente y `ORPHAN_PAYMENT` al personal |
+| `payment_intent.succeeded` sobre una reserva `EXPIRED` | Pago `SUCCEEDED`, reserva intacta (§5.3 arriba); lo que exceda el total, `OVERPAYMENT` | `PAYMENT_AFTER_EXPIRY` al cliente (con lo acreditado, si lo hay) y `ORPHAN_PAYMENT` al personal; si nada cupo, sólo `PAYMENT_EXCESS_CREDITED` al cliente |
+| `payment_intent.succeeded` sobre una reserva `CANCELLED` (Tarea 19) | Pago `SUCCEEDED`, reserva intacta; todo el pago a saldo a favor (`CANCELLATION` lo que cupo, `OVERPAYMENT` el excedente) | `PAYMENT_AFTER_CANCELLATION` al cliente; nada al personal |
+| `payment_intent.succeeded` de un intento que otra entrega ya liquidó (otro `evt_`) | Ninguno | Ninguno: los avisos y el recibo los mandó la entrega que lo liquidó |
 | `payment_intent.succeeded` sin reserva a la que atarlo | Ninguno: un `Payment` necesita una reserva | `ORPHAN_PAYMENT` al personal, y **200** a Stripe |
 | `payment_intent.payment_failed` | Pago a `FAILED`, el saldo no se mueve | `PAYMENT_FAILED` al cliente |
 | `payment_intent.payment_failed` con `payment_intent_payment_attempt_expired` | Pago a `EXPIRED`, el saldo no se mueve | `VOUCHER_EXPIRED` al cliente |
@@ -828,8 +872,9 @@ hay, como `OVERPAYMENT`: todo el pago tardío queda como saldo a favor. Ocurre
 **antes** de numerar el recibo, para respetar el orden de bloqueo (antes lo
 hacía el webhook después del folio, y eso podía bloquearse contra un saldo
 aplicado en el mostrador). El webhook manda el aviso
-`PAYMENT_AFTER_CANCELLATION` —que ya dice que quedó como saldo a favor— y la
-alerta al personal.
+`PAYMENT_AFTER_CANCELLATION` —que ya dice que quedó como saldo a favor— y
+ninguna alerta al personal: con todo el dinero acreditado no queda nada que
+decidir (ver «Sobrepago confirmado»).
 
 ## Folio de recibo: el modelo (Fase 2B, Tarea 1)
 
@@ -937,7 +982,9 @@ Ningún código es nuevo: los cinco existen en el catálogo desde la Fase 1.
 | `libs/domain/payments/src/lib/instalment.ts` | La aritmética de la mensualidad sugerida, sin base de datos |
 | `libs/domain/payments/src/lib/payment-service.ts` | Saldo, registro, confirmación, liquidación (reparto del sobrepago), listado y la mensualidad de una reserva; el **orden de bloqueo** escrito al inicio |
 | `libs/domain/payments/src/lib/credit-ledger.ts` | Primitivas del saldo a favor: candado del cliente, `addCreditEntry`, `CANCELLATION` y `OVERPAYMENT` |
-| `libs/domain/payments/src/lib/lock-order.spec.ts` | Las dos intercalaciones que se bloqueaban mutuamente antes del orden único |
+| `libs/domain/payments/src/lib/reservation-lock.ts` | `lockReservationForMoney`: el viaje (`FOR KEY SHARE`) y luego la reserva, para todo camino de dinero |
+| `libs/domain/payments/src/lib/lock-order.spec.ts` | Las tres intercalaciones que se bloqueaban mutuamente antes del orden único, forzadas una por una |
+| `apps/api/src/app/api/v1/admin/reservations/cash-vs-webhook.race.integration.spec.ts` | La carrera real: efectivo y saldo aplicado contra el webhook, por las rutas |
 | `libs/db/prisma/migrations/20261009000100_credit_entry_overpayment_unique/` | El índice único parcial: un `OVERPAYMENT` por pago |
 | `libs/domain/payments/src/lib/payment-intent-service.ts` | Crear el Payment Intent (Tarea 14): el monto nunca viaja desde el cliente |
 | `libs/db/prisma/migrations/20261004011500_payment_provider_intent_unique/` | El índice único que ancla la idempotencia |

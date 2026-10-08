@@ -177,6 +177,20 @@ async function closePendingPayment(
 /**
  * Business rule 5.5 plus the edge case of 5.3: the money is applied, and
  * then the reservation's own status decides who hears about it.
+ *
+ * **Only the delivery that settled the payment speaks.** Stripe can send
+ * more than one event for one intent (distinct `evt_` ids, so
+ * `stripe_events` lets each through). The money moves once
+ * (`confirmPaymentWithin`'s conditional update); the receipt and every
+ * notice -- customer and staff -- follow `settledNow`, which is decided under
+ * the reservation lock, so two deliveries arriving together never both send.
+ *
+ * **Staff hear only about money a person still has to decide.** On an
+ * `EXPIRED` reservation the part of a late payment that fit stays on the
+ * reservation for a person (`ORPHAN_PAYMENT`); the part above the total
+ * already became credit (owner decision D7). On a `CANCELLED` reservation all
+ * of it became credit, and nobody has anything left to decide. A late-payment
+ * case to replace `ORPHAN_PAYMENT` is the owner's next decision.
  */
 async function applySucceeded(
   tx: DbTransactionClient,
@@ -184,15 +198,6 @@ async function applySucceeded(
   intent: WebhookPaymentIntent,
   occurredAt: Date
 ): Promise<Result<null>> {
-  // A second, different event for an intent already confirmed (Stripe can
-  // send more than one) confirms nothing new and must not enqueue a second
-  // receipt. The job is idempotent anyway; this keeps the queue honest.
-  const before = await tx.payment.findUnique({
-    where: { providerIntentId: intent.providerIntentId },
-    select: { status: true },
-  });
-  const alreadySucceeded = before?.status === 'SUCCEEDED';
-
   const confirmed = await confirmPaymentWithin(tx, {
     providerIntentId: intent.providerIntentId,
     paidAt: occurredAt,
@@ -223,26 +228,43 @@ async function applySucceeded(
     return confirmed;
   }
 
+  // A second delivery for a payment another one already settled: the money,
+  // the receipt and the notices all belong to that one.
+  if (!confirmed.value.settledNow) return ok(null);
+
   // Every SUCCEEDED payment gets its receipt (Phase 2B, §5.4), whatever
   // the reservation's status -- enqueued on this transaction, so a rollback
-  // takes the job with it. A redelivery is harmless: the job never sends a
-  // receipt twice.
-  if (!alreadySucceeded) await enqueueReceipt(tx, queue, confirmed.value.id);
+  // takes the job with it.
+  await enqueueReceipt(tx, queue, confirmed.value.id);
 
   const context = await notificationContext(tx, confirmed.value.reservationId);
+  // What settling the payment credited as `OVERPAYMENT` (owner decision D7):
+  // the part above what the reservation still owed.
+  const creditedCents = await overpaymentCredited(tx, confirmed.value.id);
+  const amount = formatMoney(confirmed.value.amountCents, context.locale);
+  const credited = formatMoney(creditedCents, context.locale);
 
   if (context.reservation.status === 'EXPIRED') {
-    // Spec 5.3. The seat is gone and staying gone; the money is recorded
-    // and both sides are told, because returning it or moving it to
-    // another trip is a human decision.
+    // Spec 5.3. The seat is gone and staying gone.
+    if (creditedCents === confirmed.value.amountCents) {
+      // None of it fit: all of it is already credit, and nothing is left
+      // for a person to resolve.
+      await notifyCustomer(tx, queue, {
+        customerId: context.customerId,
+        reservationId: context.reservation.id,
+        eventType: 'PAYMENT_EXCESS_CREDITED',
+        params: { tripName: context.tripName, amount, credited },
+      });
+      return ok(null);
+    }
+    // The part that fit is recorded on the reservation and both sides are
+    // told, because returning it or moving it to another trip is a human
+    // decision; the notice also names any part that already became credit.
     await notifyCustomer(tx, queue, {
       customerId: context.customerId,
       reservationId: context.reservation.id,
       eventType: 'PAYMENT_AFTER_EXPIRY',
-      params: {
-        tripName: context.tripName,
-        amount: formatMoney(confirmed.value.amountCents, context.locale),
-      },
+      params: { tripName: context.tripName, amount, ...(creditedCents > 0 ? { credited } : {}) },
     });
     await escalateOrphanPayment(
       tx,
@@ -258,47 +280,31 @@ async function applySucceeded(
     // Task 19: staff cancelled the reservation while a voucher or a card
     // intent was still payable (the cancellation asks the provider to cancel
     // it, but a voucher paid at the counter in that same minute, or a
-    // provider outage, can still land here). Same treatment as an expired
-    // hold -- money recorded, reservation left as it is, a person decides --
-    // in words that say "cancelled" rather than "your hold expired".
-    // Phase 2B: the money is not left in limbo -- it became the customer's
-    // credit, like everything the reservation had received when cancelled.
-    // That happened while the payment was settled (`settleConfirmedPayment`),
-    // before it was numbered: crediting it here, after the receipt counter,
-    // broke the lock order (see "Lock order" in `payment-service.ts`).
+    // provider outage, can still land here). Phase 2B: the money is not left
+    // in limbo -- every cent of it became the customer's credit while the
+    // payment was settled (`CANCELLATION` for what fit, `OVERPAYMENT` for any
+    // excess), before it was numbered: crediting it here, after the receipt
+    // counter, broke the lock order (see "Lock order" in `payment-service.ts`).
+    // The customer is told in words that say "cancelled"; staff are not,
+    // since nothing is left for them to decide.
     await notifyCustomer(tx, queue, {
       customerId: context.customerId,
       reservationId: context.reservation.id,
       eventType: 'PAYMENT_AFTER_CANCELLATION',
-      params: {
-        tripName: context.tripName,
-        amount: formatMoney(confirmed.value.amountCents, context.locale),
-      },
+      params: { tripName: context.tripName, amount },
     });
-    await escalateOrphanPayment(
-      tx,
-      queue,
-      confirmed.value.amountCents,
-      intent.providerIntentId,
-      context.reservation.id
-    );
     return ok(null);
   }
 
   // Owner decision D7: money above what the reservation owed became credit
   // while the payment was settled. Quoting "your remaining balance is $0"
   // would hide where the rest went, so that payment gets its own notice.
-  const creditedCents = await overpaymentCredited(tx, confirmed.value.id);
   if (creditedCents > 0) {
     await notifyCustomer(tx, queue, {
       customerId: context.customerId,
       reservationId: context.reservation.id,
       eventType: 'PAYMENT_EXCESS_CREDITED',
-      params: {
-        tripName: context.tripName,
-        amount: formatMoney(confirmed.value.amountCents, context.locale),
-        credited: formatMoney(creditedCents, context.locale),
-      },
+      params: { tripName: context.tripName, amount, credited },
     });
     return ok(null);
   }
@@ -309,7 +315,7 @@ async function applySucceeded(
     eventType: 'PAYMENT_CONFIRMED',
     params: {
       tripName: context.tripName,
-      amount: formatMoney(confirmed.value.amountCents, context.locale),
+      amount,
       balance: formatMoney(context.balanceCents, context.locale),
     },
   });

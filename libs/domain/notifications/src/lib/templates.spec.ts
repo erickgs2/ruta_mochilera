@@ -128,6 +128,33 @@ describe('renderTemplate', () => {
     expect(english.subject).toContain('Oaxaca');
   });
 
+  it('stays true for an expired reservation too: the credit notice never claims the trip is paid off', () => {
+    // An excess also reaches a reservation that expired (owner decision D7),
+    // whose seat is gone: "your reservation is now fully paid" would read as
+    // "you are going".
+    const params = { tripName: 'Oaxaca', amount: '$1,500.00 MXN', credited: '$1,500.00 MXN' };
+
+    const es = renderTemplate('PAYMENT_EXCESS_CREDITED', 'es', params);
+    const en = renderTemplate('PAYMENT_EXCESS_CREDITED', 'en', params);
+
+    expect(es.body.toLowerCase()).not.toContain('liquidada');
+    expect(en.body.toLowerCase()).not.toContain('fully paid');
+  });
+
+  it('names the credited part of a late payment on an expired hold, and only when there is one', () => {
+    const base = { tripName: 'Oaxaca', amount: '$1,500.00 MXN' };
+
+    for (const locale of ['es', 'en'] as const) {
+      const withCredit = renderTemplate('PAYMENT_AFTER_EXPIRY', locale, { ...base, credited: '$500.00 MXN' });
+      const withoutCredit = renderTemplate('PAYMENT_AFTER_EXPIRY', locale, base);
+
+      expect(withCredit.body).toContain('$500.00 MXN');
+      expect(withCredit.body).not.toContain('{{');
+      expect(withoutCredit.body).not.toContain('$500.00 MXN');
+      expect(withoutCredit.body).not.toContain('{{');
+    }
+  });
+
   it('tells the customer their OXXO voucher expired, not that a payment was declined', () => {
     // Business rule 5.3: an unpaid voucher reaching its deadline leaves the
     // payment `EXPIRED`, which is a different thing from a card being

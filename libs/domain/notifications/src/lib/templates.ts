@@ -104,6 +104,37 @@ function priceChanged(locale: Locale): TemplateFn {
   };
 }
 
+/**
+ * `PAYMENT_AFTER_EXPIRY` (business rule 5.3): money that arrived after the
+ * hold expired. The part that fit the reservation stays for a person to
+ * resolve, so the notice promises that contact. When part of the payment was
+ * above what the reservation owed, that part already became credit (owner
+ * decision D7) and the notice says so (`params.credited` present); otherwise
+ * the sentence is left out.
+ */
+function paymentAfterExpiry(locale: Locale): TemplateFn {
+  return (params) => {
+    const es = locale === 'es';
+    const body = es
+      ? 'Recibimos tu pago de {{amount}} para {{tripName}}, pero tu apartado ya había vencido y el lugar se liberó. Tu pago está registrado y nadie lo va a perder: un asesor te contactará para resolverlo contigo.'
+      : 'We received your payment of {{amount}} for {{tripName}}, but your hold had already expired and the seat was released. Your payment is on record and will not be lost: someone from the team will contact you to sort it out.';
+    const credit = params['credited']
+      ? es
+        ? ' De ese pago, {{credited}} ya quedaron como saldo a favor en tu cuenta.'
+        : ' Of that payment, {{credited}} is already account credit.'
+      : '';
+    return {
+      subject: interpolate(
+        es
+          ? 'Recibimos tu pago para {{tripName}}, pero tu apartado ya había vencido'
+          : 'We received your payment for {{tripName}}, but your hold had already expired',
+        params
+      ),
+      body: interpolate(`${body}${credit}`, params),
+    };
+  };
+}
+
 const TEMPLATES: Record<DeliveryEventType, LocaleTemplates> = {
   PRICE_CHANGED: { es: priceChanged('es'), en: priceChanged('en') },
   HOLD_EXPIRING: {
@@ -150,18 +181,19 @@ const TEMPLATES: Record<DeliveryEventType, LocaleTemplates> = {
   },
   // Owner decision D7: a confirmed payment above what the reservation still
   // owed. Not `PAYMENT_CONFIRMED`, whose "your remaining balance is $0.00"
-  // would hide where the rest of the money went; this says the reservation
-  // is paid and how much of the payment became credit. The reservation is
-  // always fully paid when this is sent -- an excess only exists once the
-  // balance is covered -- so it quotes no balance.
+  // would hide where the rest of the money went. Sent for a live reservation,
+  // and for an expired one when the whole payment became credit -- so it says
+  // only what is true in both: the reservation owed nothing more, and how much
+  // of the payment is now credit. Never "fully paid": an expired hold's seat
+  // is gone.
   PAYMENT_EXCESS_CREDITED: {
     es: template(
       'Recibimos tu pago para {{tripName}}',
-      'Recibimos tu pago de {{amount}} para {{tripName}}. Tu reservación ya quedó liquidada, así que {{credited}} de ese pago quedaron como saldo a favor en tu cuenta: puedes verlo en «Mi cuenta».'
+      'Recibimos tu pago de {{amount}} para {{tripName}}. Tu reservación ya no tenía saldo pendiente por ese monto, así que {{credited}} de ese pago quedaron como saldo a favor en tu cuenta: puedes verlo en «Mi cuenta».'
     ),
     en: template(
       'We received your payment for {{tripName}}',
-      'We received your payment of {{amount}} for {{tripName}}. Your reservation is now fully paid, so {{credited}} of that payment is now account credit: you can see it under My account.'
+      'We received your payment of {{amount}} for {{tripName}}. Your reservation no longer owed that much, so {{credited}} of that payment is now account credit: you can see it under My account.'
     ),
   },
   PAYMENT_FAILED: {
@@ -194,16 +226,7 @@ const TEMPLATES: Record<DeliveryEventType, LocaleTemplates> = {
   // "you are going" -- the seat was released and giving it back is a human
   // decision, so this says the money is recorded and someone will be in
   // touch, and quotes no balance at all.
-  PAYMENT_AFTER_EXPIRY: {
-    es: template(
-      'Recibimos tu pago para {{tripName}}, pero tu apartado ya había vencido',
-      'Recibimos tu pago de {{amount}} para {{tripName}}, pero tu apartado ya había vencido y el lugar se liberó. Tu pago está registrado y nadie lo va a perder: un asesor te contactará para resolverlo contigo.'
-    ),
-    en: template(
-      'We received your payment for {{tripName}}, but your hold had already expired',
-      'We received your payment of {{amount}} for {{tripName}}, but your hold had already expired and the seat was released. Your payment is on record and will not be lost: someone from the team will contact you to sort it out.'
-    ),
-  },
+  PAYMENT_AFTER_EXPIRY: { es: paymentAfterExpiry('es'), en: paymentAfterExpiry('en') },
   // Task 19: the counterpart of `PAYMENT_AFTER_EXPIRY` for a reservation
   // staff cancelled while a voucher or card intent was still payable. Same
   // promise -- the money is recorded and a person will follow up -- and, like

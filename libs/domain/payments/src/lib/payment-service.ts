@@ -14,6 +14,7 @@ import { endOfCalendarDay, fail, monthStartsBetween, ok, type Result } from '@rm
 import { creditFromCancellation, creditFromOverpayment } from './credit-ledger';
 import { suggestedMonthly } from './instalment';
 import { assignReceiptNumber } from './receipt-number';
+import { lockReservationForMoney } from './reservation-lock';
 
 /*
  * ## Lock order
@@ -25,9 +26,13 @@ import { assignReceiptNumber } from './receipt-number';
  * A transaction takes only the locks it needs, but never one that comes
  * earlier in this list than a lock it already holds.
  *
- * - **Trip** (`trips ... FOR UPDATE`): seat decisions -- reserving, reviving
- *   an expired reservation, changing a price -- count the trip's seats under
- *   it, and they have to before touching any one reservation.
+ * - **Trip**: seat decisions -- reserving, reviving an expired reservation,
+ *   changing a price -- take it `FOR UPDATE` and count the trip's seats under
+ *   it, before touching any one reservation. Every money path takes it too,
+ *   `FOR KEY SHARE`, before the reservation (`lockReservationForMoney` in
+ *   `reservation-lock.ts`): updating a reservation a second time in one
+ *   transaction makes PostgreSQL re-check its `trip_id` foreign key, which
+ *   takes that same lock -- after the reservation, if nobody took it first.
  * - **Reservation** (`lockReservationForPayment`, `reservations ... FOR
  *   UPDATE`): the balance a payment is checked or split against is read
  *   under it. A payment row is only ever moved (`PENDING -> SUCCEEDED`) while
@@ -44,7 +49,11 @@ import { assignReceiptNumber } from './receipt-number';
  * Until this order was written down the Stripe webhook numbered a payment
  * before it locked the reservation, and credited a cancelled reservation's
  * late money after numbering it; counter cash and applied credit did the
- * opposite, and the two deadlocked (`lock-order.spec.ts`).
+ * opposite, and the two deadlocked. Then the webhook locked the reservation
+ * without the trip, and its second update of the reservation reached for the
+ * trip while counter cash -- which revives through the trip -- held it
+ * (`lock-order.spec.ts` pins each crossing; the real routes race in
+ * `cash-vs-webhook.race.integration.spec.ts`, apps/api).
  */
 
 export interface RecordPaymentInput {
@@ -143,6 +152,18 @@ export interface PaymentDto {
   receiptNumber: string | null;
 }
 
+/**
+ * A confirmation's answer: the payment as it stands, plus whether **this**
+ * call is the one that settled it. Two deliveries for the same intent --
+ * a redelivery, or a second event type Stripe sends for it -- can both reach
+ * a confirmation; only one moves the money, and only that one may send the
+ * receipt and the notices (`handleStripeEvent`). Read under the lock, so two
+ * concurrent deliveries never both see `true`.
+ */
+export interface ConfirmedPaymentDto extends PaymentDto {
+  settledNow: boolean;
+}
+
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** `total_price_cents - paid_cents`, never negative (business rule 5.5). */
@@ -180,12 +201,16 @@ function toDto(payment: Payment): PaymentDto {
  * Must be called inside a transaction: a row lock taken outside one is
  * released the moment the statement ends. The id is bound as a query
  * parameter by the tagged template, never concatenated into the SQL.
+ *
+ * The trip is locked first (`lockReservationForMoney`): see "Lock order" at
+ * the top of this file and that function's doc comment for the deadlock a
+ * reservation-only lock left behind.
  */
 async function lockReservationForPayment(
   tx: DbTransactionClient,
   reservationId: string
 ): Promise<void> {
-  await tx.$queryRaw`SELECT id FROM reservations WHERE id = ${reservationId}::uuid FOR UPDATE`;
+  await lockReservationForMoney(tx, reservationId);
 }
 
 /**
@@ -489,7 +514,7 @@ export async function recordPayment(
 export async function confirmPayment(
   db: Db,
   input: ConfirmPaymentInput
-): Promise<Result<PaymentDto>> {
+): Promise<Result<ConfirmedPaymentDto>> {
   return db.$transaction((tx: DbTransactionClient) => confirmPaymentWithin(tx, input));
 }
 
@@ -508,7 +533,7 @@ export async function confirmPayment(
 export async function confirmPaymentWithin(
   tx: DbTransactionClient,
   input: ConfirmPaymentInput
-): Promise<Result<PaymentDto>> {
+): Promise<Result<ConfirmedPaymentDto>> {
   const payment = await tx.payment.findUnique({
     where: { providerIntentId: input.providerIntentId },
   });
@@ -518,7 +543,7 @@ export async function confirmPaymentWithin(
     // when the caller knows what the money was for, record it rather than
     // answering NOT_FOUND and losing a payment that really happened.
     if (!input.recordIfMissing) return fail('NOT_FOUND', { field: 'providerIntentId' });
-    return recordPayment(tx, {
+    const recorded = await recordPayment(tx, {
       ...input.recordIfMissing,
       status: 'SUCCEEDED',
       providerIntentId: input.providerIntentId,
@@ -527,9 +552,10 @@ export async function confirmPaymentWithin(
       // the balance, credit the excess instead (owner decision D7).
       excessToCredit: true,
     });
+    return recorded.ok ? ok({ ...recorded.value, settledNow: true }) : recorded;
   }
 
-  if (payment.status === 'SUCCEEDED') return ok(toDto(payment));
+  if (payment.status === 'SUCCEEDED') return ok({ ...toDto(payment), settledNow: false });
   // FAILED, EXPIRED and REFUNDED are decided elsewhere and are not
   // something a `succeeded` event may quietly undo.
   if (payment.status !== 'PENDING') {
@@ -547,8 +573,8 @@ export async function confirmPaymentWithin(
   });
   if (confirmed.count === 0) {
     // Another confirmation won the race and already applied the money. Its
-    // row, its timestamp, its audit entry.
-    return ok(toDto(await tx.payment.findUniqueOrThrow({ where: { id: payment.id } })));
+    // row, its timestamp, its audit entry -- and its notices.
+    return ok({ ...toDto(await tx.payment.findUniqueOrThrow({ where: { id: payment.id } })), settledNow: false });
   }
 
   // Settled under the reservation lock, credited under the customer's, and
@@ -569,7 +595,7 @@ export async function confirmPaymentWithin(
     after: { status: 'SUCCEEDED', paidAt: input.paidAt.toISOString() },
   });
 
-  return ok(toDto({ ...payment, status: 'SUCCEEDED', paidAt: input.paidAt, receiptNumber }));
+  return ok({ ...toDto({ ...payment, status: 'SUCCEEDED', paidAt: input.paidAt, receiptNumber }), settledNow: true });
 }
 
 /**
