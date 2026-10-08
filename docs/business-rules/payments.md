@@ -468,7 +468,10 @@ reservas, para que el mostrador sepa a quién perseguir.
   `recorded_at` e `id`. El cursor es de claves —`(vencimiento, recorded_at,
   id)`, opaco— y no un desplazamiento: el vencimiento cambia mientras alguien
   trabaja la lista y un desplazamiento saltaría o repetiría filas. Un cursor
-  que no emitimos es `VALIDATION_FAILED` con `field: cursor`.
+  que no emitimos es `VALIDATION_FAILED` con `field: cursor`: eso incluye un
+  `id` que no sea UUID (llegaría a una columna `uuid` y sería un 500), un
+  `recordedAt` ausente o que no sea el instante ISO que emitimos, y un
+  `voucherExpiresAt` que no sea ISO ni `null`.
 - **Páginas:** 25 por omisión, 100 como máximo.
 - **Índice:** `payments_pending_voucher_expires_idx`, parcial sobre
   `voucher_expires_at WHERE status = 'PENDING'` (migración

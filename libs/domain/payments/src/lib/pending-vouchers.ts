@@ -46,13 +46,19 @@ function encodeCursor(row: Pick<Payment, 'voucherExpiresAt' | 'recordedAt' | 'id
   return Buffer.from(JSON.stringify(payload), 'utf8').toString('base64url');
 }
 
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** An instant exactly as `encodeCursor` writes it (`Date#toISOString`), so a hand-made value is refused. */
+function isIsoInstant(value: unknown): value is string {
+  return typeof value === 'string' && !Number.isNaN(Date.parse(value)) && new Date(value).toISOString() === value;
+}
+
 function decodeCursor(cursor: string): Result<Cursor> {
   try {
     const parsed = JSON.parse(Buffer.from(cursor, 'base64url').toString('utf8')) as Partial<Cursor>;
-    const validExpiry =
-      parsed.voucherExpiresAt === null ||
-      (typeof parsed.voucherExpiresAt === 'string' && !Number.isNaN(Date.parse(parsed.voucherExpiresAt)));
-    if (!validExpiry || typeof parsed.recordedAt !== 'string' || Number.isNaN(Date.parse(parsed.recordedAt)) || typeof parsed.id !== 'string') {
+    const validExpiry = parsed.voucherExpiresAt === null || isIsoInstant(parsed.voucherExpiresAt);
+    // The id reaches a uuid column: anything else would be a Prisma P2007 and a 500.
+    if (!validExpiry || !isIsoInstant(parsed.recordedAt) || typeof parsed.id !== 'string' || !UUID_PATTERN.test(parsed.id)) {
       return fail('VALIDATION_FAILED', { field: 'cursor' });
     }
     return ok(parsed as Cursor);
