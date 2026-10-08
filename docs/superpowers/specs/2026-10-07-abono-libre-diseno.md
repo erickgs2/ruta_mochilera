@@ -1,8 +1,8 @@
 # Diseño: Abono libre desde la app
 
 **Fecha:** 2026-10-07
-**Estado:** borrador para aprobación del dueño del producto. **No se implementa** hasta que el dueño
-apruebe este documento y responda las «Decisiones abiertas» (§15).
+**Estado:** **aprobado** por el dueño del producto el 2026-10-07, con las diez decisiones de §15
+tal como se recomendaron. Siguiente paso: el plan de implementación.
 **Antecede:** `docs/superpowers/specs/2026-10-03-fase-2a-reservas-y-pagos-diseno.md` (Fase 2A) y
 `docs/superpowers/specs/2026-10-07-fase-2b-mostrador-diseno.md` (Fase 2B), ambas en `main`.
 **Alcance:** API y dominio (`libs/contracts`, `libs/domain/payments`, `libs/payments-stripe`,
@@ -36,6 +36,7 @@ lo verificable no espere a lo que no lo es:
 
 | Plan | Contenido | Depende de |
 |---|---|---|
+| Previo | El sobrepago que hoy no se acredita (§5.3) y el orden de bloqueo único (§6.2), que ya fallan en `main` sin abono libre. El dueño pidió corregirlos antes, como su propio ticket (rama `fix/payments-overpayment-and-lock-order`) | — |
 | A | Contrato (§4), mínimos y máximos (§5.1–§5.2), sobrepago a saldo a favor (§5.3), OXXO en `ACTIVE` (§5.4), tarjeta (§5.6), mensualidad (§5.8), orden de bloqueo (§6), conciliación y recibos (§7), job (§9) sin la parte SPEI | Las respuestas del dueño (§15) |
 | B | SPEI (§5.5, §6.4 y la parte SPEI de §9) | Plan A integrado y la verificación en modo de prueba de Stripe (D6) |
 
@@ -50,7 +51,8 @@ Recibida a través de Alpha (líder del equipo), en estas palabras:
 > tiene **su propio vencimiento**.
 
 Esta decisión **reemplaza** la decisión 1 de la Fase 2A («SPEI queda para después»). Los valores
-concretos (cuánto es el mínimo, cuántos días dura una ficha, etc.) no se decidieron y están en §15.
+concretos (cuánto es el mínimo, cuántos días dura una ficha, etc.) los decidió el dueño al aprobar
+este documento y están en §15.
 
 ---
 
@@ -604,12 +606,13 @@ aquí: la UI llega con el rediseño.
 
 ---
 
-## 15. Decisiones abiertas
+## 15. Decisiones del dueño (2026-10-07)
 
-Cada una necesita la respuesta del dueño antes de implementar. La recomendación es de Echo; **no es
-la respuesta del dueño**.
+Se presentaron como decisiones abiertas, cada una con una recomendación de Echo. **El dueño del
+producto aprobó las diez tal como se recomendaron, el 2026-10-07** (respuesta recibida a través de
+Alpha). La columna «Decisión» es, por lo tanto, la decisión vigente.
 
-| # | Pregunta | Recomendación | Por qué |
+| # | Pregunta | Decisión | Por qué |
 |---|---|---|---|
 | **D1** | ¿Cuál es el **monto mínimo de un abono** sobre una reserva `ACTIVE`? (Si se debe menos, el mínimo es lo que se debe.) | **$300.00 MXN**, editable en configuración | Cada abono genera un recibo, un aviso y una comisión fija del proveedor. A $300 la parte fija pesa poco, y sigue siendo alcanzable para un mochilero |
 | **D2** | Sobre un apartado (`HELD`), ¿el abono debe cubrir **por lo menos lo que falta del anticipo**? | **Sí** | Un abono menor no asegura el lugar: el apartado vence igual y el dinero se vuelve saldo a favor. El viajero cree que «ya abonó» y pierde el lugar |
