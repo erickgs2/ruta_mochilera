@@ -1,5 +1,6 @@
 import type { Routes } from '@angular/router';
 import { authGuard, permissionGuard } from '@rm/auth-web';
+import { landingRedirect } from './layout/landing';
 
 export const appRoutes: Routes = [
   {
@@ -11,7 +12,7 @@ export const appRoutes: Routes = [
     canActivate: [authGuard],
     loadComponent: () => import('./layout/shell.component').then((m) => m.ShellComponent),
     children: [
-      { path: '', pathMatch: 'full', redirectTo: 'trips' },
+      { path: '', pathMatch: 'full', redirectTo: landingRedirect },
       {
         path: 'trips',
         canActivate: [permissionGuard('trip.view')],
