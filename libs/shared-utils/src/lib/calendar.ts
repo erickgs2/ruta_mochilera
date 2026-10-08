@@ -27,6 +27,21 @@ export function monthStartsBetween(from: Date, to: Date, timeZone: string): numb
 }
 
 /**
+ * The calendar day (`YYYY-MM-DD`) a date-only value stands for: the UTC date
+ * part of the `Date`, which is exactly what Prisma stores in a `@db.Date`
+ * column and what it reads back (UTC midnight of that day). Any time-of-day
+ * a caller sent along (`2027-01-22T06:00:00Z`) is ignored, and the server's
+ * own time zone plays no part. Two of these compare chronologically as plain
+ * strings, which is how rules such as "the return is not before the
+ * departure" should compare two `@db.Date` values.
+ */
+export function calendarDay(date: Date): string {
+  const day = DateTime.fromJSDate(date, { zone: 'utc' }).toISODate();
+  if (!day) throw new Error('calendarDay received an invalid Date');
+  return day;
+}
+
+/**
  * True when `date` -- a date-only value such as a `@db.Date` column -- falls
  * on a calendar day strictly before "today" in the given IANA timezone,
  * where "today" is derived from `now`.

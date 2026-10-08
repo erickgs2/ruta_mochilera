@@ -9,7 +9,7 @@ import {
   lockTripForCapacity,
 } from '@rm/domain-reservations';
 import { organizationTimeZone } from '@rm/domain-settings';
-import { fail, isPastDate, ok, type Result } from '@rm/shared-utils';
+import { calendarDay, fail, isPastDate, ok, type Result } from '@rm/shared-utils';
 import { slugify } from './slug';
 import { canTransition, type TripStatus } from './trip-status';
 
@@ -156,10 +156,14 @@ function validateDates(input: {
   returnDate: Date;
   paymentDeadline: Date;
 }): Result<null> {
-  if (input.returnDate < input.departureDate) {
+  // The three are calendar days (`@db.Date`), compared as such: the request
+  // may carry a time of day (`...T06:00:00Z`), which the column drops, so
+  // comparing the raw instants would reject a payment deadline on the day of
+  // departure whenever its time came later.
+  if (calendarDay(input.returnDate) < calendarDay(input.departureDate)) {
     return fail('VALIDATION_FAILED', { field: 'returnDate' });
   }
-  if (input.paymentDeadline > input.departureDate) {
+  if (calendarDay(input.paymentDeadline) > calendarDay(input.departureDate)) {
     return fail('VALIDATION_FAILED', { field: 'paymentDeadline' });
   }
   return ok(null);

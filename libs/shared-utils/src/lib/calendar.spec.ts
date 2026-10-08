@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest';
-import { endOfCalendarDay, isCalendarDateNotAfter, isPastDate, monthStartsBetween, noonOrNow, resolveBackfillMoments } from './calendar';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { calendarDay, endOfCalendarDay, isCalendarDateNotAfter, isPastDate, monthStartsBetween, noonOrNow, resolveBackfillMoments } from './calendar';
 
 const TZ = 'America/Mexico_City';
 const at = (iso: string) => new Date(iso);
@@ -160,5 +160,56 @@ describe('resolveBackfillMoments', () => {
         error: { code: 'VALIDATION_FAILED', details: { field: 'createdAt' } },
       });
     }
+  });
+});
+
+describe('calendarDay', () => {
+  it('is the UTC date part, ignoring any time of day the caller sent', () => {
+    expect(calendarDay(at('2027-01-22T00:00:00Z'))).toBe('2027-01-22');
+    expect(calendarDay(at('2027-01-22T06:00:00Z'))).toBe('2027-01-22');
+    expect(calendarDay(at('2027-01-22T23:59:59Z'))).toBe('2027-01-22');
+    expect(calendarDay(at('2027-01-23T00:00:00Z'))).toBe('2027-01-23');
+  });
+
+  it('throws on an invalid Date', () => {
+    expect(() => calendarDay(new Date(Number.NaN))).toThrow();
+  });
+});
+
+describe.each(['UTC', 'Asia/Tokyo', 'America/Mexico_City'])('calendar rules with the server running in %s', (serverZone) => {
+  const originalTimeZone = process.env['TZ'];
+  beforeEach(() => {
+    process.env['TZ'] = serverZone;
+  });
+  afterEach(() => {
+    if (originalTimeZone === undefined) delete process.env['TZ'];
+    else process.env['TZ'] = originalTimeZone;
+  });
+
+  it('calendarDay does not depend on the server zone', () => {
+    expect(calendarDay(at('2027-01-22T00:00:00Z'))).toBe('2027-01-22');
+  });
+
+  it('isPastDate evaluates "today" in the organization zone, not the server zone', () => {
+    // 2027-01-22T03:00Z is still Jan 21 21:00 in Mexico City.
+    const now = at('2027-01-22T03:00:00Z');
+    expect(isPastDate(at('2027-01-21T00:00:00Z'), now, TZ)).toBe(false);
+    expect(isPastDate(at('2027-01-20T00:00:00Z'), now, TZ)).toBe(true);
+  });
+
+  it('endOfCalendarDay is the last instant of the day in the organization zone', () => {
+    expect(endOfCalendarDay(at('2027-03-01T00:00:00Z'), TZ).toISOString()).toBe('2027-03-02T05:59:59.999Z');
+  });
+
+  it('monthStartsBetween keeps the last payment opportunity of the deadline day', () => {
+    const deadline = endOfCalendarDay(at('2027-03-01T00:00:00Z'), TZ);
+    expect(monthStartsBetween(at('2027-02-10T18:00:00Z'), deadline, TZ)).toBe(1);
+  });
+
+  it('noonOrNow and resolveBackfillMoments stamp noon of the picked day in the organization zone', () => {
+    const now = at('2027-06-01T18:00:00Z');
+    expect(noonOrNow('2027-01-22', TZ, now).toISOString()).toBe('2027-01-22T18:00:00.000Z');
+    const resolved = resolveBackfillMoments([{ field: 'paidAt', date: '2027-01-22' }], TZ, now);
+    expect(resolved.ok && resolved.value[0].toISOString()).toBe('2027-01-22T18:00:00.000Z');
   });
 });

@@ -140,6 +140,15 @@ bloqueo: es un número que por naturaleza es una foto del momento.
 | `payment_deadline ≤ departure_date` | `VALIDATION_FAILED` | `VALIDATION_FAILED` |
 | Existe traducción en español | `MISSING_REQUIRED_TRANSLATION` | `MISSING_REQUIRED_TRANSLATION` |
 
+Las tres fechas son días calendario (columnas `DATE`), y las dos comparaciones
+de fechas de la tabla se hacen **entre días**, no entre instantes: se toma la
+parte de fecha en UTC de lo que llegó (`calendarDay`, `@rm/shared-utils`) y se
+ignora cualquier hora, que la columna descarta de todos modos. Comparar los
+instantes en crudo rechazaba, por ejemplo, un `payment_deadline` de
+`2026-12-01T18:00:00Z` contra un `departure_date` de `2026-12-01T00:00:00Z`
+aunque son el mismo día, que la regla permite (`≤`). El resultado no depende de
+la zona horaria del servidor.
+
 Nota: al crear, un viaje nuevo no tiene nada "ya comprometido" todavía, así que
 exceder el cupo con `pre_sold_seats` es sencillamente un dato inválido
 (`INVALID_CAPACITY`). Al editar, esa misma condición se evalúa como parte de
