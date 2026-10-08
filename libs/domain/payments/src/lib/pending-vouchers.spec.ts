@@ -198,6 +198,8 @@ describe('listPendingVouchers', () => {
     ['a missing id', { voucherExpiresAt: valid.voucherExpiresAt, recordedAt: valid.recordedAt }],
     ['a numeric id', { ...valid, id: 7 }],
     ['a recordedAt that is not a date', { ...valid, recordedAt: 'yesterday' }],
+    ['a recordedAt that is a date only', { ...valid, recordedAt: '2026-01-01' }],
+    ['a recordedAt without milliseconds', { ...valid, recordedAt: '2026-01-01T00:00:00Z' }],
     ['a missing recordedAt', { voucherExpiresAt: valid.voucherExpiresAt, id: valid.id }],
     ['a null recordedAt', { ...valid, recordedAt: null }],
     ['a voucherExpiresAt that is not a date', { ...valid, voucherExpiresAt: 'soon' }],
