@@ -9,7 +9,6 @@ import {
 import { notifyAdmins, notifyCustomer, type NotificationQueue } from '@rm/domain-notifications';
 import { OXXO_VOUCHER_EXPIRED_FAILURE_CODE, type WebhookEvent, type WebhookPaymentIntent } from '@rm/payments-stripe';
 import { fail, formatMoney, ok, type DomainError, type DomainErrorCode, type Result } from '@rm/shared-utils';
-import { creditFromCancellation } from './credit-service';
 import { confirmPaymentWithin } from './payment-service';
 import { enqueueReceipt } from './receipt-service';
 
@@ -59,11 +58,10 @@ function tripNameFor(
  * - `NOT_FOUND` -- no reservation anywhere to attach it to (an intent
  *   created outside the app carries no `metadata.reservationId`, and a
  *   `Payment` row cannot exist without a reservation).
- * - `PAYMENT_EXCEEDS_BALANCE` -- two OXXO vouchers for the full balance can
- *   both be issued and both be paid, which `payments.md` records as an
- *   accepted consequence of a pending payment not reducing the balance.
- *   The overpayment becomes credit in Phase 2B; until then it is a person's
- *   call.
+ * - `PAYMENT_EXCEEDS_BALANCE` -- no longer reachable from here: money the
+ *   provider took is recorded whole and its excess becomes the customer's
+ *   credit (`excessToCredit`, owner decision D7). Kept as a defence: if a
+ *   path ever refused it again, a person would still see the money.
  * - `INVALID_STATUS_TRANSITION` -- the payment was already written off as
  *   `FAILED` or `EXPIRED` (typically by `expireHolds` cancelling its
  *   intent) and the money turns out to have gone through anyway. Reviving
@@ -263,14 +261,11 @@ async function applySucceeded(
     // provider outage, can still land here). Same treatment as an expired
     // hold -- money recorded, reservation left as it is, a person decides --
     // in words that say "cancelled" rather than "your hold expired".
-    // Phase 2B: the money is not left in limbo -- it becomes the customer's
+    // Phase 2B: the money is not left in limbo -- it became the customer's
     // credit, like everything the reservation had received when cancelled.
-    await creditFromCancellation(tx, {
-      customerId: context.customerId,
-      reservationId: context.reservation.id,
-      amountCents: confirmed.value.amountCents,
-      paymentId: confirmed.value.id,
-    });
+    // That happened while the payment was settled (`settleConfirmedPayment`),
+    // before it was numbered: crediting it here, after the receipt counter,
+    // broke the lock order (see "Lock order" in `payment-service.ts`).
     await notifyCustomer(tx, queue, {
       customerId: context.customerId,
       reservationId: context.reservation.id,
@@ -290,6 +285,24 @@ async function applySucceeded(
     return ok(null);
   }
 
+  // Owner decision D7: money above what the reservation owed became credit
+  // while the payment was settled. Quoting "your remaining balance is $0"
+  // would hide where the rest went, so that payment gets its own notice.
+  const creditedCents = await overpaymentCredited(tx, confirmed.value.id);
+  if (creditedCents > 0) {
+    await notifyCustomer(tx, queue, {
+      customerId: context.customerId,
+      reservationId: context.reservation.id,
+      eventType: 'PAYMENT_EXCESS_CREDITED',
+      params: {
+        tripName: context.tripName,
+        amount: formatMoney(confirmed.value.amountCents, context.locale),
+        credited: formatMoney(creditedCents, context.locale),
+      },
+    });
+    return ok(null);
+  }
+
   await notifyCustomer(tx, queue, {
     customerId: context.customerId,
     reservationId: context.reservation.id,
@@ -301,6 +314,15 @@ async function applySucceeded(
     },
   });
   return ok(null);
+}
+
+/** What settling this payment credited as `OVERPAYMENT` -- at most one entry per payment, so 0 or its amount. */
+async function overpaymentCredited(tx: DbTransactionClient, paymentId: string): Promise<number> {
+  const entry = await tx.customerCreditEntry.findFirst({
+    where: { paymentId, kind: 'OVERPAYMENT' },
+    select: { amountCents: true },
+  });
+  return entry?.amountCents ?? 0;
 }
 
 /**

@@ -151,6 +151,26 @@ aplicar a una nueva reservación o devolver. `expireHolds` la envía en lugar de
 recibiendo `HOLD_EXPIRED`. No es un aviso adicional: es uno u otro, dentro de
 la misma transacción.
 
+## `PAYMENT_EXCESS_CREDITED` (decisión D7 del dueño, 2026-10-07)
+
+Variante de `PAYMENT_CONFIRMED` para un pago que Stripe confirmó por **más de
+lo que la reserva debía** (dos fichas por el total, una ficha más una tarjeta;
+ver `payments.md`, «Sobrepago confirmado»). El webhook la envía en lugar de
+`PAYMENT_CONFIRMED` sólo cuando liquidar el pago acreditó un `OVERPAYMENT`; es
+una u otra, dentro de la misma transacción. `DeliveryEventType` pasa a 15
+miembros.
+
+Plantilla propia, no `PAYMENT_CONFIRMED` con otro `{{balance}}`: esa dice «tu
+saldo restante es de $0.00» y escondería a dónde fue el resto del dinero. Ésta
+dice que la reservación quedó liquidada y cuánto del pago (`{{credited}}`) quedó
+como saldo a favor en «Mi cuenta», con el monto recibido (`{{amount}}`). No
+cita saldo pendiente: si hubo excedente es porque ya no se debe nada.
+
+Sólo para una reserva viva. El excedente de un pago sobre una reserva
+`CANCELLED` o `EXPIRED` también se acredita, pero esos casos ya tienen su aviso
+(`PAYMENT_AFTER_CANCELLATION`, `PAYMENT_AFTER_EXPIRY`) y no se manda un segundo.
+Tampoco hay aviso al personal: el dinero ya quedó donde debe.
+
 ## Un fallo de envío no debe perder la copia de bandeja
 
 Si `EmailProvider.send` falla (dirección mal formada, proveedor caído), la

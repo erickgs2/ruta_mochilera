@@ -69,8 +69,10 @@ export async function registerCashPayment(
   if (!UUID_PATTERN.test(input.reservationId)) return fail('NOT_FOUND');
 
   return rollbackable(db, async (tx: DbTransactionClient): Promise<Result<PaymentDto>> => {
-    // Lock order: trip, reservation, customer. Reviving takes the trip first,
-    // so it runs before this transaction locks the reservation.
+    // See "Lock order" in `payment-service.ts`: trip, reservation, customer,
+    // receipt counter. Reviving takes the trip first, so it runs before this
+    // transaction locks the reservation; `recordPayment` numbers the receipt
+    // last.
     let revived = false;
     if (reviveReservation) {
       const brought = await reviveForPayment(tx, reviveReservation, {

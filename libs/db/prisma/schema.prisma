@@ -105,6 +105,11 @@ enum CreditEntryKind {
   EXPIRATION
   /// Taken back from the credit when an expired reservation is revived.
   REVIVAL
+  /// The part of a provider-confirmed payment above what its reservation
+  /// still owed (owner decision D7). At most one per payment: a partial
+  /// unique index on `payment_id`, raw SQL in migration
+  /// `20261009000100_credit_entry_overpayment_unique`.
+  OVERPAYMENT
 }
 
 enum PasswordResetPurpose {

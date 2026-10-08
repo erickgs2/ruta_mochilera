@@ -12,6 +12,7 @@ flowchart LR
         C["CANCELLATION<br/>reserva cancelada con paid_cents > 0,<br/>o pago que llega tras cancelar"]
         P["PRICE_DECREASE<br/>bajada de precio bajo lo pagado:<br/>la diferencia sale de paid_cents"]
         E["EXPIRATION<br/>apartado vencido con paid_cents > 0:<br/>la reserva conserva paid_cents"]
+        O["OVERPAYMENT<br/>pago confirmado mayor que el saldo:<br/>el excedente nunca entra a paid_cents"]
         AP["ADJUSTMENT +<br/>corrección o cortesía, con motivo"]
     end
     subgraph Saldo["Saldo del cliente"]
@@ -26,6 +27,7 @@ flowchart LR
     C --> S
     P --> S
     E --> S
+    O --> S
     AP --> S
     S --> A
     S --> R
@@ -36,7 +38,9 @@ flowchart LR
 Las entradas automáticas (`CANCELLATION`, `PRICE_DECREASE` y `EXPIRATION`) y la
 salida automática `REVIVAL` las escriben funciones de `@rm/domain-payments` que
 las operaciones de reservas y el worker reciben **inyectadas**, dentro de su
-propia transacción: los dominios no se importan entre sí. `REFUND`,
+propia transacción: los dominios no se importan entre sí. `OVERPAYMENT` (y el
+`CANCELLATION` de un pago tardío) los escribe el propio `@rm/domain-payments`
+al liquidar un pago confirmado (decisión D7). `REFUND`,
 `ADJUSTMENT` y `APPLIED` los dispara siempre una persona con
 `payment.credit.apply`.
 
@@ -48,7 +52,7 @@ sequenceDiagram
     participant Op as "Cancelar / webhook / cambio de precio"
     participant DB as PostgreSQL
 
-    Note over Op,DB: "Orden de bloqueo en toda operación: reserva primero, cliente después"
+    Note over Op,DB: "Orden de bloqueo en toda operación: reserva, cliente, y el folio al final"
 
     rect rgb(240, 240, 240)
         Note over Op,DB: "Cancelar una reserva"
@@ -60,7 +64,16 @@ sequenceDiagram
     rect rgb(240, 240, 240)
         Note over Op,DB: "Llega dinero para una reserva ya cancelada (webhook)"
         Op->>DB: "¿ya hay CANCELLATION de ese payment_id? Si sí, no hace nada"
-        Op->>DB: "CANCELLATION (+monto, payment_id)"
+        Op->>DB: "CANCELLATION (+lo que cupo en el saldo, payment_id)"
+        Op->>DB: "excedente > 0 ? OVERPAYMENT (+excedente, payment_id)"
+        Note over DB: "antes de numerar el recibo"
+    end
+
+    rect rgb(240, 240, 240)
+        Note over Op,DB: "Stripe confirma más de lo que la reserva debía (webhook, decisión D7)"
+        Op->>DB: "paid_cents += min(monto, saldo)"
+        Op->>DB: "OVERPAYMENT (+excedente, payment_id), uno por pago"
+        Note over DB: "la conciliación nocturna resta estos OVERPAYMENT de los pagos"
     end
 
     rect rgb(240, 240, 240)

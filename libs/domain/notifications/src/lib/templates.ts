@@ -18,6 +18,7 @@ export type DeliveryEventType =
   | 'HOLD_EXPIRED'
   | 'HOLD_EXPIRED_CREDIT'
   | 'PAYMENT_CONFIRMED'
+  | 'PAYMENT_EXCESS_CREDITED'
   | 'PAYMENT_FAILED'
   | 'VOUCHER_EXPIRED'
   | 'PAYMENT_AFTER_EXPIRY'
@@ -35,6 +36,7 @@ export const DELIVERY_EVENT_TYPES: readonly DeliveryEventType[] = [
   'HOLD_EXPIRED',
   'HOLD_EXPIRED_CREDIT',
   'PAYMENT_CONFIRMED',
+  'PAYMENT_EXCESS_CREDITED',
   'PAYMENT_FAILED',
   'VOUCHER_EXPIRED',
   'PAYMENT_AFTER_EXPIRY',
@@ -144,6 +146,22 @@ const TEMPLATES: Record<DeliveryEventType, LocaleTemplates> = {
     en: template(
       'We received your payment for {{tripName}}',
       'We received your payment of {{amount}} for {{tripName}}. Your remaining balance is {{balance}}.'
+    ),
+  },
+  // Owner decision D7: a confirmed payment above what the reservation still
+  // owed. Not `PAYMENT_CONFIRMED`, whose "your remaining balance is $0.00"
+  // would hide where the rest of the money went; this says the reservation
+  // is paid and how much of the payment became credit. The reservation is
+  // always fully paid when this is sent -- an excess only exists once the
+  // balance is covered -- so it quotes no balance.
+  PAYMENT_EXCESS_CREDITED: {
+    es: template(
+      'Recibimos tu pago para {{tripName}}',
+      'Recibimos tu pago de {{amount}} para {{tripName}}. Tu reservación ya quedó liquidada, así que {{credited}} de ese pago quedaron como saldo a favor en tu cuenta: puedes verlo en «Mi cuenta».'
+    ),
+    en: template(
+      'We received your payment for {{tripName}}',
+      'We received your payment of {{amount}} for {{tripName}}. Your reservation is now fully paid, so {{credited}} of that payment is now account credit: you can see it under My account.'
     ),
   },
   PAYMENT_FAILED: {

@@ -73,8 +73,24 @@ describe('renderTemplate', () => {
     // already expired; and Task 19's payment that landed after staff had
     // cancelled the reservation; and the customer's notice that staff
     // declined their cancellation request; and Phase 2B's price change and
-    // the expired-hold notice that says the money became credit.
-    expect(DELIVERY_EVENT_TYPES).toHaveLength(14);
+    // the expired-hold notice that says the money became credit; and the
+    // payment whose excess became credit (owner decision D7).
+    expect(DELIVERY_EVENT_TYPES).toHaveLength(15);
+  });
+
+  it('tells the customer, in both languages, how much of a payment became credit and never quotes a balance', () => {
+    const params = { tripName: 'Oaxaca', amount: '$1,500.00 MXN', credited: '$500.00 MXN' };
+
+    const es = renderTemplate('PAYMENT_EXCESS_CREDITED', 'es', params);
+    const en = renderTemplate('PAYMENT_EXCESS_CREDITED', 'en', params);
+
+    expect(es.body).toContain('$1,500.00 MXN');
+    expect(es.body).toContain('$500.00 MXN');
+    expect(es.body).toContain('saldo a favor');
+    expect(en.body).toContain('$1,500.00 MXN');
+    expect(en.body).toContain('$500.00 MXN');
+    expect(en.body).toContain('credit');
+    expect(`${es.subject}${es.body}${en.subject}${en.body}`).not.toContain('{{');
   });
 
   it('says in both languages that the money of an expired hold became credit', () => {
