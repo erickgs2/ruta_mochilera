@@ -1,7 +1,8 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { closeTestDb, prepareTestDb, resetDatabase, withTestDb } from '@rm/db/testing';
-import { loginAsCustomer } from '../../../../test-support/auth-fixtures';
+import { loginAs, loginAsCustomer, seedPermissionCatalog } from '../../../../test-support/auth-fixtures';
 import { POST as markReadRoute } from './[deliveryId]/read/route';
+import { POST as markAllReadRoute } from './read-all/route';
 import { GET as listInboxRoute } from './route';
 
 const db = withTestDb();
@@ -112,6 +113,86 @@ describe('notifications endpoints', () => {
       );
       expect(response.status).toBe(401);
       expect((await response.json()).code).toBe('TOKEN_INVALID');
+    });
+  });
+
+  describe('POST /api/v1/notifications/read-all', () => {
+    const noParams = { params: Promise.resolve({}) };
+
+    it("marks all of the caller's unread deliveries as read (204) and leaves everyone else's alone", async () => {
+      const { token, userId } = await loginAsCustomer(db, 'read-all-owner@agency.test');
+      const other = await loginAsCustomer(db, 'read-all-stranger@agency.test');
+      await seedDelivery(userId);
+      await seedDelivery(userId);
+      const strangers = await seedDelivery(other.userId);
+
+      const response = await markAllReadRoute(request('/api/v1/notifications/read-all', token, { method: 'POST' }), noParams);
+
+      expect(response.status).toBe(204);
+      expect(await db.notificationDelivery.count({ where: { userId, readAt: null } })).toBe(0);
+      expect(await db.notificationDelivery.findUniqueOrThrow({ where: { id: strangers.id } })).toMatchObject({ readAt: null, status: 'SENT' });
+
+      const inbox = (await (await listInboxRoute(request('/api/v1/notifications', token))).json()) as { unreadCount: number };
+      expect(inbox.unreadCount).toBe(0);
+    });
+
+    it('works for staff with no permission at all, since it only touches their own inbox', async () => {
+      await seedPermissionCatalog(db);
+      const token = await loginAs(db, 'bare-staff@agency.test', []);
+      const staff = await db.user.findUniqueOrThrow({ where: { email: 'bare-staff@agency.test' } });
+      await seedDelivery(staff.id);
+
+      const response = await markAllReadRoute(request('/api/v1/notifications/read-all', token, { method: 'POST' }), noParams);
+
+      expect(response.status).toBe(204);
+      expect(await db.notificationDelivery.count({ where: { userId: staff.id, readAt: null } })).toBe(0);
+    });
+
+    it('returns 401 for an unauthenticated caller', async () => {
+      const response = await markAllReadRoute(request('/api/v1/notifications/read-all', undefined, { method: 'POST' }), noParams);
+      expect(response.status).toBe(401);
+    });
+  });
+
+  describe('the inbox item', () => {
+    it('carries the reservation id so the panel can link to it, null when there is none', async () => {
+      const { token, userId } = await loginAsCustomer(db, 'link-owner@agency.test');
+      const staff = await db.user.create({ data: { email: 'link-creator@agency.test', type: 'STAFF' } });
+      const trip = await db.trip.create({
+        data: {
+          slug: 'link-trip',
+          departureDate: new Date('2028-03-01'),
+          returnDate: new Date('2028-03-07'),
+          paymentDeadline: new Date('2028-02-01'),
+          totalCapacity: 20,
+          holdTtlHours: 72,
+          minimumDepositCents: 100_000,
+          createdById: staff.id,
+        },
+      });
+      const reservation = await db.reservation.create({
+        data: {
+          code: 'RM-LINK',
+          tripId: trip.id,
+          customerId: userId,
+          status: 'HELD',
+          holdExpiresAt: new Date('2028-01-01'),
+          totalPriceCents: 500_000,
+          minimumDepositCents: 100_000,
+          paymentDeadline: trip.paymentDeadline,
+          source: 'APP',
+        },
+      });
+      const withLink = await seedDelivery(userId, { createdAt: new Date('2027-01-02T00:00:00Z') });
+      await db.notificationDelivery.update({ where: { id: withLink.id }, data: { reservationId: reservation.id } });
+      const withoutLink = await seedDelivery(userId, { createdAt: new Date('2027-01-01T00:00:00Z') });
+
+      const body = (await (await listInboxRoute(request('/api/v1/notifications', token))).json()) as {
+        items: { id: string; reservationId: string | null }[];
+      };
+
+      expect(body.items.find((item) => item.id === withLink.id)?.reservationId).toBe(reservation.id);
+      expect(body.items.find((item) => item.id === withoutLink.id)?.reservationId).toBeNull();
     });
   });
 });

@@ -3,6 +3,7 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { TestBed } from '@angular/core/testing';
 import { API_BASE_URL } from './api-client';
 import {
+  AdminPaymentsApi,
   AdminReservationsApi,
   AuthApi,
   CostingApi,
@@ -147,6 +148,25 @@ describe('endpoints', () => {
     const req = httpMock.expectOne('https://api.test/api/v1/notifications/d-1/read');
     expect(req.request.method).toBe('POST');
     req.flush({});
+  });
+
+  it('NotificationsApi.markAllRead posts to the read-all endpoint', () => {
+    TestBed.inject(NotificationsApi).markAllRead().subscribe();
+    const req = httpMock.expectOne('https://api.test/api/v1/notifications/read-all');
+    expect(req.request.method).toBe('POST');
+    req.flush(null);
+  });
+
+  it('AdminPaymentsApi.pendingVouchers asks for PENDING and forwards method, cursor and limit', () => {
+    TestBed.inject(AdminPaymentsApi).pendingVouchers({ method: 'SPEI', cursor: 'c-1', limit: 10 }).subscribe();
+    const req = httpMock.expectOne(
+      (r) => r.url === 'https://api.test/api/v1/admin/payments' && r.params.get('status') === 'PENDING'
+    );
+    expect(req.request.method).toBe('GET');
+    expect(req.request.params.get('method')).toBe('SPEI');
+    expect(req.request.params.get('cursor')).toBe('c-1');
+    expect(req.request.params.get('limit')).toBe('10');
+    req.flush({ items: [], nextCursor: null });
   });
 
   it('PublicCatalogueApi.list calls GET /api/v1/public/trips', () => {

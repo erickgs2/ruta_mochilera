@@ -308,6 +308,31 @@ cliente y mentiría en cuanto hubiera más de una página. Las filas `EMAIL` y
 las de otros clientes nunca cuentan. `markRead` lo baja en uno en la
 siguiente lectura.
 
+## La bandeja del personal: enlace a la reserva y «marcar todo»
+
+La bandeja es la misma para clientes y personal: `listInbox` filtra por
+`user_id = quien llama` y `channel = INBOX`, sin permiso de por medio. Dos
+cosas para el panel del personal:
+
+- **`reservationId` en cada ítem.** `InboxItemDto` y el contrato
+  `inboxItemSchema` traen `reservationId` (nullable): la reserva de la que
+  trata el aviso, para que el panel enlace a ella. Los tres avisos del personal
+  (`CANCELLATION_REQUESTED`, `ORPHAN_PAYMENT`, `PAID_CENTS_MISMATCH`) lo llevan;
+  es `null` cuando el aviso no trata de una sola reserva o cuando la reserva
+  se borró (`ON DELETE SET NULL`). Aditivo: la app de clientes lo ignora. El tipo de aviso (`eventType`) sigue bastando
+  para elegir la acción.
+- **`markAllRead(db, userId)`** (`POST /notifications/read-all`, 204, sin
+  permiso: sólo toca las filas de quien llama). Marca como leída
+  (`status = READ`, `read_at = ahora`) cada fila `INBOX` suya con `read_at`
+  nulo. **Nunca** toca las filas `EMAIL` —registran el envío, no la lectura—
+  ni las de otra persona, y una fila ya leída conserva su `read_at` original.
+  No tener nada sin leer no es un error, y repetirla tampoco. Después
+  `unreadCount` es 0.
+
+**Quién recibe las alertas del personal no cambia aquí:** `notifyAdmins` sigue
+yendo a quien tiene `reservation.cancel` (ver arriba); ampliar los
+destinatarios es una decisión aparte.
+
 ## `markRead` y `DELIVERY_NOT_OWNED`
 
 `markRead(db, deliveryId, customerId)` marca una entrega de bandeja propia

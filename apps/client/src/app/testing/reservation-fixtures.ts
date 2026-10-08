@@ -83,6 +83,7 @@ export function inboxItem(overrides: Partial<InboxItem> = {}): InboxItem {
   return {
     id: 'd-1',
     eventType: 'HOLD_EXPIRING',
+    reservationId: null,
     title: 'Tu apartado vence pronto',
     body: 'Tu apartado de Oaxaca vence mañana.',
     status: 'SENT',

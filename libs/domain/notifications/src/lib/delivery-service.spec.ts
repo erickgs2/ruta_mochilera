@@ -4,7 +4,7 @@ import { closeTestQueue, resetTestQueue, withTestQueue } from '@rm/jobs/testing'
 import { SEND_NOTIFICATION_EMAIL_JOB } from '@rm/jobs';
 import type { Db } from '@rm/db';
 import { ConsoleEmailProvider, PROVIDER_REJECTED_TEST_ADDRESS, type EmailProvider, type EmailMessage } from '@rm/email';
-import { deliverQueuedEmail, listInbox, markRead, notifyAdmins, notifyCustomer } from './delivery-service';
+import { deliverQueuedEmail, listInbox, markAllRead, markRead, notifyAdmins, notifyCustomer } from './delivery-service';
 
 const db = withTestDb();
 const email: EmailProvider = new ConsoleEmailProvider();
@@ -480,6 +480,116 @@ describe('notification delivery service', () => {
       expect(page.value.items).toHaveLength(1);
       // 3 INBOX rows, 1 read; the EMAIL twins and the other customer's row never count.
       expect(page.value.unreadCount).toBe(2);
+    });
+  });
+
+  describe('inbox item reservation link', () => {
+    async function seedReservationFor(customerId: string): Promise<string> {
+      const trip = await db.trip.create({
+        data: {
+          slug: `link-${next()}`,
+          departureDate: new Date('2027-12-01'),
+          returnDate: new Date('2027-12-07'),
+          paymentDeadline: new Date('2027-11-01'),
+          totalCapacity: 20,
+          holdTtlHours: 72,
+          minimumDepositCents: 100000,
+          createdById: await seedPlainStaff(db),
+        },
+      });
+      const reservation = await db.reservation.create({
+        data: {
+          code: `RM-L${next()}`,
+          tripId: trip.id,
+          customerId,
+          status: 'HELD',
+          holdExpiresAt: new Date(Date.now() + 72 * 60 * 60 * 1000),
+          totalPriceCents: 500000,
+          minimumDepositCents: 100000,
+          paymentDeadline: trip.paymentDeadline,
+          source: 'APP',
+        },
+      });
+      return reservation.id;
+    }
+
+    it('carries the reservation an item is about so the panel can link to it, and null when there is none', async () => {
+      const customerId = await seedCustomer(db);
+      const staffId = await seedStaffWithPermission(db, 'reservation.cancel');
+      const reservationId = await seedReservationFor(customerId);
+      const boss = await withTestQueue();
+      await db.$transaction(async (tx) => {
+        await notifyAdmins(tx, boss, {
+          eventType: 'CANCELLATION_REQUESTED',
+          params: { customerName: 'Ana', tripName: 'Oaxaca', reservationCode: 'RM-1', reason: 'x' },
+          reservationId,
+        });
+        await notifyAdmins(tx, boss, {
+          eventType: 'ORPHAN_PAYMENT',
+          params: { paymentId: 'pay-1', amount: '$1.00', reservationCode: 'RM-1' },
+        });
+      });
+
+      const page = await listInbox(db, staffId, { limit: 10 });
+
+      expect(page.ok).toBe(true);
+      if (!page.ok) return;
+      const byEvent = new Map(page.value.items.map((item) => [item.eventType, item.reservationId]));
+      expect(byEvent.get('CANCELLATION_REQUESTED')).toBe(reservationId);
+      expect(byEvent.get('ORPHAN_PAYMENT')).toBeNull();
+    });
+  });
+
+  describe('markAllRead', () => {
+    async function inboxRow(userId: string, readAt: Date | null) {
+      return db.notificationDelivery.create({
+        data: {
+          userId,
+          eventType: 'ORPHAN_PAYMENT',
+          channel: 'INBOX',
+          renderedTitle: 't',
+          renderedBody: 'b',
+          status: readAt ? 'READ' : 'SENT',
+          sentAt: new Date('2027-01-01T00:00:00Z'),
+          readAt,
+        },
+      });
+    }
+
+    it("marks every unread INBOX delivery of the caller as read and nothing else", async () => {
+      const staffId = await seedStaffWithPermission(db, 'reservation.cancel');
+      const otherStaffId = await seedStaffWithPermission(db, 'reservation.cancel');
+      const earlier = new Date('2027-01-02T00:00:00Z');
+      const unreadA = await inboxRow(staffId, null);
+      const unreadB = await inboxRow(staffId, null);
+      const alreadyRead = await inboxRow(staffId, earlier);
+      const othersUnread = await inboxRow(otherStaffId, null);
+      const email = await db.notificationDelivery.create({
+        data: { userId: staffId, eventType: 'ORPHAN_PAYMENT', channel: 'EMAIL', renderedTitle: 't', renderedBody: 'b', status: 'PENDING' },
+      });
+
+      const result = await markAllRead(db, staffId);
+
+      expect(result.ok).toBe(true);
+      const rows = new Map((await db.notificationDelivery.findMany()).map((row) => [row.id, row]));
+      for (const id of [unreadA.id, unreadB.id]) {
+        expect(rows.get(id)).toMatchObject({ status: 'READ' });
+        expect(rows.get(id)?.readAt).not.toBeNull();
+      }
+      expect(rows.get(alreadyRead.id)?.readAt).toEqual(earlier);
+      expect(rows.get(othersUnread.id)).toMatchObject({ status: 'SENT', readAt: null });
+      expect(rows.get(email.id)).toMatchObject({ status: 'PENDING', readAt: null });
+
+      const page = await listInbox(db, staffId, {});
+      expect(page.ok && page.value.unreadCount).toBe(0);
+    });
+
+    it('succeeds when there is nothing unread, and again when repeated', async () => {
+      const staffId = await seedStaffWithPermission(db, 'reservation.cancel');
+      await inboxRow(staffId, null);
+
+      expect((await markAllRead(db, staffId)).ok).toBe(true);
+      expect((await markAllRead(db, staffId)).ok).toBe(true);
     });
   });
 

@@ -279,6 +279,11 @@ export class NotificationsApi {
   markRead(deliveryId: string): Observable<Ok<'/api/v1/notifications/{deliveryId}/read', 'post'>> {
     return this.api.post(`/api/v1/notifications/${deliveryId}/read`, {});
   }
+
+  /** Marks every unread item of the caller's own inbox as read. */
+  markAllRead(): Observable<Ok<'/api/v1/notifications/read-all', 'post'>> {
+    return this.api.post('/api/v1/notifications/read-all', {});
+  }
 }
 
 /** The query `AdminReservationsApi.list` accepts: the generated query type of `GET /api/v1/admin/reservations`. */
@@ -347,10 +352,27 @@ export class AdminReservationsApi {
   }
 }
 
-/** Payment receipts for staff (Phase 2B): download and resend. Both need `payment.view`. */
+type PendingVouchersQuery = NonNullable<paths['/api/v1/admin/payments']['get']['parameters']['query']>;
+
+/** Payments for staff: the pending-vouchers queue and receipts (Phase 2B, download and resend). All need `payment.view`. */
 @Injectable({ providedIn: 'root' })
 export class AdminPaymentsApi {
   private readonly api = inject(ApiClient);
+
+  /**
+   * The OXXO and SPEI vouchers still waiting to be paid, soonest expiry first;
+   * pass the previous page's `nextCursor` to continue. Never card intents.
+   */
+  pendingVouchers(
+    query: Omit<PendingVouchersQuery, 'status'> = {}
+  ): Observable<Ok<'/api/v1/admin/payments', 'get'>> {
+    return this.api.get('/api/v1/admin/payments', {
+      status: 'PENDING',
+      method: query.method,
+      cursor: query.cursor,
+      limit: query.limit?.toString(),
+    });
+  }
 
   receipt(paymentId: string): Observable<Blob> {
     return this.api.getBlob(`/api/v1/admin/payments/${paymentId}/receipt`);

@@ -574,6 +574,42 @@ La ruta (`GET /api/v1/admin/reservations/{id}/payments`) exige
 quién ve dinero de quién ve reservas, y el detalle del panel sólo pide el
 historial cuando quien mira tiene ese permiso.
 
+## Fichas por cobrar: la cola del mostrador
+
+`listPendingVouchers(db, { method, limit, cursor })` (`GET /admin/payments`,
+permiso `payment.view`, `libs/domain/payments/src/lib/pending-vouchers.ts`)
+lista las **fichas de OXXO y SPEI que siguen `PENDING`**, de todas las
+reservas, para que el mostrador sepa a quién perseguir.
+
+- **«Por confirmar» son sólo OXXO y SPEI.** Una intención de tarjeta abierta y
+  abandonada es ruido y nunca aparece; tampoco el efectivo ni lo que ya se
+  liquidó, falló o venció. El esquema sólo acepta `status=PENDING` (por
+  omisión) y `method` sólo puede acotar a `OXXO` o a `SPEI`; cualquier otro
+  valor es `VALIDATION_FAILED`.
+- **El personal no confirma nada aquí.** Un pago sólo existe cuando Stripe lo
+  confirma por webhook (arriba): la lista es dinero que se espera, con su
+  fecha límite, sin botón de «confirmar».
+- **Cada fila trae** lo que el mostrador necesita: el pago (monto, método,
+  `voucher_expires_at`, `provider_voucher_url`, `recorded_at`, `created_at`),
+  el código y el estado de la reserva, el cliente (`customerId` y nombre) y el
+  nombre del viaje en español (el `slug` si no tiene).
+- **Orden:** `voucher_expires_at` ascendente, **las fichas sin vencimiento al
+  final** (SPEI no lo lleva; sólo OXXO nace con el del apartado), luego
+  `recorded_at` e `id`. El cursor es de claves —`(vencimiento, recorded_at,
+  id)`, opaco— y no un desplazamiento: el vencimiento cambia mientras alguien
+  trabaja la lista y un desplazamiento saltaría o repetiría filas. Un cursor
+  que no emitimos es `VALIDATION_FAILED` con `field: cursor`: eso incluye un
+  `id` que no sea UUID (llegaría a una columna `uuid` y sería un 500), un
+  `recordedAt` ausente o que no sea el instante ISO que emitimos, y un
+  `voucherExpiresAt` que no sea ISO ni `null`.
+- **Páginas:** 25 por omisión, 100 como máximo.
+- **Índice:** `payments_pending_voucher_expires_idx`, parcial sobre
+  `voucher_expires_at WHERE status = 'PENDING'` (migración
+  `20261008120000_payments_pending_voucher_index`). Es parcial porque casi todo
+  pago acaba `SUCCEEDED` o `EXPIRED` y la cola sólo mira los que esperan;
+  Prisma no tiene sintaxis para índices parciales, así que no está en
+  `schema.prisma`.
+
 ## `reconcilePaidCents`: la conciliación nocturna (Tarea 8, §6 de la spec)
 
 Implementado en `apps/worker/src/jobs/reconcile-paid-cents.ts` como función
@@ -987,6 +1023,7 @@ Ningún código es nuevo: los cinco existen en el catálogo desde la Fase 1.
 | `apps/api/src/app/api/v1/admin/reservations/cash-vs-webhook.race.integration.spec.ts` | La carrera real: efectivo y saldo aplicado contra el webhook, por las rutas |
 | `libs/db/prisma/migrations/20261009000100_credit_entry_overpayment_unique/` | El índice único parcial: un `OVERPAYMENT` por pago |
 | `libs/domain/payments/src/lib/payment-intent-service.ts` | Crear el Payment Intent (Tarea 14): el monto nunca viaja desde el cliente |
+| `libs/domain/payments/src/lib/pending-vouchers.ts` | La cola de fichas OXXO/SPEI pendientes del mostrador, con cursor de claves |
 | `libs/db/prisma/migrations/20261004011500_payment_provider_intent_unique/` | El índice único que ancla la idempotencia |
 | `apps/worker/src/jobs/reconcile-paid-cents.ts` | El job nocturno de conciliación (Tarea 8) |
 

@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { uuidSchema } from './common';
+import { reservationStatusSchema } from './reservations';
 
 export const paymentIntentKindSchema = z.enum(['FULL', 'DEPOSIT']);
 export const paymentIntentMethodSchema = z.enum(['CARD', 'OXXO', 'SPEI']);
@@ -57,3 +58,38 @@ export const createdPaymentIntentSchema = z.object({
 export type CreatePaymentIntentRequest = z.infer<typeof createPaymentIntentRequestSchema>;
 export type PaymentContract = z.infer<typeof paymentSchema>;
 export type CreatedPaymentIntentContract = z.infer<typeof createdPaymentIntentSchema>;
+
+// --- Pending vouchers: the counter's "money to chase" queue ------------------
+
+/**
+ * The query string of `GET /api/v1/admin/payments`. `status` accepts only
+ * `PENDING` today (and defaults to it): the list is the OXXO and SPEI vouchers
+ * still waiting to be paid, never card intents, so `method` can only narrow it
+ * to one of the two.
+ */
+export const listStaffPaymentsQuerySchema = z.object({
+  status: z.literal('PENDING').default('PENDING'),
+  method: z.enum(['OXXO', 'SPEI']).optional(),
+  cursor: z.string().optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(25),
+});
+
+/** One pending voucher with what the counter needs to chase it, matching `@rm/domain-payments`' `StaffPaymentRowDto`. */
+export const staffPaymentRowSchema = paymentSchema.extend({
+  reservationCode: z.string(),
+  reservationStatus: reservationStatusSchema,
+  customerId: uuidSchema,
+  customerName: z.string(),
+  tripName: z.string(),
+  createdAt: z.iso.datetime(),
+});
+
+/** One page of pending vouchers, matching `StaffPaymentPageDto`. */
+export const staffPaymentPageSchema = z.object({
+  items: z.array(staffPaymentRowSchema),
+  nextCursor: z.string().nullable(),
+});
+
+export type ListStaffPaymentsQuery = z.infer<typeof listStaffPaymentsQuerySchema>;
+export type StaffPaymentRowContract = z.infer<typeof staffPaymentRowSchema>;
+export type StaffPaymentPageContract = z.infer<typeof staffPaymentPageSchema>;
