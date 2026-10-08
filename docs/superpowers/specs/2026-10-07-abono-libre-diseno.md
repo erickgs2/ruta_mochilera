@@ -212,16 +212,25 @@ parte como saldo a favor**. `webhook-handler.ts:62-66` y `payments.md:41-45` dic
 lo convierte en saldo a favor», pero la 2B no lo implementó. Con abono libre, el caso deja de ser
 raro: una ficha de $1,000 pendiente más una tarjeta por el resto, y luego el viajero paga la ficha.
 
-**La regla nueva**, en la transacción del webhook, bajo el candado de la reserva:
+**La regla nueva**, en la transacción del webhook, bajo el candado de la reserva, **en cualquier
+estado de la reserva** (decisión D7):
 
 ```
-si la reserva está HELD o ACTIVE:
-    aplicado  = min(monto, saldo)          -- saldo leído bajo el candado
-    excedente = monto − aplicado
-    paid_cents += aplicado
-    si HELD y paid_cents ≥ anticipo → ACTIVE (sin cambios)
-    si excedente > 0 → movimiento OVERPAYMENT (+excedente, reservation_id, payment_id)
+aplicado  = min(monto, saldo)              -- saldo leído bajo el candado
+excedente = monto − aplicado
+paid_cents += aplicado                     -- nunca pasa de total_price_cents
+si HELD y paid_cents ≥ anticipo → ACTIVE   (sin cambios)
+si CANCELLED → movimiento CANCELLATION (+aplicado, reservation_id, payment_id)   (sin cambios)
+si excedente > 0 → movimiento OVERPAYMENT (+excedente, reservation_id, payment_id)
 ```
+
+Qué queda de cada pago según el estado:
+
+| Estado | Lo aplicado | El excedente |
+|---|---|---|
+| `HELD` / `ACTIVE` | Cuenta en la reserva, como siempre | Saldo a favor (`OVERPAYMENT`) |
+| `EXPIRED` | Se queda en `paid_cents`, **sin acreditar**: decisión humana (`payments.md`, «Caso límite») | Saldo a favor (`OVERPAYMENT`) |
+| `CANCELLED` | Saldo a favor (`CANCELLATION`) | Saldo a favor (`OVERPAYMENT`) |
 
 - La fila `Payment` conserva `amount_cents` = **todo lo que se recibió**: es el dinero que se movió.
 - Vale para los dos caminos del webhook: confirmar la fila `PENDING` y `recordIfMissing` (hoy éste
@@ -232,17 +241,32 @@ si la reserva está HELD o ACTIVE:
   alcanzarse desde el webhook; se queda en `NEEDS_A_HUMAN` como defensa.
 - **No cambia** para efectivo, saldo aplicado, captura histórica ni importación: ahí el monto lo
   teclea una persona y rechazarlo con `PAYMENT_EXCEEDS_BALANCE` sigue siendo lo correcto.
-- **No cambia** para una reserva `EXPIRED` (pago tardío registrado, `paid_cents` sube, sin saldo a
-  favor, decisión humana: `payments.md`, «Caso límite») ni para una `CANCELLED` (todo el monto a
-  saldo a favor como `CANCELLATION`).
-- Aviso al viajero: `PAYMENT_CONFIRMED` si no hubo excedente; si lo hubo, `PAYMENT_EXCESS_CREDITED`
-  (nuevo) con monto recibido, monto aplicado y monto a saldo a favor. Es una plantilla propia por
-  la misma razón que `PAYMENT_AFTER_CANCELLATION`: es prosa distinta en cada idioma
-  (`notifications.md`). **Sujeto a D7.**
+- **Reserva `EXPIRED`:** el pago tardío se registra, `paid_cents` sube **hasta el total** y la
+  reserva no se reactiva (sin cambios). Lo que cupo sigue siendo decisión humana; lo que excede el
+  total ya no espera a nadie: es `OVERPAYMENT`, como en una reserva viva. Antes de D7 esta sección
+  decía «sin saldo a favor» para todo el pago; se corrigió (2026-10-08) para que coincida con la
+  decisión, que no distingue estados.
+- **Reserva `CANCELLED`:** todo el monto queda como saldo a favor, `CANCELLATION` por lo que cupo y
+  `OVERPAYMENT` por el excedente.
+- **Avisos al viajero** (plantillas propias, porque cada una es prosa distinta en cada idioma,
+  `notifications.md`):
+  - Reserva viva sin excedente: `PAYMENT_CONFIRMED`. Con excedente: `PAYMENT_EXCESS_CREDITED`
+    (nuevo), con monto recibido y monto a saldo a favor; no cita saldo pendiente ni dice
+    «liquidada».
+  - `EXPIRED` donde una parte cupo: `PAYMENT_AFTER_EXPIRY`, que además nombra la parte acreditada
+    si la hubo. `EXPIRED` donde **nada** cupo (otro pago tardío ya cubrió el total):
+    `PAYMENT_EXCESS_CREDITED`, porque no queda nada que una persona tenga que resolver.
+  - `CANCELLED`: `PAYMENT_AFTER_CANCELLATION`, que ya dice que todo quedó como saldo a favor.
+- **Aviso al personal** (`ORPHAN_PAYMENT`) sólo cuando queda algo por decidir: una parte del pago se
+  quedó en una `EXPIRED`, o el dinero no tiene reserva a la que atarse. Nunca por el excedente ni por
+  una `CANCELLED`. `LatePaymentCase` (decisión del dueño, 2026-10-08) lo reemplazará.
+- **Una vez por pago:** sólo la entrega del webhook que liquidó el pago (`PENDING → SUCCEEDED`) encola
+  el recibo y manda los avisos; un segundo evento del mismo intento no repite nada.
 - **Invariante** (sustituye la de `payments.md`, «Lo pagado de un apartado vencido»): para cada
   reserva, `paid_cents` = Σ pagos `SUCCEEDED` − Σ `PRICE_DECREASE` − Σ `OVERPAYMENT` de esa
   reserva; y el saldo que la reserva dejó en el cliente más su `paid_cents` si está viva es Σ de sus
-  pagos `SUCCEEDED`.
+  pagos `SUCCEEDED`, salvo la parte de un pago tardío que cupo en una `EXPIRED`, que espera la
+  decisión de una persona.
 
 ### 5.4 Ficha de OXXO sin apartado (`ACTIVE`)
 
@@ -319,8 +343,9 @@ es más probable.
 |---|---|---|
 | Reserva viva, monto ≤ saldo | Se aplica; folio; `PAYMENT_CONFIRMED` | No |
 | Reserva viva, monto > saldo (dos fichas, ficha + tarjeta, liquidada por otro camino, bajada de precio en medio) | Se divide; `OVERPAYMENT`; `PAYMENT_EXCESS_CREDITED` | **Sí** (§5.3) |
-| Apartado vencido (`EXPIRED`) | Se registra, `paid_cents` sube, sin saldo a favor; `PAYMENT_AFTER_EXPIRY` + `ORPHAN_PAYMENT` | No |
-| Reserva `CANCELLED` | Todo el monto a saldo a favor (`CANCELLATION`); `PAYMENT_AFTER_CANCELLATION` + `ORPHAN_PAYMENT` | No |
+| Apartado vencido (`EXPIRED`), una parte cabe | Se registra; `paid_cents` sube hasta el total; lo que cupo, sin acreditar (decisión humana); el excedente, `OVERPAYMENT`; `PAYMENT_AFTER_EXPIRY` (nombra lo acreditado) + `ORPHAN_PAYMENT` | **Sí**: el excedente se acredita (§5.3, D7) |
+| Apartado vencido (`EXPIRED`), nada cabe | Se registra; todo a `OVERPAYMENT`; `PAYMENT_EXCESS_CREDITED`; sin aviso al personal | **Sí** (§5.3, D7) |
+| Reserva `CANCELLED` | Todo el monto a saldo a favor (`CANCELLATION` lo que cupo, `OVERPAYMENT` el excedente); `PAYMENT_AFTER_CANCELLATION`; sin aviso al personal | **Sí**: deja de mandar `ORPHAN_PAYMENT` (D7) |
 | La fila ya era `EXPIRED`/`FAILED` (nosotros la cerramos, Stripe cobró igual) | `INVALID_STATUS_TRANSITION` → `ORPHAN_PAYMENT`, decisión humana | No (se vuelve más probable con el job de §9; ver §14) |
 | Después de la fecha límite de pago o de la salida del viaje | Se acepta como cualquier abono | Sujeto a **D4** |
 | SPEI transferido después de vencer nuestro intento | Queda en Stripe; `CASH_BALANCE_UNAPPLIED` al personal | **Nuevo** (§5.5) |
@@ -376,8 +401,9 @@ En el webhook:
 4. `UPDATE payments … WHERE status = 'PENDING'`, condicional. Si no gana: devolver el pago como está.
 5. Calcular aplicado y excedente con el saldo leído en el paso 3; mover `paid_cents`; activar.
 6. **Todo movimiento de saldo a favor del webhook va aquí, antes del folio**: el `OVERPAYMENT` de
-   una reserva viva y también el `CANCELLATION` de una reserva cancelada (que hoy se escribe
-   *después* del folio, en `applySucceeded`). Candado del cliente y movimiento.
+   cualquier reserva (viva, `EXPIRED` o `CANCELLED`) y también el `CANCELLATION` de una reserva
+   cancelada (que hoy se escribe *después* del folio, en `applySucceeded`). Candado del cliente y
+   movimiento.
 7. Folio (`assignReceiptNumber`) **al final**, y la foto del saldo del recibo.
 8. Encolar el recibo y el aviso (misma transacción, Regla 11).
 
@@ -531,8 +557,10 @@ comprobar que la prueba de verdad detecta el error.
 
 **Integración (dominio con PostgreSQL y `FakePaymentProvider`)**
 - Cada código de error de §4.3.
-- Confirmación: exacto, con excedente, con saldo ya en cero (todo a saldo a favor), y las ramas
-  `EXPIRED` y `CANCELLED` sin cambios.
+- Confirmación: exacto, con excedente, con saldo ya en cero (todo a saldo a favor); `EXPIRED` con
+  una parte que cabe (lo que cupo sin acreditar, el excedente a `OVERPAYMENT`) y sin nada que quepa;
+  `CANCELLED` (`CANCELLATION` + `OVERPAYMENT`, sin `ORPHAN_PAYMENT`). Una segunda entrega del mismo
+  intento no repite recibo ni avisos.
 - `recordIfMissing` con excedente: se divide en vez de escalar.
 - `reconcilePaidCents` sin alerta falsa tras un sobrepago, y con alerta si se rompe `paid_cents` a
   mano.
