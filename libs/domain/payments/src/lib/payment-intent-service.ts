@@ -58,7 +58,7 @@ function balanceOf(reservation: Reservation): number {
  * `DEPOSIT` is the minimum deposit still owed (`minimum_deposit_cents -
  * paid_cents`), floored at zero and capped at the current balance: once the
  * deposit is fully covered the reservation has already turned `ACTIVE`
- * (`payment-service.ts`'s `applyConfirmedPayment`), so this branch only
+ * (`payment-service.ts`'s `settleConfirmedPayment`), so this branch only
  * ever has real work to do against a `HELD` reservation.
  */
 function amountForIntent(reservation: Reservation, intent: PaymentIntentKind): number {

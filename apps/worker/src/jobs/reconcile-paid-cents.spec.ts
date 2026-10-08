@@ -159,6 +159,22 @@ describe('reconcilePaidCents', () => {
     expect(await db.notificationDelivery.count({ where: { userId: admin } })).toBe(0);
   });
 
+  it('subtracts the part of a payment that was credited as an overpayment (owner decision D7)', async () => {
+    const admin = await seedStaffWithPermission(db, 'reservation.cancel');
+    // A 150,000 payment that found only 100,000 owed: the reservation kept
+    // 100,000 and the other 50,000 became credit, tied to that reservation.
+    const reservation = await seedReservation(db, { paidCents: 100_000 });
+    await seedSucceededPayment(db, reservation.id, 150_000);
+    await db.customerCreditEntry.create({
+      data: { customerId: reservation.customerId, reservationId: reservation.id, amountCents: 50_000, kind: 'OVERPAYMENT' },
+    });
+    const boss = await withTestQueue();
+
+    await reconcilePaidCents(db, boss);
+
+    expect(await db.notificationDelivery.count({ where: { userId: admin } })).toBe(0);
+  });
+
   it('does not correct paid_cents itself -- alerts and stops', async () => {
     const reservation = await seedReservation(db, { paidCents: 150_000 });
     await seedSucceededPayment(db, reservation.id, 100_000);

@@ -5,7 +5,8 @@ import { formatMoney } from '@rm/shared-utils';
 /**
  * Compares every reservation's denormalized `paid_cents` against the real
  * sum of its `SUCCEEDED` payments, minus what a price decrease moved to the
- * customer's credit, (business rule, §6 of the spec) and alerts
+ * customer's credit and what an overpayment credited (business rule, §6 of
+ * the spec), and alerts
  * the administrators who hold `reservation.cancel` when the two disagree.
  *
  * **Deliberately does not self-heal.** A drift is a bug somewhere upstream
@@ -32,7 +33,9 @@ export async function reconcilePaidCents(db: Db, queue: NotificationQueue): Prom
   //
   // Phase 2B: money a price decrease moved from a reservation to its
   // customer's credit (`PRICE_DECREASE` entries) left the reservation, so it
-  // is subtracted -- `paid_cents` is SUCCEEDED payments minus those.
+  // is subtracted. Owner decision D7: the part of a payment above what the
+  // reservation still owed never reached it (`OVERPAYMENT` entries), so it is
+  // subtracted too -- `paid_cents` is SUCCEEDED payments minus both.
   const drifting = await db.$queryRaw<{ id: string; code: string; paidCents: number; actualCents: bigint }[]>`
     SELECT r.id, r.code, r.paid_cents AS "paidCents", x.actual AS "actualCents"
     FROM reservations r
@@ -41,7 +44,7 @@ export async function reconcilePaidCents(db: Db, queue: NotificationQueue): Prom
         COALESCE((SELECT SUM(p.amount_cents) FROM payments p
                   WHERE p.reservation_id = r.id AND p.status = 'SUCCEEDED'), 0)
         - COALESCE((SELECT SUM(c.amount_cents) FROM customer_credit_entries c
-                    WHERE c.reservation_id = r.id AND c.kind = 'PRICE_DECREASE'), 0) AS actual
+                    WHERE c.reservation_id = r.id AND c.kind IN ('PRICE_DECREASE', 'OVERPAYMENT')), 0) AS actual
     ) x
     WHERE r.paid_cents <> x.actual
   `;

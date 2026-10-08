@@ -320,13 +320,12 @@ describe('handleStripeEvent', () => {
       expect(await db.stripeEvent.count()).toBe(1);
     });
 
-    it('escalates, and still answers ok, when the money cannot be applied without overpaying', async () => {
+    it('records money it has never seen even when it overpays, and credits the excess (owner decision D7)', async () => {
       // Two OXXO vouchers for the full balance can both be issued and both
       // be paid -- `payments.md` calls that out as an accepted consequence
-      // of a pending payment not reducing the balance. `recordPayment`
-      // refuses the second with PAYMENT_EXCEEDS_BALANCE, and retrying never
-      // changes that, so answering a non-2xx would make Stripe redeliver
-      // this one forever while the money stayed invisible.
+      // of a pending payment not reducing the balance. The second one used
+      // to be refused with PAYMENT_EXCEEDS_BALANCE and escalated, leaving the
+      // money with no Payment row at all.
       const reservation = await seedReservation(db, { totalPriceCents: 150_000, minimumDepositCents: 100_000 });
       await seedPendingPayment(db, reservation.id, 'pi_first', 150_000);
       await handleStripeEvent(db, queue, event({ intent: { providerIntentId: 'pi_first' } }));
@@ -345,12 +344,15 @@ describe('handleStripeEvent', () => {
       );
 
       expect(result).toEqual({ ok: true, value: null });
-      expect(await noticesFor(staffId, 'ORPHAN_PAYMENT')).toBe(2);
-      // The event is on record even though no Payment row could be written.
-      expect(await db.stripeEvent.count()).toBe(2);
-      // The alert points staff at the reservation the money belongs to.
-      const alerts = await db.notificationDelivery.findMany({ where: { userId: staffId, eventType: 'ORPHAN_PAYMENT' } });
-      expect(alerts.every((alert) => alert.reservationId === reservation.id)).toBe(true);
+      const payment = await db.payment.findUniqueOrThrow({ where: { providerIntentId: 'pi_overpay' } });
+      expect(payment).toMatchObject({ status: 'SUCCEEDED', amountCents: 150_000 });
+      const after = await db.reservation.findUniqueOrThrow({ where: { id: reservation.id } });
+      expect(after.paidCents).toBe(150_000);
+      const entries = await db.customerCreditEntry.findMany({ where: { customerId: reservation.customerId } });
+      expect(entries).toMatchObject([
+        { kind: 'OVERPAYMENT', amountCents: 150_000, reservationId: reservation.id, paymentId: payment.id },
+      ]);
+      expect(await noticesFor(staffId, 'ORPHAN_PAYMENT')).toBe(0);
     });
 
     it('escalates, and still answers ok, when the intent names a reservation id that is not even a UUID', async () => {
@@ -477,12 +479,222 @@ describe('handleStripeEvent', () => {
       ]);
     });
 
-    it('tells the customer their reservation was cancelled, never that the payment confirmed a seat, and alerts staff', async () => {
+    it('tells the customer their reservation was cancelled, never that the payment confirmed a seat', async () => {
       const reservation = await arrange();
 
       expect(await noticesFor(reservation.customerId, 'PAYMENT_AFTER_CANCELLATION')).toBe(2);
       expect(await noticesFor(reservation.customerId, 'PAYMENT_CONFIRMED')).toBe(0);
       expect(await noticesFor(reservation.customerId, 'PAYMENT_AFTER_EXPIRY')).toBe(0);
+    });
+
+    it('leaves staff out of it: every cent already became credit, so nobody has anything to decide', async () => {
+      await arrange();
+
+      expect(await noticesFor(staffId, 'ORPHAN_PAYMENT')).toBe(0);
+    });
+  });
+
+  describe('money above what the reservation owes (owner decision D7)', () => {
+    /** Confirms each intent in turn, the way Stripe would deliver them one after the other. */
+    async function confirmEach(...providerIntentIds: string[]): Promise<void> {
+      for (const providerIntentId of providerIntentIds) {
+        const result = await handleStripeEvent(db, queue, event({ intent: { providerIntentId } }));
+        expect(result).toEqual({ ok: true, value: null });
+      }
+    }
+
+    function creditEntries(customerId: string) {
+      return db.customerCreditEntry.findMany({ where: { customerId }, orderBy: { createdAt: 'asc' } });
+    }
+
+    it('applies only what was still owed and credits the rest of the payment', async () => {
+      const reservation = await seedReservation(db, { totalPriceCents: 500_000, minimumDepositCents: 100_000 });
+      await seedPendingPayment(db, reservation.id, 'pi_a', 400_000);
+      await seedPendingPayment(db, reservation.id, 'pi_b', 150_000);
+
+      await confirmEach('pi_a', 'pi_b');
+
+      const after = await db.reservation.findUniqueOrThrow({ where: { id: reservation.id } });
+      expect(after.paidCents).toBe(500_000);
+      const second = await db.payment.findUniqueOrThrow({ where: { providerIntentId: 'pi_b' } });
+      // The payment keeps what arrived; only the reservation is capped.
+      expect(second).toMatchObject({ status: 'SUCCEEDED', amountCents: 150_000 });
+      expect(await creditEntries(reservation.customerId)).toMatchObject([
+        { kind: 'OVERPAYMENT', amountCents: 50_000, reservationId: reservation.id, paymentId: second.id },
+      ]);
+    });
+
+    it('snapshots on the receipt the balance the reservation really reached, never above its total', async () => {
+      const reservation = await seedReservation(db, { totalPriceCents: 500_000, minimumDepositCents: 100_000 });
+      await seedPendingPayment(db, reservation.id, 'pi_a', 400_000);
+      await seedPendingPayment(db, reservation.id, 'pi_b', 150_000);
+
+      await confirmEach('pi_a', 'pi_b');
+
+      const second = await db.payment.findUniqueOrThrow({ where: { providerIntentId: 'pi_b' } });
+      expect(second.receiptNumber).not.toBeNull();
+      expect(second.receiptTotalCents).toBe(500_000);
+      expect(second.receiptPaidCents).toBe(500_000);
+    });
+
+    it('credits the whole payment when the reservation was already paid in full', async () => {
+      const reservation = await seedReservation(db, { totalPriceCents: 150_000, minimumDepositCents: 100_000 });
+      await seedPendingPayment(db, reservation.id, 'pi_a', 150_000);
+      await seedPendingPayment(db, reservation.id, 'pi_b', 150_000);
+
+      await confirmEach('pi_a', 'pi_b');
+
+      const after = await db.reservation.findUniqueOrThrow({ where: { id: reservation.id } });
+      expect(after.paidCents).toBe(150_000);
+      expect(await creditEntries(reservation.customerId)).toMatchObject([{ kind: 'OVERPAYMENT', amountCents: 150_000 }]);
+    });
+
+    it('tells the customer the excess is now credit instead of quoting a balance', async () => {
+      const reservation = await seedReservation(db, { totalPriceCents: 500_000, minimumDepositCents: 100_000 });
+      await seedPendingPayment(db, reservation.id, 'pi_a', 400_000);
+      await seedPendingPayment(db, reservation.id, 'pi_b', 150_000);
+
+      await confirmEach('pi_a', 'pi_b');
+
+      // The first payment fit: the usual notice. The second did not.
+      expect(await noticesFor(reservation.customerId, 'PAYMENT_CONFIRMED')).toBe(2);
+      expect(await noticesFor(reservation.customerId, 'PAYMENT_EXCESS_CREDITED')).toBe(2);
+      const inbox = await db.notificationDelivery.findFirstOrThrow({
+        where: { userId: reservation.customerId, eventType: 'PAYMENT_EXCESS_CREDITED', channel: 'INBOX' },
+      });
+      expect(inbox.renderedBody).toContain('$1,500.00 MXN');
+      expect(inbox.renderedBody).toContain('$500.00 MXN');
+      expect(await noticesFor(staffId, 'ORPHAN_PAYMENT')).toBe(0);
+    });
+
+    it('activates a hold whose payment overshoots its whole balance', async () => {
+      const reservation = await seedReservation(db, { totalPriceCents: 100_000, minimumDepositCents: 50_000 });
+      await seedPendingPayment(db, reservation.id, 'pi_big', 150_000);
+
+      await confirmEach('pi_big');
+
+      const after = await db.reservation.findUniqueOrThrow({ where: { id: reservation.id } });
+      expect(after).toMatchObject({ status: 'ACTIVE', paidCents: 100_000, holdExpiresAt: null });
+      expect(await creditEntries(reservation.customerId)).toMatchObject([{ kind: 'OVERPAYMENT', amountCents: 50_000 }]);
+    });
+
+    it('keeps paid_cents within the total of an expired reservation too, and still leaves the rest to a person', async () => {
+      const reservation = await seedReservation(db, { status: 'EXPIRED', totalPriceCents: 100_000 });
+      await seedPendingPayment(db, reservation.id, 'pi_late', 150_000);
+
+      await confirmEach('pi_late');
+
+      const after = await db.reservation.findUniqueOrThrow({ where: { id: reservation.id } });
+      expect(after).toMatchObject({ status: 'EXPIRED', paidCents: 100_000 });
+      expect(await creditEntries(reservation.customerId)).toMatchObject([{ kind: 'OVERPAYMENT', amountCents: 50_000 }]);
+      expect(await noticesFor(reservation.customerId, 'PAYMENT_AFTER_EXPIRY')).toBe(2);
+      // The part that fit is a person's call; the notice also says what
+      // already became credit.
+      const inbox = await db.notificationDelivery.findFirstOrThrow({
+        where: { userId: reservation.customerId, eventType: 'PAYMENT_AFTER_EXPIRY', channel: 'INBOX' },
+      });
+      expect(inbox.renderedBody).toContain('$500.00 MXN');
+      expect(await noticesFor(staffId, 'ORPHAN_PAYMENT')).toBe(2);
+    });
+
+    it('credits a late payment on an expired hold whole, and says so, when none of it fit', async () => {
+      // The first late payment filled the expired reservation's balance; the
+      // second has nowhere to go but credit, so there is nothing left for a
+      // person to decide about it.
+      const reservation = await seedReservation(db, { status: 'EXPIRED', totalPriceCents: 100_000 });
+      await seedPendingPayment(db, reservation.id, 'pi_fill', 100_000);
+      await seedPendingPayment(db, reservation.id, 'pi_extra', 50_000);
+
+      await confirmEach('pi_fill', 'pi_extra');
+
+      expect(await creditEntries(reservation.customerId)).toMatchObject([{ kind: 'OVERPAYMENT', amountCents: 50_000 }]);
+      // Only the first payment asked for a person, and told the customer so.
+      expect(await noticesFor(reservation.customerId, 'PAYMENT_AFTER_EXPIRY')).toBe(2);
+      expect(await noticesFor(staffId, 'ORPHAN_PAYMENT')).toBe(2);
+      expect(await noticesFor(reservation.customerId, 'PAYMENT_EXCESS_CREDITED')).toBe(2);
+    });
+
+    it('credits a cancelled reservation every cent of a late payment, the part it owed and the excess', async () => {
+      const reservation = await seedReservation(db, { status: 'CANCELLED', totalPriceCents: 100_000 });
+      await seedPendingPayment(db, reservation.id, 'pi_after_cancel', 150_000);
+
+      await confirmEach('pi_after_cancel');
+
+      const after = await db.reservation.findUniqueOrThrow({ where: { id: reservation.id } });
+      expect(after.paidCents).toBe(100_000);
+      const payment = await db.payment.findUniqueOrThrow({ where: { providerIntentId: 'pi_after_cancel' } });
+      expect(await creditEntries(reservation.customerId)).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ kind: 'CANCELLATION', amountCents: 100_000, paymentId: payment.id }),
+          expect.objectContaining({ kind: 'OVERPAYMENT', amountCents: 50_000, paymentId: payment.id }),
+        ])
+      );
+      expect(await db.customerCreditEntry.count({ where: { customerId: reservation.customerId } })).toBe(2);
+    });
+
+    it('applies exactly the balance when two different payments of one reservation confirm at the same time', async () => {
+      // The read of the balance and the write of paid_cents must happen
+      // under the reservation's lock: two confirmations that both read a
+      // 500,000 balance would both apply 300,000.
+      for (let attempt = 0; attempt < 10; attempt += 1) {
+        const reservation = await seedReservation(db, { totalPriceCents: 500_000, minimumDepositCents: 100_000 });
+        await seedPendingPayment(db, reservation.id, `pi_left_${attempt}`, 300_000);
+        await seedPendingPayment(db, reservation.id, `pi_right_${attempt}`, 300_000);
+
+        const results = await Promise.all([
+          handleStripeEvent(db, queue, event({ intent: { providerIntentId: `pi_left_${attempt}` } })),
+          handleStripeEvent(db, queue, event({ intent: { providerIntentId: `pi_right_${attempt}` } })),
+        ]);
+
+        expect(results).toEqual([
+          { ok: true, value: null },
+          { ok: true, value: null },
+        ]);
+        const after = await db.reservation.findUniqueOrThrow({ where: { id: reservation.id } });
+        expect(after.paidCents).toBe(500_000);
+        expect(await creditEntries(reservation.customerId)).toMatchObject([{ kind: 'OVERPAYMENT', amountCents: 100_000 }]);
+      }
+    });
+  });
+
+  describe('a second, different event for an intent already confirmed', () => {
+    // Stripe can send more than one `succeeded` event for the same intent
+    // (distinct `evt_` ids, so `stripe_events` lets each through). The money
+    // was settled once; the notices must be too.
+    it('does not tell the customer twice that one payment landed', async () => {
+      const reservation = await seedReservation(db);
+      await seedPendingPayment(db, reservation.id, 'pi_twice');
+
+      await handleStripeEvent(db, queue, event({ intent: { providerIntentId: 'pi_twice' } }));
+      await handleStripeEvent(db, queue, event({ intent: { providerIntentId: 'pi_twice' } }));
+
+      expect(await noticesFor(reservation.customerId, 'PAYMENT_CONFIRMED')).toBe(2);
+    });
+
+    it('does not tell the customer twice even when both events arrive at the same time', async () => {
+      // Both deliveries can read the payment as PENDING before either locks
+      // anything; only the one that actually settles it may notify.
+      const reservation = await seedReservation(db);
+      await seedPendingPayment(db, reservation.id, 'pi_together');
+
+      await Promise.all([
+        handleStripeEvent(db, queue, event({ intent: { providerIntentId: 'pi_together' } })),
+        handleStripeEvent(db, queue, event({ intent: { providerIntentId: 'pi_together' } })),
+      ]);
+
+      expect(await noticesFor(reservation.customerId, 'PAYMENT_CONFIRMED')).toBe(2);
+      const jobs = await queue.findJobs(SEND_RECEIPT_JOB, {});
+      expect(jobs).toHaveLength(1);
+    });
+
+    it('does not alert staff, or the customer, twice about one late payment on an expired hold', async () => {
+      const reservation = await seedReservation(db, { status: 'EXPIRED' });
+      await seedPendingPayment(db, reservation.id, 'pi_late_twice');
+
+      await handleStripeEvent(db, queue, event({ intent: { providerIntentId: 'pi_late_twice' } }));
+      await handleStripeEvent(db, queue, event({ intent: { providerIntentId: 'pi_late_twice' } }));
+
+      expect(await noticesFor(reservation.customerId, 'PAYMENT_AFTER_EXPIRY')).toBe(2);
       expect(await noticesFor(staffId, 'ORPHAN_PAYMENT')).toBe(2);
     });
   });

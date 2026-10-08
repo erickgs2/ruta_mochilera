@@ -11,8 +11,50 @@ import {
 import { recordAudit } from '@rm/domain-audit';
 import { organizationTimeZone } from '@rm/domain-settings';
 import { endOfCalendarDay, fail, monthStartsBetween, ok, type Result } from '@rm/shared-utils';
+import { creditFromCancellation, creditFromOverpayment } from './credit-ledger';
 import { suggestedMonthly } from './instalment';
 import { assignReceiptNumber } from './receipt-number';
+import { lockReservationForMoney } from './reservation-lock';
+
+/*
+ * ## Lock order
+ *
+ * The one place it is written down; every money path refers here.
+ *
+ *     trip  ->  reservation  ->  customer  ->  receipt counter
+ *
+ * A transaction takes only the locks it needs, but never one that comes
+ * earlier in this list than a lock it already holds.
+ *
+ * - **Trip**: seat decisions -- reserving, reviving an expired reservation,
+ *   changing a price -- take it `FOR UPDATE` and count the trip's seats under
+ *   it, before touching any one reservation. Every money path takes it too,
+ *   `FOR KEY SHARE`, before the reservation (`lockReservationForMoney` in
+ *   `reservation-lock.ts`): updating a reservation a second time in one
+ *   transaction makes PostgreSQL re-check its `trip_id` foreign key, which
+ *   takes that same lock -- after the reservation, if nobody took it first.
+ * - **Reservation** (`lockReservationForPayment`, `reservations ... FOR
+ *   UPDATE`): the balance a payment is checked or split against is read
+ *   under it. A payment row is only ever moved (`PENDING -> SUCCEEDED`) while
+ *   its reservation is held.
+ * - **Customer** (`lockCustomer` in `credit-ledger.ts`): every credit entry,
+ *   so the ledger sum it checks is current.
+ * - **Receipt counter** (`assignReceiptNumber`): **always last.** It is one
+ *   row per year that every successful payment of every reservation
+ *   increments, so it is the hottest lock in the system; holding it while
+ *   waiting for anything else is what turned two unrelated payments into a
+ *   deadlock. Numbering a payment is therefore the last write that takes a
+ *   new lock in its transaction.
+ *
+ * Until this order was written down the Stripe webhook numbered a payment
+ * before it locked the reservation, and credited a cancelled reservation's
+ * late money after numbering it; counter cash and applied credit did the
+ * opposite, and the two deadlocked. Then the webhook locked the reservation
+ * without the trip, and its second update of the reservation reached for the
+ * trip while counter cash -- which revives through the trip -- held it
+ * (`lock-order.spec.ts` pins each crossing; the real routes race in
+ * `cash-vs-webhook.race.integration.spec.ts`, apps/api).
+ */
 
 export interface RecordPaymentInput {
   reservationId: string;
@@ -45,6 +87,16 @@ export interface RecordPaymentInput {
   isBackfilled?: boolean;
   /** The agency's own reference from a CSV import; unique when present. */
   externalRef?: string;
+  /**
+   * Money a provider already took (the Stripe webhook, only): instead of
+   * refusing an amount above the balance with `PAYMENT_EXCEEDS_BALANCE`, the
+   * payment is recorded whole and the part above the balance becomes the
+   * customer's credit (`settleConfirmedPayment`, owner decision D7). Every
+   * caller where a person types the amount -- counter cash, applied credit,
+   * historical capture, CSV import -- leaves this off, and an amount above
+   * the balance is still refused there.
+   */
+  excessToCredit?: boolean;
 }
 
 export interface ConfirmPaymentInput {
@@ -100,6 +152,18 @@ export interface PaymentDto {
   receiptNumber: string | null;
 }
 
+/**
+ * A confirmation's answer: the payment as it stands, plus whether **this**
+ * call is the one that settled it. Two deliveries for the same intent --
+ * a redelivery, or a second event type Stripe sends for it -- can both reach
+ * a confirmation; only one moves the money, and only that one may send the
+ * receipt and the notices (`handleStripeEvent`). Read under the lock, so two
+ * concurrent deliveries never both see `true`.
+ */
+export interface ConfirmedPaymentDto extends PaymentDto {
+  settledNow: boolean;
+}
+
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** `total_price_cents - paid_cents`, never negative (business rule 5.5). */
@@ -137,36 +201,56 @@ function toDto(payment: Payment): PaymentDto {
  * Must be called inside a transaction: a row lock taken outside one is
  * released the moment the statement ends. The id is bound as a query
  * parameter by the tagged template, never concatenated into the SQL.
+ *
+ * The trip is locked first (`lockReservationForMoney`): see "Lock order" at
+ * the top of this file and that function's doc comment for the deadlock a
+ * reservation-only lock left behind.
  */
 async function lockReservationForPayment(
   tx: DbTransactionClient,
   reservationId: string
 ): Promise<void> {
-  await tx.$queryRaw`SELECT id FROM reservations WHERE id = ${reservationId}::uuid FOR UPDATE`;
+  await lockReservationForMoney(tx, reservationId);
 }
 
 /**
- * Applies money that has actually arrived to the reservation it belongs to.
+ * Settles money that has actually arrived: decides where every cent of it
+ * goes, inside the caller's transaction and under the reservation lock the
+ * caller already holds (see "Lock order" at the top of this file).
  *
- * Two writes, both inside the caller's transaction:
- *
- * 1. `paid_cents` grows by the amount. The increment is done by the database
- *    rather than by reading and writing back, so it is correct even if the
- *    row lock above were ever dropped.
- * 2. A `HELD` reservation whose accumulated payments now cover the minimum
+ * 1. **Split.** What fits the reservation's balance (`total_price_cents -
+ *    paid_cents`, read under the lock) is applied; the rest is excess. The
+ *    payment row keeps the whole amount -- that is the money that moved --
+ *    but `paid_cents` never passes the total (owner decision D7).
+ * 2. `paid_cents` grows by the applied part. The increment is done by the
+ *    database rather than by reading and writing back.
+ * 3. A `HELD` reservation whose accumulated payments now cover the minimum
  *    deposit becomes `ACTIVE`, and its `hold_expires_at` is cleared **in the
  *    same statement**. The two belong together: the CHECK constraint
  *    `reservations_held_requires_hold_expiry` only ties HELD to a non-null
  *    expiry, so an ACTIVE row keeping one is a state the database accepts and
  *    the domain considers nonsense -- a seat that is taken and still counting
  *    down.
+ * 4. **Credit**, under the customer lock (after the reservation's, before
+ *    the receipt counter's): the excess becomes an `OVERPAYMENT` entry; and
+ *    on a `CANCELLED` reservation the applied part becomes a `CANCELLATION`
+ *    entry too, since a cancelled reservation keeps nothing for itself
+ *    (Phase 2B). Between the two, every cent of a late payment on a cancelled
+ *    reservation ends up as credit.
  *
- * Any other status is left exactly as it is. In particular an `EXPIRED`
+ * Any status but `HELD` is left exactly as it is. In particular an `EXPIRED`
  * reservation is **not** revived by a late OXXO confirmation (business rule
  * 5.3): the money exists and must be visible, but giving the seat back is a
- * human decision. `paid_cents` still moves, because the nightly
+ * human decision, so the applied part stays on the reservation, uncredited,
+ * for that person to settle. `paid_cents` still moves, because the nightly
  * reconciliation compares it against the `SUCCEEDED` payment rows and a
  * payment recorded without it would be permanent, false drift.
+ *
+ * Callers where a person typed the amount refuse it above the balance before
+ * getting here, so for them the excess is always zero.
+ *
+ * Returns the reservation as this payment left it, for the receipt's
+ * snapshot of the balance.
  *
  * **Task 8 hardening.** The second write used to be a plain `update` keyed
  * only on `id`. That was never exploitable in practice -- the first write
@@ -183,23 +267,63 @@ async function lockReservationForPayment(
  * already uses, rather than correct only as a consequence of how long some
  * other function happens to hold a lock.
  */
-async function applyConfirmedPayment(
+async function settleConfirmedPayment(
   tx: DbTransactionClient,
-  reservationId: string,
-  amountCents: number
+  payment: { id: string; reservationId: string; amountCents: number }
 ): Promise<Reservation> {
+  const before = await tx.reservation.findUniqueOrThrow({ where: { id: payment.reservationId } });
+  const appliedCents = Math.min(payment.amountCents, balanceOf(before));
+  const excessCents = payment.amountCents - appliedCents;
+
   const reservation = await tx.reservation.update({
-    where: { id: reservationId },
-    data: { paidCents: { increment: amountCents } },
+    where: { id: payment.reservationId },
+    data: { paidCents: { increment: appliedCents } },
   });
 
   if (reservation.status === 'HELD' && reservation.paidCents >= reservation.minimumDepositCents) {
     await tx.reservation.updateMany({
-      where: { id: reservationId, status: 'HELD' },
+      where: { id: payment.reservationId, status: 'HELD' },
       data: { status: 'ACTIVE', holdExpiresAt: null },
     });
   }
+
+  if (reservation.status === 'CANCELLED') {
+    await creditFromCancellation(tx, {
+      customerId: reservation.customerId,
+      reservationId: reservation.id,
+      amountCents: appliedCents,
+      paymentId: payment.id,
+    });
+  }
+  await creditFromOverpayment(tx, {
+    customerId: reservation.customerId,
+    reservationId: reservation.id,
+    paymentId: payment.id,
+    amountCents: excessCents,
+  });
   return reservation;
+}
+
+/**
+ * Gives a payment that just became SUCCEEDED its receipt number and the
+ * snapshot of the balance it left behind -- **the last lock of the
+ * transaction** (see "Lock order" at the top of this file), taken only after
+ * the money is settled.
+ */
+async function numberReceipt(
+  tx: DbTransactionClient,
+  paymentId: string,
+  paidAt: Date,
+  reservation: Reservation
+): Promise<Payment> {
+  return tx.payment.update({
+    where: { id: paymentId },
+    data: {
+      receiptNumber: await assignReceiptNumber(tx, paidAt),
+      receiptTotalCents: reservation.totalPriceCents,
+      receiptPaidCents: reservation.paidCents,
+    },
+  });
 }
 
 /**
@@ -215,13 +339,18 @@ async function applyConfirmedPayment(
  * count towards it**: an OXXO voucher reserves nothing until the money
  * arrives, which is why the app shows it as pending and warns that the seat
  * can be released. Two outstanding vouchers can therefore both be issued for
- * the full balance and both be confirmed; that overpayment becomes credit in
- * Phase 2B, and recording it is still right -- money that moved must be
- * visible.
+ * the full balance and both be confirmed. Money a provider already took
+ * (`excessToCredit`) is never refused for that: its excess becomes credit
+ * (`settleConfirmedPayment`). Money a person typed is refused above the
+ * balance with `PAYMENT_EXCEEDS_BALANCE`.
  *
  * The status of the reservation is not checked. A payment for a `CANCELLED`
  * or `EXPIRED` reservation is recorded like any other (rule 5.3); what it
  * does *not* do is change that reservation's status.
+ *
+ * Locks, in the order of "Lock order" at the top of this file: the
+ * reservation, then (when money is credited) the customer, then the receipt
+ * counter, last.
  */
 export async function recordPayment(
   tx: DbTransactionClient,
@@ -264,7 +393,7 @@ export async function recordPayment(
   if (!reservation) return fail('NOT_FOUND');
 
   const balanceCents = balanceOf(reservation);
-  if (input.amountCents > balanceCents) {
+  if (!input.excessToCredit && input.amountCents > balanceCents) {
     return fail('PAYMENT_EXCEEDS_BALANCE', { amountCents: input.amountCents, balanceCents });
   }
 
@@ -283,18 +412,8 @@ export async function recordPayment(
         provider: input.provider,
         providerIntentId: input.providerIntentId ?? null,
         paidAt,
-        // Only money that arrived gets a receipt number, and it gets it in
-        // this transaction (see `assignReceiptNumber`). Taken last among the
-        // checks above, so no early return can leave a number unused.
-        receiptNumber:
-          input.status === 'SUCCEEDED' && paidAt ? await assignReceiptNumber(tx, paidAt) : null,
-        // The balance this payment leaves behind, read under the lock above.
-        ...(input.status === 'SUCCEEDED'
-          ? {
-              receiptTotalCents: reservation.totalPriceCents,
-              receiptPaidCents: reservation.paidCents + input.amountCents,
-            }
-          : {}),
+        // No receipt number yet: it is the last lock of the transaction and
+        // is taken below, once the money is settled.
         providerVoucherUrl: input.providerVoucherUrl ?? null,
         voucherExpiresAt: input.voucherExpiresAt ?? null,
         recordedById: input.recordedById ?? null,
@@ -330,8 +449,12 @@ export async function recordPayment(
     throw error;
   }
 
-  if (payment.status === 'SUCCEEDED') {
-    await applyConfirmedPayment(tx, reservation.id, payment.amountCents);
+  if (payment.status === 'SUCCEEDED' && paidAt) {
+    const settled = await settleConfirmedPayment(tx, payment);
+    // Only money that arrived gets a receipt number, in this transaction
+    // (see `assignReceiptNumber`). Taken after every check above, so no early
+    // return can leave a number unused.
+    payment = await numberReceipt(tx, payment.id, paidAt, settled);
   }
 
   await recordAudit(tx, {
@@ -358,14 +481,19 @@ export async function recordPayment(
  * Opens a transaction of its own for callers that have none --
  * a reconciliation tool, a counter screen. The Stripe webhook uses
  * `confirmPaymentWithin` instead, because its own `StripeEvent` row has to
- * share the transaction. Either way the money is applied by the same
- * `applyConfirmedPayment` that `recordPayment` uses, so a payment confirmed
- * later and a payment recorded as already succeeded move the balance
- * through one piece of code.
+ * share the transaction. Either way the money is settled by the same
+ * `settleConfirmedPayment` that `recordPayment` uses, so a payment confirmed
+ * later and a payment recorded as already succeeded move the balance -- and
+ * credit any excess -- through one piece of code.
  *
  * **An intent with no local row.** See `ConfirmPaymentInput.recordIfMissing`:
- * with it, the payment is recorded instead of being dropped; without it,
- * an unknown intent is still `NOT_FOUND`.
+ * with it, the payment is recorded instead of being dropped (and never
+ * refused for exceeding the balance: `excessToCredit`); without it, an
+ * unknown intent is still `NOT_FOUND`.
+ *
+ * **Locks**, in the order of "Lock order" at the top of this file: the
+ * reservation before the payment row's conditional update, the customer
+ * while crediting, the receipt counter last.
  *
  * **Idempotency.** Confirming the same intent twice applies it once. Two
  * things make that true, and the second is the one that matters:
@@ -386,7 +514,7 @@ export async function recordPayment(
 export async function confirmPayment(
   db: Db,
   input: ConfirmPaymentInput
-): Promise<Result<PaymentDto>> {
+): Promise<Result<ConfirmedPaymentDto>> {
   return db.$transaction((tx: DbTransactionClient) => confirmPaymentWithin(tx, input));
 }
 
@@ -405,7 +533,7 @@ export async function confirmPayment(
 export async function confirmPaymentWithin(
   tx: DbTransactionClient,
   input: ConfirmPaymentInput
-): Promise<Result<PaymentDto>> {
+): Promise<Result<ConfirmedPaymentDto>> {
   const payment = await tx.payment.findUnique({
     where: { providerIntentId: input.providerIntentId },
   });
@@ -415,20 +543,29 @@ export async function confirmPaymentWithin(
     // when the caller knows what the money was for, record it rather than
     // answering NOT_FOUND and losing a payment that really happened.
     if (!input.recordIfMissing) return fail('NOT_FOUND', { field: 'providerIntentId' });
-    return recordPayment(tx, {
+    const recorded = await recordPayment(tx, {
       ...input.recordIfMissing,
       status: 'SUCCEEDED',
       providerIntentId: input.providerIntentId,
       paidAt: input.paidAt,
+      // The provider already took this money: never refuse it for exceeding
+      // the balance, credit the excess instead (owner decision D7).
+      excessToCredit: true,
     });
+    return recorded.ok ? ok({ ...recorded.value, settledNow: true }) : recorded;
   }
 
-  if (payment.status === 'SUCCEEDED') return ok(toDto(payment));
+  if (payment.status === 'SUCCEEDED') return ok({ ...toDto(payment), settledNow: false });
   // FAILED, EXPIRED and REFUNDED are decided elsewhere and are not
   // something a `succeeded` event may quietly undo.
   if (payment.status !== 'PENDING') {
     return fail('INVALID_STATUS_TRANSITION', { status: payment.status });
   }
+
+  // The reservation first, then the payment row: see "Lock order" at the top
+  // of this file. A payment's reservation never changes, so reading it
+  // without a lock above is enough to know which one to take.
+  await lockReservationForPayment(tx, payment.reservationId);
 
   const confirmed = await tx.payment.updateMany({
     where: { id: payment.id, status: 'PENDING' },
@@ -436,23 +573,17 @@ export async function confirmPaymentWithin(
   });
   if (confirmed.count === 0) {
     // Another confirmation won the race and already applied the money. Its
-    // row, its timestamp, its audit entry.
-    return ok(toDto(await tx.payment.findUniqueOrThrow({ where: { id: payment.id } })));
+    // row, its timestamp, its audit entry -- and its notices.
+    return ok({ ...toDto(await tx.payment.findUniqueOrThrow({ where: { id: payment.id } })), settledNow: false });
   }
 
-  // After the conditional update, never before: a confirmation that lost the
-  // race above must not take a number it will not use, or the year's
-  // sequence would have a gap.
-  const receiptNumber = await assignReceiptNumber(tx, input.paidAt);
-  const reservation = await applyConfirmedPayment(tx, payment.reservationId, payment.amountCents);
-  await tx.payment.update({
-    where: { id: payment.id },
-    data: {
-      receiptNumber,
-      receiptTotalCents: reservation.totalPriceCents,
-      receiptPaidCents: reservation.paidCents,
-    },
-  });
+  // Settled under the reservation lock, credited under the customer's, and
+  // numbered last. Only after the conditional update, never before: a
+  // confirmation that lost the race above must neither apply money nor take a
+  // receipt number it will not use (the year's sequence would have a gap).
+  const settled = await settleConfirmedPayment(tx, payment);
+  const numbered = await numberReceipt(tx, payment.id, input.paidAt, settled);
+  const receiptNumber = numbered.receiptNumber;
 
   await recordAudit(tx, {
     action: 'payment.confirmed',
@@ -464,7 +595,7 @@ export async function confirmPaymentWithin(
     after: { status: 'SUCCEEDED', paidAt: input.paidAt.toISOString() },
   });
 
-  return ok(toDto({ ...payment, status: 'SUCCEEDED', paidAt: input.paidAt, receiptNumber }));
+  return ok({ ...toDto({ ...payment, status: 'SUCCEEDED', paidAt: input.paidAt, receiptNumber }), settledNow: true });
 }
 
 /**

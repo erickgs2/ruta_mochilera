@@ -1,6 +1,7 @@
 import type { Db, DbTransactionClient } from '@rm/db';
 import { fail, type Result } from '@rm/shared-utils';
 import { recordPayment, type PaymentDto } from './payment-service';
+import { lockReservationForMoney } from './reservation-lock';
 import { enqueueReceipt, type ReceiptQueue } from './receipt-service';
 import { reviveForPayment } from './credit-service';
 import { RollbackWith, rollbackable, type ReviveReservation } from './revival';
@@ -69,8 +70,10 @@ export async function registerCashPayment(
   if (!UUID_PATTERN.test(input.reservationId)) return fail('NOT_FOUND');
 
   return rollbackable(db, async (tx: DbTransactionClient): Promise<Result<PaymentDto>> => {
-    // Lock order: trip, reservation, customer. Reviving takes the trip first,
-    // so it runs before this transaction locks the reservation.
+    // See "Lock order" in `payment-service.ts`: trip, reservation, customer,
+    // receipt counter. Reviving takes the trip first, so it runs before this
+    // transaction locks the reservation; `recordPayment` numbers the receipt
+    // last.
     let revived = false;
     if (reviveReservation) {
       const brought = await reviveForPayment(tx, reviveReservation, {
@@ -81,7 +84,7 @@ export async function registerCashPayment(
       revived = brought.value.revived;
     }
 
-    await tx.$queryRaw`SELECT id FROM reservations WHERE id = ${input.reservationId}::uuid FOR UPDATE`;
+    await lockReservationForMoney(tx, input.reservationId);
     const reservation = await tx.reservation.findUnique({ where: { id: input.reservationId } });
     if (!reservation) return fail('NOT_FOUND');
     if (reservation.status !== 'HELD' && reservation.status !== 'ACTIVE') {

@@ -31,7 +31,9 @@ import { formatMoney } from '@rm/shared-utils';
  * the call that actually expired the reservation, with the `paid_cents` read
  * after the conditional write took the row lock -- so a payment confirmed a
  * moment earlier is counted and one a moment later finds an `EXPIRED` row.
- * Lock order: reservation (the write above), then the customer. The customer
+ * Lock order: reservation (the write above), then the customer -- the one
+ * order every money path follows ("Lock order" in `@rm/domain-payments`'s
+ * `payment-service.ts`). The customer
  * is told the money is now credit (`HOLD_EXPIRED_CREDIT`).
  *
  * Available seats are derived, never stored (`@rm/domain-reservations`'s

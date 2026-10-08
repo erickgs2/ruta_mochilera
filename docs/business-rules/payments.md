@@ -39,10 +39,11 @@ hasta que el proveedor lo confirma, y el cupo tampoco se compromete por una
 ficha impresa.
 
 Consecuencia aceptada: como las fichas pendientes no reducen el saldo, pueden
-emitirse dos por el total y confirmarse las dos. Eso genera un sobrepago, que
-la Fase 2B convierte en saldo a favor. Registrarlo igual es lo correcto —
-dinero que se movió tiene que verse—; rechazar la segunda confirmación dejaría
-un cobro real sin asiento contable.
+emitirse dos por el total y confirmarse las dos. Eso genera un sobrepago.
+Registrarlo igual es lo correcto —dinero que se movió tiene que verse—;
+rechazar la segunda confirmación dejaría un cobro real sin asiento contable.
+Lo que excede el saldo se vuelve saldo a favor del cliente: ver «Sobrepago
+confirmado» más abajo.
 
 ## Registro de un pago
 
@@ -60,12 +61,17 @@ la suya. Dentro de esa transacción:
    lee el saldo. Sin el bloqueo, dos pagos simultáneos leen el mismo saldo,
    los dos caben y la reserva queda pagada de más.
 4. El monto no puede superar `balance_cents` → `PAYMENT_EXCEEDS_BALANCE`.
+   **Salvo** el dinero que Stripe ya cobró (`excessToCredit`, sólo desde el
+   webhook): ése nunca se rechaza por exceder el saldo; el excedente se vuelve
+   saldo a favor (ver «Sobrepago confirmado»).
 5. Se inserta el `Payment`. `paid_at` es la fecha en que el dinero se movió —
    se rellena con "ahora" para un pago que nace `SUCCEEDED` y queda nulo
    mientras esté `PENDING`—, separada de `recorded_at`, que es cuándo se
    capturó. Los reportes leen `paid_at`, así que un pago de marzo capturado en
    septiembre aparece en marzo.
-6. Si el pago nace `SUCCEEDED`, se aplica al saldo (abajo).
+6. Si el pago nace `SUCCEEDED`, se liquida (`settleConfirmedPayment`, abajo):
+   lo que cabe se aplica al saldo y el excedente, si lo hay, va al saldo a
+   favor. Después, **al final**, recibe su folio (ver «Orden de bloqueo»).
 7. Se escribe la entrada de auditoría `payment.recorded`.
 
 **El estado de la reserva no se comprueba.** Un pago de una reserva
@@ -77,7 +83,8 @@ estado (ver el caso límite más abajo).
 Al aplicarse un pago confirmado:
 
 ```
-paid_cents += amount_cents
+aplicado = min(amount_cents, balance_cents)      -- ver «Sobrepago confirmado»
+paid_cents += aplicado
 
 si reserva.status = 'HELD' y paid_cents >= minimum_deposit_cents:
     status := 'ACTIVE'  y  hold_expires_at := NULL     (en el mismo UPDATE)
@@ -155,20 +162,138 @@ Un pago `FAILED`, `EXPIRED` o `REFUNDED` no se puede confirmar →
 `INVALID_STATUS_TRANSITION`. Esos estados los decide otro camino y un evento
 `succeeded` no los deshace en silencio.
 
+Antes de la transición condicional, `confirmPaymentWithin` toma el candado del
+**viaje** y luego el de la **reserva** del pago (`lockReservationForMoney`; los
+lee sin candado para saber cuáles: la reserva de un pago y el viaje de una
+reserva nunca cambian). Así el saldo contra el que se reparte el dinero se lee
+bajo el candado, y el orden de bloqueo es el de todos los caminos (abajo).
+
+**Los avisos también van una sola vez.** Stripe puede mandar más de un evento
+`succeeded` del mismo intento con `evt_` distintos, y `stripe_events` deja
+pasar cada uno. El dinero se mueve una vez, y `confirmPaymentWithin` responde
+`settledNow`: si **esta** llamada fue la que lo liquidó. Sólo esa encola el
+recibo y manda los avisos, al cliente y al personal. Se decide bajo el
+candado, así que dos entregas simultáneas nunca avisan las dos.
+
+## Sobrepago confirmado (decisión D7 del dueño, 2026-10-07)
+
+**El dinero que Stripe ya cobró nunca se rechaza por exceder el saldo, y
+`paid_cents` nunca pasa de `total_price_cents`.** Al liquidar un pago
+confirmado (`settleConfirmedPayment`), bajo el candado de la reserva:
+
+```
+aplicado  = min(monto, saldo)        -- saldo leído bajo el candado
+excedente = monto − aplicado
+paid_cents += aplicado
+si excedente > 0 → movimiento OVERPAYMENT (+excedente, reservation_id, payment_id)
+```
+
+- La fila `Payment` conserva `amount_cents` = **todo lo que llegó**: es el
+  dinero que se movió. Sólo la reserva se topa.
+- Vale para los dos caminos del webhook: confirmar la fila `PENDING` y
+  `recordIfMissing` (antes éste respondía `PAYMENT_EXCEEDS_BALANCE` y escalaba
+  a una persona **sin registrar el pago**).
+- Vale en cualquier estado de la reserva. En una `HELD` o `ACTIVE` el
+  excedente es saldo a favor y lo aplicado cuenta como siempre. En una
+  `CANCELLED`, lo aplicado también se acredita (`CANCELLATION`, como hasta
+  ahora) y el excedente es `OVERPAYMENT`: entre los dos, todo el pago tardío
+  queda como saldo a favor. En una `EXPIRED`, lo aplicado sigue siendo
+  decisión humana (ver el caso límite de abajo) y sólo el excedente se
+  acredita.
+- **No cambia** para efectivo, saldo aplicado, captura histórica ni
+  importación: ahí el monto lo teclea una persona y rechazarlo con
+  `PAYMENT_EXCEEDS_BALANCE` sigue siendo lo correcto.
+- Aviso al cliente: `PAYMENT_EXCESS_CREDITED` en lugar de `PAYMENT_CONFIRMED`
+  cuando la reserva viva no pudo absorber todo el pago (ver
+  `notifications.md`). Sin aviso al personal: el dinero ya quedó donde debe.
+- **El personal sólo se entera de lo que todavía tiene que decidir.**
+  `ORPHAN_PAYMENT` sale cuando una parte del dinero se queda en una reserva
+  `EXPIRED` (lo que cupo: decisión humana) o no tiene reserva a la que atarse.
+  No sale cuando todo el pago se volvió saldo a favor: una reserva `CANCELLED`
+  (todo es `CANCELLATION` u `OVERPAYMENT`), o una `EXPIRED` cuyo pago no cupo
+  en nada. El dueño decidió que el dinero tardío abrirá un caso de seguimiento
+  (`LatePaymentCase`, siguiente trabajo); mientras, ésta es la regla.
+- **Una vez por pago.** Sólo la entrega que gana la transición
+  `PENDING → SUCCEEDED` liquida el pago. El índice único parcial
+  `customer_credit_entries_overpayment_payment_id_key` (`payment_id` donde
+  `kind = 'OVERPAYMENT'`) es la red: una segunda escritura aborta la
+  transacción en vez de acreditar dos veces.
+
+Antes de esta regla, `confirmPaymentWithin` sumaba el monto completo a
+`paid_cents` sin compararlo con el saldo: dos fichas pagadas por el total
+dejaban `paid_cents` por encima del total, el saldo en cero, la conciliación
+sin alerta (cuadraba contra los pagos) y el excedente **en ninguna parte**
+como saldo a favor.
+
+## Orden de bloqueo
+
+Todo camino que mueve dinero toma sus candados en **un solo orden**, escrito en
+un solo lugar del código («Lock order», al inicio de
+`libs/domain/payments/src/lib/payment-service.ts`):
+
+```
+viaje  →  reserva  →  cliente  →  contador de folios
+```
+
+Una transacción toma sólo los que necesita, pero nunca uno anterior en la
+lista a otro que ya tiene. El **contador de folios va siempre al final**: es
+una fila por año que incrementa todo pago exitoso de cualquier reserva, el
+candado más disputado del sistema, y retenerlo mientras se espera otro es lo
+que convertía dos pagos sin relación en un bloqueo mutuo.
+
+**El viaje va primero aunque ningún pago lo escriba.** PostgreSQL vuelve a
+verificar las llaves foráneas de una fila cuando la misma transacción la
+actualiza por segunda vez, y un pago actualiza la reserva dos veces
+(`paid_cents`, y luego `HELD → ACTIVE`): la segunda corre la verificación de
+`trip_id`, que toma `FOR KEY SHARE` sobre el viaje. Si nadie lo tomó antes, ese
+candado llega **después** del de la reserva. Por eso todo camino de dinero
+(webhook, efectivo, saldo aplicado) llama a `lockReservationForMoney`
+(`reservation-lock.ts`), que toma el viaje `FOR KEY SHARE` —el mismo candado
+que pediría la verificación, así que dos pagos del mismo viaje no se esperan
+entre sí— y luego la reserva `FOR UPDATE`.
+
+Hasta que se fijó este orden hubo dos bloqueos mutuos (`40P01`, que Prisma
+reporta como `P2034`):
+
+1. El webhook pedía el folio **antes** de bloquear la reserva, y en la rama de
+   reserva cancelada acreditaba el saldo a favor **después** del folio; el
+   efectivo y el saldo aplicado hacían lo contrario.
+2. Con el folio ya al final, quedaba el viaje: el cobro en mostrador revive
+   (`reviveReservationSeat`, inyectado por la ruta) bloqueando el viaje
+   `FOR UPDATE` y luego la reserva, incluso para un apartado vigente; el
+   webhook bloqueaba sólo la reserva y su segunda actualización alcanzaba el
+   viaje después. Lo encontró Charlie con una carrera de 40 rondas sobre la API
+   real (6 de 40 con el arreglo anterior, 80 % en `main`).
+
+Lo prueban `lock-order.spec.ts` (`libs/domain/payments`: las tres
+intercalaciones forzadas, una por cruce, incluida la del efectivo sobre un
+apartado vigente contra el `HELD → ACTIVE` del webhook) y
+`cash-vs-webhook.race.integration.spec.ts` (`apps/api`: efectivo y saldo
+aplicado contra el webhook firmado, por las rutas reales, 40 rondas cada uno;
+`RACE_ROUNDS=200` para una corrida larga). Las dos fallan con `40P01` si se
+quita el candado del viaje.
+
 ## Caso límite: pago confirmado de una reserva ya expirada
 
 Spec §5.3. Si llega la confirmación de una ficha de OXXO después de que el
 apartado expiró:
 
-- El pago se registra como `SUCCEEDED` y `paid_cents` sube.
+- El pago se registra como `SUCCEEDED` y `paid_cents` sube, hasta el total
+  de la reserva; lo que lo exceda es saldo a favor (`OVERPAYMENT`, ver
+  «Sobrepago confirmado»).
 - La reserva **no** se reactiva: sigue `EXPIRED`.
 - Se avisa al cliente con `PAYMENT_AFTER_EXPIRY` y al administrador con
-  `ORPHAN_PAYMENT`, en la misma transacción.
+  `ORPHAN_PAYMENT`, en la misma transacción. Si parte del pago excedió el total,
+  el aviso al cliente dice también cuánto quedó ya como saldo a favor. Si
+  **nada** del pago cupo (la reserva ya no debía nada), todo es saldo a favor:
+  el cliente recibe `PAYMENT_EXCESS_CREDITED` y el personal nada.
 
 El dinero existe y debe verse; devolverlo o aplicarlo a otro viaje es decisión
 humana. Ningún movimiento de dinero es automático.
 
-> **Advertencia: este pago no se acredita.** A diferencia de una reserva
+> **Advertencia: este pago no se acredita** (salvo lo que exceda el total, que
+> desde la decisión D7 es `OVERPAYMENT`; lo que sigue habla de la parte que sí
+> cupo en la reserva). A diferencia de una reserva
 > `CANCELLED` (cuyo pago tardío sí pasa al saldo, ver más abajo) y de lo que
 > `expireHolds` acredita **al vencer** (decisión 16), un pago que llega **después**
 > de que la reserva ya está `EXPIRED` queda registrado y **sube `paid_cents`,
@@ -188,7 +313,8 @@ humana. Ningún movimiento de dinero es automático.
 >   nunca llegó al saldo, un `REFUND` directo respondería
 >   `CREDIT_INSUFFICIENT` —o, peor, si el cliente tiene otro saldo, gastaría
 >   ése—. La secuencia correcta, en la misma gestión, es un `ADJUSTMENT`
->   **positivo** por el monto del pago tardío (con motivo, que nombre el pago)
+>   **positivo** por la parte del pago tardío que cupo en la reserva (el
+>   excedente ya es saldo a favor; con motivo, que nombre el pago)
 >   y enseguida un `REFUND` por el mismo monto (con motivo, que diga cómo se
 >   devolvió fuera del sistema). La reserva se queda `EXPIRED` y **ya no debe
 >   revivirse**: su `paid_cents` seguiría contando ese dinero.
@@ -201,9 +327,11 @@ humana. Ningún movimiento de dinero es automático.
 la reserva mientras una ficha o un intento de tarjeta seguían cobrables (la
 cancelación los cancela en el proveedor, pero una ficha pagada en ese mismo
 minuto, o una caída de Stripe, pueden llegar igual), el pago se registra, la
-reserva sigue `CANCELLED`, el cliente recibe `PAYMENT_AFTER_CANCELLATION` y el
-personal `ORPHAN_PAYMENT`. Una plantilla propia y no `PAYMENT_AFTER_EXPIRY`:
-esa dice «tu apartado venció», que es falso para una reserva cancelada.
+reserva sigue `CANCELLED` y el cliente recibe `PAYMENT_AFTER_CANCELLATION`.
+Una plantilla propia y no `PAYMENT_AFTER_EXPIRY`: esa dice «tu apartado
+venció», que es falso para una reserva cancelada. Desde la Fase 2B todo ese
+dinero se vuelve saldo a favor al liquidarse, así que el personal ya no recibe
+`ORPHAN_PAYMENT` por él: no queda nada que decidir.
 
 El aviso al cliente **no** es `PAYMENT_CONFIRMED`. Esa plantilla cita el saldo
 restante y se leería como "sí vas"; a alguien cuyo lugar se liberó hay que
@@ -258,8 +386,10 @@ desaparecen: nadie recibe un correo sobre un pago que no se registró.
 | Evento | Efecto | Aviso |
 |---|---|---|
 | `payment_intent.succeeded` | Confirma o registra el pago, sube `paid_cents`, activa la reserva si alcanza el anticipo | `PAYMENT_CONFIRMED` al cliente |
-| `payment_intent.succeeded` sobre una reserva `EXPIRED` | Pago `SUCCEEDED`, reserva intacta (§5.3 arriba) | `PAYMENT_AFTER_EXPIRY` al cliente y `ORPHAN_PAYMENT` al personal |
-| `payment_intent.succeeded` sobre una reserva `CANCELLED` (Tarea 19) | Pago `SUCCEEDED`, reserva intacta | `PAYMENT_AFTER_CANCELLATION` al cliente y `ORPHAN_PAYMENT` al personal |
+| `payment_intent.succeeded` que excede el saldo de una reserva viva (decisión D7) | Pago `SUCCEEDED` completo; `paid_cents` sube hasta el total; el excedente es `OVERPAYMENT` | `PAYMENT_EXCESS_CREDITED` al cliente |
+| `payment_intent.succeeded` sobre una reserva `EXPIRED` | Pago `SUCCEEDED`, reserva intacta (§5.3 arriba); lo que exceda el total, `OVERPAYMENT` | `PAYMENT_AFTER_EXPIRY` al cliente (con lo acreditado, si lo hay) y `ORPHAN_PAYMENT` al personal; si nada cupo, sólo `PAYMENT_EXCESS_CREDITED` al cliente |
+| `payment_intent.succeeded` sobre una reserva `CANCELLED` (Tarea 19) | Pago `SUCCEEDED`, reserva intacta; todo el pago a saldo a favor (`CANCELLATION` lo que cupo, `OVERPAYMENT` el excedente) | `PAYMENT_AFTER_CANCELLATION` al cliente; nada al personal |
+| `payment_intent.succeeded` de un intento que otra entrega ya liquidó (otro `evt_`) | Ninguno | Ninguno: los avisos y el recibo los mandó la entrega que lo liquidó |
 | `payment_intent.succeeded` sin reserva a la que atarlo | Ninguno: un `Payment` necesita una reserva | `ORPHAN_PAYMENT` al personal, y **200** a Stripe |
 | `payment_intent.payment_failed` | Pago a `FAILED`, el saldo no se mueve | `PAYMENT_FAILED` al cliente |
 | `payment_intent.payment_failed` con `payment_intent_payment_attempt_expired` | Pago a `EXPIRED`, el saldo no se mueve | `VOUCHER_EXPIRED` al cliente |
@@ -483,8 +613,15 @@ tocado todavía.
 
 **Fase 2B.** Lo que una bajada de precio pasó a saldo a favor salió de la
 reserva: la consulta resta los movimientos `PRICE_DECREASE` con su
-`reservation_id`, en la misma sentencia. Ningún otro tipo de movimiento toca
-`paid_cents`.
+`reservation_id`, en la misma sentencia. **Decisión D7:** lo que un pago
+confirmado trajo por encima del saldo nunca llegó a la reserva, así que también
+resta los `OVERPAYMENT` de esa reserva. Ningún otro tipo de movimiento toca
+`paid_cents`:
+
+```
+paid_cents = Σ pagos SUCCEEDED − Σ PRICE_DECREASE − Σ OVERPAYMENT   (de esa reserva)
+```
+
 ## Mensualidad sugerida
 
 No existe mensualidad obligatoria. El único monto exigible es el anticipo
@@ -598,7 +735,7 @@ de recibo en la misma transacción.
 ## Saldo a favor: el modelo (Fase 2B, Tarea 1)
 
 `customer_credit_entries` guarda movimientos con signo: `CANCELLATION`,
-`PRICE_DECREASE`, `EXPIRATION` y `ADJUSTMENT` positivo suman; `APPLIED`,
+`PRICE_DECREASE`, `EXPIRATION`, `OVERPAYMENT` y `ADJUSTMENT` positivo suman; `APPLIED`,
 `REFUND`, `REVIVAL` y `ADJUSTMENT` negativo restan. **El saldo de un cliente es la suma de sus
 movimientos**, nunca una columna editable. La base rechaza un movimiento de
 monto cero (CHECK `customer_credit_entries_amount_not_zero`): no mueve dinero
@@ -606,7 +743,10 @@ y sólo ensucia el historial.
 
 ## Saldo a favor: las reglas (Fase 2B, Tarea 3, §5.5)
 
-`credit-service.ts`. Diagrama: `docs/diagrams/customer-credit.md`.
+`credit-service.ts`, sobre las primitivas de `credit-ledger.ts` (candado del
+cliente, suma bajo el candado y `addCreditEntry`), que viven aparte para que
+`payment-service.ts` pueda acreditar mientras liquida un pago sin que los dos
+módulos se importen entre sí. Diagrama: `docs/diagrams/customer-credit.md`.
 
 **Nunca mueve dinero solo.** El cliente lo ve en «Mi cuenta» (sólo lectura,
 `GET /me/credit`); el personal lo ve con `payment.view` y lo cambia con
@@ -619,6 +759,7 @@ y sólo ensucia el historial.
 | `PRICE_DECREASE` | + | Automático | Al bajar el precio por debajo de lo pagado; ese monto **sale** de `paid_cents` de la reserva (ver `reservations.md`) |
 | `EXPIRATION` | + | Automático | Al vencer un apartado `HELD` con `paid_cents > 0`; la reserva `EXPIRED` conserva `paid_cents` y sus pagos |
 | `REVIVAL` | − | Automático | Al revivir una reserva `EXPIRED` en el mostrador: devuelve a la reserva lo que `EXPIRATION` había pasado al saldo |
+| `OVERPAYMENT` | + | Automático | Al confirmar Stripe un pago mayor que el saldo de su reserva: la parte que excede (decisión D7, «Sobrepago confirmado»). A lo más uno por pago; **nunca** entra a `paid_cents` |
 | `APPLIED` | − | Personal | Aplicar saldo a una reserva viva del mismo cliente |
 | `REFUND` | − | Personal | Se devolvió el dinero **fuera del sistema**; motivo obligatorio |
 | `ADJUSTMENT` | ± | Personal | Corrección o cortesía; motivo obligatorio |
@@ -640,8 +781,9 @@ suma bajo cero. Dos aplicaciones simultáneas de $1,000 sobre un saldo de
 $1,500: la segunda espera el bloqueo, ve $500 y se rechaza.
 
 **Orden de bloqueo: reserva primero, cliente después**, en toda operación que
-toque ambos (aplicar saldo, cancelar, cambiar precio). Un solo orden es lo
-que impide que dos de ellas se bloqueen mutuamente.
+toque ambos (aplicar saldo, cancelar, cambiar precio, liquidar un pago con
+excedente), y el contador de folios después de los dos. Es el orden único de
+todos los caminos de dinero; ver «Orden de bloqueo» arriba.
 
 ### Aplicar saldo a una reserva
 
@@ -716,15 +858,23 @@ dos veces; el personal lo arregla antes con un `ADJUSTMENT`.
 **Invariante** (la que verifican las pruebas): para cada reserva, el saldo
 que ella dejó en el cliente más su `paid_cents` si está `HELD`/`ACTIVE` (o 0 si
 no lo está) es la suma de sus pagos `SUCCEEDED`. El mismo dinero nunca está
-a la vez en el saldo y en una reserva viva. `reconcilePaidCents` no cambia:
-ninguno de los dos movimientos toca `paid_cents`.
+a la vez en el saldo y en una reserva viva. `reconcilePaidCents` no cambia por
+`EXPIRATION` ni `REVIVAL`: ninguno de los dos toca `paid_cents`. Desde la
+decisión D7 el `OVERPAYMENT` entra en la misma cuenta del lado del saldo, y la
+conciliación lo resta (nunca llegó a `paid_cents`).
 
 ### Dinero que llega después de cancelar
 
-El webhook, en la rama de reserva `CANCELLED`, ahora también acredita el pago
-como `CANCELLATION` con su `payment_id` (idempotente por pago), además del
-aviso `PAYMENT_AFTER_CANCELLATION` —que ya dice que quedó como saldo a favor—
-y la alerta al personal.
+Al liquidar un pago confirmado de una reserva `CANCELLED`
+(`settleConfirmedPayment`), lo que cupo en la reserva se acredita como
+`CANCELLATION` con su `payment_id` (idempotente por pago) y el excedente, si lo
+hay, como `OVERPAYMENT`: todo el pago tardío queda como saldo a favor. Ocurre
+**antes** de numerar el recibo, para respetar el orden de bloqueo (antes lo
+hacía el webhook después del folio, y eso podía bloquearse contra un saldo
+aplicado en el mostrador). El webhook manda el aviso
+`PAYMENT_AFTER_CANCELLATION` —que ya dice que quedó como saldo a favor— y
+ninguna alerta al personal: con todo el dinero acreditado no queda nada que
+decidir (ver «Sobrepago confirmado»).
 
 ## Folio de recibo: el modelo (Fase 2B, Tarea 1)
 
@@ -754,11 +904,15 @@ fila por año con el año como llave primaria.
 - En la confirmación por webhook el folio se pide **después** del `updateMany`
   condicional: la entrega que pierde la carrera no toma un número que no va a
   usar.
+- **Es el último candado de su transacción**, en todos los caminos: se pide
+  una vez liquidado el pago (dinero aplicado y saldo a favor escrito). Ver
+  «Orden de bloqueo».
 - Costo aceptado: todos los cobros exitosos del año se serializan en esa fila
   durante el resto de su transacción, que es corta (sin llamadas de red).
 - En la misma escritura quedan `receipt_total_cents` y `receipt_paid_cents`:
   el precio total y lo pagado **justo después de este pago**. Es la foto que
-  imprime el recibo.
+  imprime el recibo. Con un sobrepago, `receipt_paid_cents` es lo que la
+  reserva alcanzó (nunca más que el total), no la suma con el excedente.
 
 ## Recibos en PDF (Fase 2B, Tareas 4 y 5, §5.4)
 
@@ -826,7 +980,12 @@ Ningún código es nuevo: los cinco existen en el catálogo desde la Fase 1.
 | Archivo | Para qué |
 |---|---|
 | `libs/domain/payments/src/lib/instalment.ts` | La aritmética de la mensualidad sugerida, sin base de datos |
-| `libs/domain/payments/src/lib/payment-service.ts` | Saldo, registro, confirmación, listado y la mensualidad de una reserva |
+| `libs/domain/payments/src/lib/payment-service.ts` | Saldo, registro, confirmación, liquidación (reparto del sobrepago), listado y la mensualidad de una reserva; el **orden de bloqueo** escrito al inicio |
+| `libs/domain/payments/src/lib/credit-ledger.ts` | Primitivas del saldo a favor: candado del cliente, `addCreditEntry`, `CANCELLATION` y `OVERPAYMENT` |
+| `libs/domain/payments/src/lib/reservation-lock.ts` | `lockReservationForMoney`: el viaje (`FOR KEY SHARE`) y luego la reserva, para todo camino de dinero |
+| `libs/domain/payments/src/lib/lock-order.spec.ts` | Las tres intercalaciones que se bloqueaban mutuamente antes del orden único, forzadas una por una |
+| `apps/api/src/app/api/v1/admin/reservations/cash-vs-webhook.race.integration.spec.ts` | La carrera real: efectivo y saldo aplicado contra el webhook, por las rutas |
+| `libs/db/prisma/migrations/20261009000100_credit_entry_overpayment_unique/` | El índice único parcial: un `OVERPAYMENT` por pago |
 | `libs/domain/payments/src/lib/payment-intent-service.ts` | Crear el Payment Intent (Tarea 14): el monto nunca viaja desde el cliente |
 | `libs/db/prisma/migrations/20261004011500_payment_provider_intent_unique/` | El índice único que ancla la idempotencia |
 | `apps/worker/src/jobs/reconcile-paid-cents.ts` | El job nocturno de conciliación (Tarea 8) |

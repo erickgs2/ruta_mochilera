@@ -151,6 +151,46 @@ aplicar a una nueva reservación o devolver. `expireHolds` la envía en lugar de
 recibiendo `HOLD_EXPIRED`. No es un aviso adicional: es uno u otro, dentro de
 la misma transacción.
 
+## `PAYMENT_EXCESS_CREDITED` (decisión D7 del dueño, 2026-10-07)
+
+Variante de `PAYMENT_CONFIRMED` para un pago que Stripe confirmó por **más de
+lo que la reserva debía** (dos fichas por el total, una ficha más una tarjeta;
+ver `payments.md`, «Sobrepago confirmado»). El webhook la envía en lugar de
+`PAYMENT_CONFIRMED` sólo cuando liquidar el pago acreditó un `OVERPAYMENT`; es
+una u otra, dentro de la misma transacción. `DeliveryEventType` pasa a 15
+miembros.
+
+Plantilla propia, no `PAYMENT_CONFIRMED` con otro `{{balance}}`: esa dice «tu
+saldo restante es de $0.00» y escondería a dónde fue el resto del dinero. Ésta
+dice que la reservación ya no debía ese monto y cuánto del pago
+(`{{credited}}`) quedó como saldo a favor en «Mi cuenta», con el monto recibido
+(`{{amount}}`). No cita saldo pendiente, y **no dice «liquidada»**: también se
+manda para una reserva vencida, cuyo lugar ya no existe, y «tu reservación
+quedó liquidada» se leería como «sí vas».
+
+Cuándo se manda:
+
+- Una reserva viva cuyo pago confirmado excedió lo que debía.
+- Una reserva `EXPIRED` cuyo pago tardío **no cupo en nada** (otro pago tardío
+  ya había cubierto el total): todo es saldo a favor y no queda nada que una
+  persona tenga que resolver, así que no se manda `PAYMENT_AFTER_EXPIRY`.
+
+En una reserva `EXPIRED` donde una parte cupo, el aviso sigue siendo
+`PAYMENT_AFTER_EXPIRY` (abajo), que nombra la parte acreditada. En una
+`CANCELLED` el aviso es `PAYMENT_AFTER_CANCELLATION`, que ya dice que todo quedó
+como saldo a favor. En ningún caso hay aviso al personal por el excedente: ese
+dinero ya quedó donde debe.
+
+## Un aviso por pago liquidado, no por entrega
+
+Stripe puede mandar más de un `payment_intent.succeeded` del mismo intento con
+`evt_` distintos, y `stripe_events` deja pasar cada uno. El dinero se aplica una
+vez y la confirmación dice si **esa** entrega fue la que lo liquidó
+(`settledNow`, decidido bajo el candado de la reserva). Sólo esa manda los
+avisos —al cliente y al personal— y encola el recibo; antes, el recibo estaba
+protegido y los avisos no, y una segunda entrega repetía el aviso al cliente y
+el `ORPHAN_PAYMENT`.
+
 ## Un fallo de envío no debe perder la copia de bandeja
 
 Si `EmailProvider.send` falla (dirección mal formada, proveedor caído), la
@@ -171,7 +211,11 @@ por la regla 5.3:
   a intentarlo" de aquella plantilla diría algo falso sobre lo que pasó.
 - **`PAYMENT_AFTER_EXPIRY`** — el dinero llegó después de que el apartado
   venciera. No es `PAYMENT_CONFIRMED`: esa plantilla cita el saldo restante y
-  se leería como "sí vas" para alguien cuyo lugar ya se liberó.
+  se leería como "sí vas" para alguien cuyo lugar ya se liberó. Desde la
+  decisión D7, cuando parte del pago excedió el total y ya es saldo a favor,
+  añade una frase con esa parte (`{{credited}}`); sin excedente la frase no
+  aparece. Por esa frase condicional se arma con una función propia, como
+  `PRICE_CHANGED`.
 
 En los dos casos la alternativa era reutilizar una plantilla existente
 pasándole un `{{reason}}` distinto, y en los dos casos se descartó por lo
@@ -204,6 +248,10 @@ no prosa, y es lo que una persona buscaría en el panel de Stripe.
   reserva. `PAYMENT_AFTER_EXPIRY` no cambia: el dinero de un apartado vencido
   sigue siendo decisión humana.
 
+  **Decisión D7 (2026-10-07):** como todo el dinero de una reserva cancelada
+  ya se acreditó, el personal **deja de recibir** `ORPHAN_PAYMENT` por él: no
+  queda nada que decidir. Ver «`notifyAdmins`» abajo.
+
 - **`CANCELLATION_DECLINED`** (`DeliveryEventType` pasa a 12): el personal
   rechazó la solicitud de cancelación del cliente. Le dice que su reservación
   sigue en pie y por qué (`{{reason}}`, escrito por el personal), dentro de la
@@ -223,6 +271,14 @@ el webhook de Stripe y los dos con la misma plantilla: un
 `payment_intent.succeeded` de una reserva que ya estaba `EXPIRED`, y uno de un
 intento que no trae reserva a la que atarse. En los dos casos hay dinero real
 y no hay nada que el sistema pueda decidir solo.
+
+**Sólo cuando queda algo por decidir (decisión D7).** En una reserva `EXPIRED`
+el aviso sale si una parte del pago cupo en la reserva —ésa es la que espera
+una decisión—; si todo el pago se volvió saldo a favor, no sale. En una
+reserva `CANCELLED` nunca sale: todo su dinero tardío se acredita. Y sale una
+sola vez por pago, aunque Stripe mande más de un evento del mismo intento. El
+dueño decidió que el dinero tardío abrirá un caso de seguimiento
+(`LatePaymentCase`, siguiente trabajo), que reemplazará este aviso.
 
 `notifyAdmins` los envía a **todo usuario de personal vivo** (`status =
 ACTIVE`) que tenga el permiso `reservation.cancel` — el mismo permiso que
