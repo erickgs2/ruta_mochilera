@@ -72,9 +72,13 @@ ALTER TABLE "reservations"
   CHECK ("status" <> 'HELD' OR "hold_expires_at" IS NOT NULL);
 ```
 
-La implicación es **de un solo sentido** (`HELD` ⇒ no nulo). `CANCELLED` y
-`EXPIRED` conservan la fecha que tuvieran, que es historia que vale la pena
-guardar, y `ACTIVE` no tiene ninguna.
+La implicación es **de un solo sentido** (`HELD` ⇒ no nulo). Sólo `HELD` tiene
+fecha de vencimiento: `ACTIVE`, `EXPIRED` (`expireHolds` la anula al vencer) y
+`CANCELLED` (`cancelReservation` la anula al cancelar) no tienen ninguna. Una
+reserva cancelada ya no tiene apartado que vencer, y dejarle la fecha hacía
+que las vistas del personal y del cliente mostraran un vencimiento de algo
+que no existe. La migración `20261008010000_cancelled_clears_hold_expiry`
+anuló la fecha de las filas `CANCELLED` anteriores.
 
 Prisma no sabe expresar un `CHECK` en `schema.prisma`, igual que no sabe
 expresar el índice parcial, así que vive como SQL crudo en la migración
@@ -607,7 +611,10 @@ rechaza a todo actor que no sea `STAFF`.
    acredita el webhook (ver `payments.md`). El gancho lo implementa
    `@rm/domain-payments` y la ruta lo inyecta: `reservations` y `payments`
    no se importan entre sí. Si el gancho falla, la cancelación se revierte.
-3. **Se registra quién y cuándo.** `cancelled_at` y `cancelled_by`.
+3. **Se registra quién y cuándo.** `cancelled_at` y `cancelled_by`. En la
+   misma escritura `hold_expires_at` pasa a `NULL` (ver «Estados»): una
+   reserva `CANCELLED` no tiene apartado, y los DTO del personal y del
+   cliente devuelven `holdExpiresAt: null`.
    `cancellation_requested_at` y `cancellation_reason` —lo que escribió el
    cliente— **no** se sobrescriben: el motivo del personal va al aviso del
    cliente y a la auditoría, no a la columna del cliente.
