@@ -79,6 +79,20 @@ describe('registration endpoints', () => {
       expect((await response.json()).code).toBe('VALIDATION_FAILED');
     });
 
+    it.each([
+      ['in the future', '2999-01-01'],
+      ['before 1900', '1899-12-31'],
+    ])('rejects a birth date %s with VALIDATION_FAILED on birthDate, creating nothing', async (_label, birthDate) => {
+      const response = await post(registerRoute, { ...validBody, birthDate }, '203.0.113.14');
+
+      expect(response.status).toBe(422);
+      const body = await response.json();
+      expect(body.code).toBe('VALIDATION_FAILED');
+      expect(body.details).toEqual({ field: 'birthDate' });
+      expect(await db.user.count()).toBe(0);
+      expect(fakeEmail.sent).toHaveLength(0);
+    });
+
     it('responds identically for an email that is already registered: same 200, same null body', async () => {
       await post(registerRoute, validBody, '203.0.113.12');
       const second = await post(registerRoute, { ...validBody, fullName: 'Someone Else' }, '203.0.113.13');

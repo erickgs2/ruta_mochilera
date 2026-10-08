@@ -3,7 +3,7 @@ import { recordAudit } from '@rm/domain-audit';
 import { invitationEmailMessage, issueInvitationToken } from '@rm/domain-identity';
 import { organizationProfile, organizationTimeZone } from '@rm/domain-settings';
 import type { EmailProvider } from '@rm/email';
-import { fail, isCalendarDateNotAfter, ok, type Result } from '@rm/shared-utils';
+import { fail, isValidBirthDate, ok, type Result } from '@rm/shared-utils';
 import { DateTime } from 'luxon';
 
 /**
@@ -248,10 +248,10 @@ async function registerCustomer(
   input: CreateBranchCustomerInput,
   options: { sendInvitation: boolean; actorId: string; origin: 'BRANCH' | 'IMPORT' }
 ): Promise<Result<CustomerDetailDto & { invitationSent: boolean }>> {
-  // The same rule as the CSV import: a real date, not after today in the
-  // organization's time zone.
+  // The same rule as self-signup and the CSV import: a real date from 1900-01-01
+  // up to today in the organization's time zone.
   const today = DateTime.now().setZone(await organizationTimeZone(db)).toISODate() as string;
-  if (!isCalendarDateNotAfter(input.birthDate, today)) return fail('VALIDATION_FAILED', { field: 'birthDate' });
+  if (!isValidBirthDate(input.birthDate, today)) return fail('VALIDATION_FAILED', { field: 'birthDate' });
 
   const email = input.email.trim().toLowerCase();
   const existing = await db.user.findFirst({

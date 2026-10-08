@@ -33,17 +33,17 @@ no es UUID, que no existe o que es de un trabajador responde `NOT_FOUND`.
 ## Alta en mostrador
 
 `createBranchCustomer` (`POST /admin/customers`, permiso `customer.manage`):
-nombre completo, correo, teléfono, fecha de nacimiento (una fecha real que
-no sea posterior a hoy en la zona de la organización; si lo es,
-`VALIDATION_FAILED` con `field: birthDate`, la misma regla de la importación)
+nombre completo, correo, teléfono, fecha de nacimiento (una fecha real, no
+futura en la zona de la organización y no anterior a 1900-01-01; si no,
+`VALIDATION_FAILED` con `field: birthDate`; ver «Fecha de nacimiento» más abajo)
 e idioma opcional.
 
 - **Validación de la entrada.** El esquema de `@rm/contracts` exige nombre de
   3 a 120 caracteres, correo válido, teléfono de 7 a 30 caracteres y
   `birthDate` como fecha real `YYYY-MM-DD`; el dominio rechaza además una fecha
-  de nacimiento futura con `VALIDATION_FAILED` (`field: birthDate`), como la
-  importación (`imports.md`). El nombre y el teléfono se guardan sin espacios
-  sobrantes.
+  de nacimiento futura o anterior a 1900-01-01 con `VALIDATION_FAILED`
+  (`field: birthDate`), como la importación (`imports.md`). El nombre y el
+  teléfono se guardan sin espacios sobrantes.
 - El **correo se recorta y se pasa a minúsculas** antes de guardarse, y la
   búsqueda de duplicados no distingue mayúsculas: «Maria@X.com» y «maria@x.com»
   son el mismo correo.
@@ -60,6 +60,27 @@ e idioma opcional.
   (`sendInvitation: false`). El correo sale **después del commit**; si el
   proveedor falla, el cliente queda dado de alta y la respuesta dice
   `invitationSent: false` para que el trabajador la reenvíe.
+
+## Fecha de nacimiento: la misma regla en las tres altas
+
+Un cliente nace por tres caminos —el autorregistro (`POST /auth/register`,
+`registerCustomer` en `libs/domain/identity`), el mostrador y la importación
+CSV— y los tres validan la fecha de nacimiento **en el servidor** con el mismo
+ayudante, `isValidBirthDate` (`@rm/shared-utils`), y con «hoy» tomado de la
+zona `SystemSetting.organization.timezone`, nunca de UTC ni del dispositivo.
+
+**La regla: una fecha real `YYYY-MM-DD`, no futura y no anterior a
+1900-01-01** (el 1900-01-01 y el día de hoy sí valen).
+
+- Autorregistro y mostrador: si no se cumple, `VALIDATION_FAILED` con
+  `field: birthDate`.
+- Importación: la fila queda `INVALID` con `INVALID_DATE` en `birth_date`; no
+  aborta el lote (`imports.md`).
+- La app de clientes (`auth-validators.ts`) comprueba lo mismo, pero eso es
+  comodidad: la regla vive en el servidor.
+- En el autorregistro la fecha se rechaza **antes** de buscar el correo, así
+  que el error no revela si el correo ya tenía cuenta, y no escribe nada ni
+  envía correo.
 
 ## Invitación
 

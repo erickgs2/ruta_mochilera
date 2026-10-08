@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { closeTestDb, prepareTestDb, resetDatabase, withTestDb } from '@rm/db/testing';
 import type { Db, DbTransactionClient } from '@rm/db';
 import type { EmailMessage, EmailProvider } from '@rm/email';
@@ -116,6 +116,60 @@ describe('registerCustomer / verifyEmail / resendVerificationCode', () => {
 
       expect(email.sent).toHaveLength(1);
       expect(extractCode(email.sent[0]!)).toMatch(/^\d{6}$/);
+    });
+
+    describe('birth date', () => {
+      afterEach(() => vi.useRealTimers());
+
+      async function setOrganizationTimeZone(value: string): Promise<void> {
+        await db.systemSetting.upsert({
+          where: { key: 'organization.timezone' },
+          create: { key: 'organization.timezone', value },
+          update: { value },
+        });
+      }
+
+      async function expectRejected(birthDate: string): Promise<void> {
+        const result = await registerCustomer(db, email, { ...validInput, birthDate: new Date(birthDate) }, '10.0.0.30');
+        expect(result).toMatchObject({ ok: false, error: { code: 'VALIDATION_FAILED', details: { field: 'birthDate' } } });
+        expect(await db.user.count()).toBe(0);
+        expect(email.sent).toHaveLength(0);
+      }
+
+      it('rejects a date in the future', async () => {
+        await expectRejected('2999-01-01');
+      });
+
+      it('rejects a date before 1900', async () => {
+        await expectRejected('1899-12-31');
+      });
+
+      it('accepts 1900-01-01 and today', async () => {
+        await setOrganizationTimeZone('America/Mexico_City');
+        vi.useFakeTimers({ toFake: ['Date'], now: new Date('2027-03-10T15:00:00Z') });
+
+        expect((await registerCustomer(db, email, { ...validInput, birthDate: new Date('1900-01-01') }, '10.0.0.31')).ok).toBe(true);
+        expect(
+          (await registerCustomer(db, email, { ...validInput, email: 'today@example.com', birthDate: new Date('2027-03-10') }, '10.0.0.32')).ok
+        ).toBe(true);
+      });
+
+      it("takes 'today' in the organization time zone: behind UTC, the UTC date is still tomorrow", async () => {
+        await setOrganizationTimeZone('America/Mexico_City');
+        // 21:00 on 9 March in Mexico City, already 10 March in UTC.
+        vi.useFakeTimers({ toFake: ['Date'], now: new Date('2027-03-10T03:00:00Z') });
+
+        await expectRejected('2027-03-10');
+        expect((await registerCustomer(db, email, { ...validInput, birthDate: new Date('2027-03-09') }, '10.0.0.33')).ok).toBe(true);
+      });
+
+      it("takes 'today' in the organization time zone: ahead of UTC, the UTC date is still yesterday", async () => {
+        await setOrganizationTimeZone('Pacific/Auckland');
+        // 09:00 on 10 March in Auckland, still 9 March in UTC.
+        vi.useFakeTimers({ toFake: ['Date'], now: new Date('2027-03-09T20:00:00Z') });
+
+        expect((await registerCustomer(db, email, { ...validInput, birthDate: new Date('2027-03-10') }, '10.0.0.34')).ok).toBe(true);
+      });
     });
 
     it('stores the code hashed, never in clear: reading the row back never equals what was sent', async () => {

@@ -1,4 +1,4 @@
-import { isCalendarDateNotAfter } from '@rm/shared-utils';
+import { isCalendarDateNotAfter, isValidBirthDate } from '@rm/shared-utils';
 import { parsePesosToCents } from './money';
 import { IMPORT_COLUMNS, OPTIONAL_COLUMNS, type ImportType } from './templates';
 
@@ -107,7 +107,7 @@ function validateCustomer(values: Record<string, string>, lookups: ImportLookups
   else if (phone.replace(/\D/g, '').length < 7) errors.push({ column: 'phone', code: 'INVALID_PHONE' });
   const birthDate = values['birth_date'] ?? '';
   if (!birthDate) errors.push({ column: 'birth_date', code: 'REQUIRED' });
-  else if (!isCalendarDateNotAfter(birthDate, lookups.today)) errors.push({ column: 'birth_date', code: 'INVALID_DATE' });
+  else if (!isValidBirthDate(birthDate, lookups.today)) errors.push({ column: 'birth_date', code: 'INVALID_DATE' });
   const locale = (values['locale'] ?? '').toLowerCase();
   if (locale && locale !== 'es' && locale !== 'en') errors.push({ column: 'locale', code: 'INVALID_LOCALE' });
   return { errors, existing: errors.length === 0 ? lookups.customersByEmail.get(email) : undefined };

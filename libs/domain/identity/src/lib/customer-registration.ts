@@ -1,6 +1,8 @@
+import { DateTime } from 'luxon';
 import { uniqueViolationIndex, type Db, type DbTransactionClient } from '@rm/db';
+import { organizationTimeZone } from '@rm/domain-settings';
 import type { EmailProvider } from '@rm/email';
-import { fail, ok, type Result } from '@rm/shared-utils';
+import { fail, isValidBirthDate, ok, type Result } from '@rm/shared-utils';
 import { generateOtpCode, hashOtpCode, loadOtpSettings } from './otp';
 import { hashPassword } from './password';
 import { isRateLimited, recordFailedAttempt } from './rate-limiter';
@@ -109,6 +111,13 @@ export async function registerCustomer(
   recordFailedAttempt('register', email, ip);
 
   if (!input.acceptTerms) return fail('VALIDATION_FAILED', { field: 'acceptTerms' });
+
+  // The same rule as the counter signup and the CSV import (`isValidBirthDate`).
+  // It does not depend on the email, so rejecting here reveals nothing about it.
+  if (Number.isNaN(input.birthDate.getTime())) return fail('VALIDATION_FAILED', { field: 'birthDate' });
+  const birthDate = input.birthDate.toISOString().slice(0, 10);
+  const today = DateTime.now().setZone(await organizationTimeZone(db)).toISODate() as string;
+  if (!isValidBirthDate(birthDate, today)) return fail('VALIDATION_FAILED', { field: 'birthDate' });
 
   // Paid unconditionally -- see the doc comment above.
   const passwordHash = await hashPassword(input.password);

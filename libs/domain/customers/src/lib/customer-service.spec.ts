@@ -145,6 +145,25 @@ describe('createBranchCustomer', () => {
     expect(email.sent).toHaveLength(0);
   });
 
+  it('rejects a birth date before 1900-01-01 and accepts 1900-01-01 itself', async () => {
+    const tooOld = await createBranchCustomer(
+      db,
+      mail(),
+      { fullName: 'Antigua', email: 'antigua@example.com', phone: '1234567', birthDate: '1899-12-31' },
+      { sendInvitation: false, actorId: staffId }
+    );
+    expect(tooOld).toMatchObject({ ok: false, error: { code: 'VALIDATION_FAILED', details: { field: 'birthDate' } } });
+    expect(await db.user.count({ where: { type: 'CUSTOMER' } })).toBe(0);
+
+    const floor = await createBranchCustomer(
+      db,
+      mail(),
+      { fullName: 'Centenaria', email: 'centenaria@example.com', phone: '1234567', birthDate: '1900-01-01' },
+      { sendInvitation: false, actorId: staffId }
+    );
+    expect(floor.ok).toBe(true);
+  });
+
   it('rejects an impossible calendar date such as 2020-02-31', async () => {
     const result = await createBranchCustomer(
       db,
