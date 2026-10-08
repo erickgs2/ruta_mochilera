@@ -376,3 +376,19 @@ flowchart LR
     B -- Sí --> D["EXPIRATION al saldo del cliente<br/>por lo que aún no está acreditado<br/>(misma transacción)"]
     D --> E["La reserva conserva paid_cents y sus pagos;<br/>revivirla en el mostrador toma el saldo de vuelta<br/>con un REVIVAL (ver customer-credit.md)"]
 ```
+
+## Fichas por cobrar en el mostrador
+
+```mermaid
+flowchart TD
+    A["GET /admin/payments?status=PENDING<br/>(payment.view)"] --> B{"¿Permiso y consulta válidos?"}
+    B -- No --> X["403 PERMISSION_DENIED o<br/>422 VALIDATION_FAILED"]
+    B -- Sí --> C["listPendingVouchers"]
+    C --> D["Pagos PENDING con método OXXO o SPEI<br/>(nunca tarjeta, efectivo ni liquidados)"]
+    D --> E["Orden: vencimiento de la ficha ↑,<br/>sin vencimiento al final, luego recorded_at e id"]
+    E --> F["Página + nextCursor (claves, opaco)"]
+    F --> G["El mostrador persigue el cobro;<br/>el pago sólo existe cuando llega el webhook"]
+```
+
+La lista no confirma nada: es dinero que se espera. Sólo el webhook de Stripe
+mueve `paid_cents` y activa la reserva.

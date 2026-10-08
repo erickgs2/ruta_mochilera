@@ -2861,6 +2861,74 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/payments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description The OXXO and SPEI vouchers still waiting to be paid, across every reservation, soonest voucher expiry first (vouchers without one last), paginated by an opaque keyset cursor. Card intents are never listed. Staff cannot confirm any of them: a payment exists only when Stripe says so by webhook. Requires payment.view. */
+        get: {
+            parameters: {
+                query?: {
+                    status?: "PENDING";
+                    method?: "OXXO" | "SPEI";
+                    cursor?: string;
+                    limit?: number;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description One page of pending vouchers */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["StaffPaymentPage"];
+                    };
+                };
+                /** @description Missing or invalid access token */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description PERMISSION_DENIED -- requires payment.view */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description VALIDATION_FAILED -- bad query string or cursor */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/reservations/{reservationId}/payments": {
         parameters: {
             query?: never;
@@ -4895,6 +4963,49 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/notifications/read-all": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Marks every unread INBOX delivery of the authenticated user as read. Only their own rows are touched. */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Marked read */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Missing or invalid access token */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/files/{key}": {
         parameters: {
             query?: never;
@@ -5480,6 +5591,39 @@ export interface components {
             cancelledByName: string | null;
             cancellationDeclinedByName: string | null;
         };
+        StaffPaymentPage: {
+            items: {
+                /** Format: uuid */
+                id: string;
+                /** Format: uuid */
+                reservationId: string;
+                amountCents: number;
+                /** @enum {string} */
+                method: "CARD" | "OXXO" | "SPEI" | "CASH" | "LEGACY" | "CREDIT";
+                /** @enum {string} */
+                status: "PENDING" | "SUCCEEDED" | "FAILED" | "EXPIRED" | "REFUNDED";
+                /** @enum {string} */
+                provider: "STRIPE" | "MANUAL";
+                /** Format: date-time */
+                paidAt: string | null;
+                /** Format: date-time */
+                recordedAt: string;
+                providerVoucherUrl: string | null;
+                /** Format: date-time */
+                voucherExpiresAt: string | null;
+                receiptNumber: string | null;
+                reservationCode: string;
+                /** @enum {string} */
+                reservationStatus: "HELD" | "ACTIVE" | "CANCELLED" | "EXPIRED";
+                /** Format: uuid */
+                customerId: string;
+                customerName: string;
+                tripName: string;
+                /** Format: date-time */
+                createdAt: string;
+            }[];
+            nextCursor: string | null;
+        };
         Payment: {
             /** Format: uuid */
             id: string;
@@ -5800,6 +5944,8 @@ export interface components {
                 /** Format: uuid */
                 id: string;
                 eventType: string;
+                /** Format: uuid */
+                reservationId: string | null;
                 title: string;
                 body: string;
                 /** @enum {string} */

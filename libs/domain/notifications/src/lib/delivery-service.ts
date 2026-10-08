@@ -38,6 +38,8 @@ export interface NotifyAdminsInput {
 export interface InboxItemDto {
   id: string;
   eventType: string;
+  /** The reservation the notice is about, so the panel can link to it; `null` for events with no single reservation. */
+  reservationId: string | null;
   title: string;
   body: string;
   status: NotificationDelivery['status'];
@@ -75,6 +77,7 @@ function toInboxItemDto(row: NotificationDelivery): InboxItemDto {
   return {
     id: row.id,
     eventType: row.eventType,
+    reservationId: row.reservationId,
     title: row.renderedTitle,
     body: row.renderedBody,
     status: row.status,
@@ -362,5 +365,19 @@ export async function markRead(db: Db, deliveryId: string, customerId: string): 
     data: { status: 'READ', readAt: new Date() },
   });
 
+  return ok(null);
+}
+
+/**
+ * Marks every unread INBOX delivery of one user as read, for the panel's
+ * "mark all read". Scoped to the caller's own INBOX rows -- never their EMAIL
+ * rows, which track sending, nor anyone else's -- and rows already read keep
+ * their original `read_at`. Having nothing unread is not an error.
+ */
+export async function markAllRead(db: Db, userId: string): Promise<Result<null>> {
+  await db.notificationDelivery.updateMany({
+    where: { userId, channel: 'INBOX', readAt: null },
+    data: { status: 'READ', readAt: new Date() },
+  });
   return ok(null);
 }

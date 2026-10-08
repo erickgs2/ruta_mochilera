@@ -38,10 +38,12 @@ import {
   forgotPasswordRequestSchema as forgotPasswordRequestSchemaImport,
   inboxItemSchema as inboxItemSchemaImport,
   listInboxQuerySchema,
+  listStaffPaymentsQuerySchema,
   listStaffReservationsQuerySchema,
   inboxPageSchema as inboxPageSchemaImport,
   loginRequestSchema as loginRequestSchemaImport,
   paymentSchema as paymentSchemaImport,
+  staffPaymentPageSchema as staffPaymentPageSchemaImport,
   permissionSchema as permissionSchemaImport,
   pricingPolicyRequestSchema as pricingPolicyRequestSchemaImport,
   problemSchema as problemSchemaImport,
@@ -68,7 +70,7 @@ import {
 } from '@rm/contracts';
 import type { TripCostingDto, BudgetItemDto } from '@rm/domain-costing';
 import type { InboxItemDto, InboxPageDto } from '@rm/domain-notifications';
-import type { CreatedPaymentIntentDto, PaymentDto } from '@rm/domain-payments';
+import type { CreatedPaymentIntentDto, PaymentDto, StaffPaymentPageDto } from '@rm/domain-payments';
 import type {
   ReservationDto,
   ReservationSummaryDto,
@@ -140,6 +142,8 @@ const createPaymentIntentRequestSchema = createPaymentIntentRequestSchemaImport.
   id: 'CreatePaymentIntentRequest',
 });
 const paymentSchema = paymentSchemaImport.meta({ id: 'Payment' });
+// Pending vouchers queue (GET /admin/payments).
+const staffPaymentPageSchema = staffPaymentPageSchemaImport.meta({ id: 'StaffPaymentPage' });
 const creditEntrySchema = creditEntrySchemaImport.meta({ id: 'CreditEntry' });
 const organizationProfileSchema = organizationProfileSchemaImport.meta({ id: 'OrganizationProfile' });
 const importBatchSchema = importBatchSchemaImport.meta({ id: 'ImportBatch' });
@@ -387,6 +391,9 @@ type _staffReservationDetailSchemaMatchesDto = Expect<
   Equals<z.infer<typeof staffReservationDetailSchema>, DateToString<StaffReservationDetailDto>>
 >;
 type _paymentSchemaMatchesDto = Expect<Equals<z.infer<typeof paymentSchema>, DateToString<PaymentDto>>>;
+type _staffPaymentPageSchemaMatchesDto = Expect<
+  Equals<z.infer<typeof staffPaymentPageSchema>, DateToString<StaffPaymentPageDto>>
+>;
 type _createdPaymentIntentSchemaMatchesDto = Expect<
   Equals<z.infer<typeof createdPaymentIntentSchema>, DateToString<CreatedPaymentIntentDto>>
 >;
@@ -425,6 +432,7 @@ export type _OpenApiDtoAssertions = [
   _staffReservationSummarySchemaMatchesDto,
   _staffReservationDetailSchemaMatchesDto,
   _paymentSchemaMatchesDto,
+  _staffPaymentPageSchemaMatchesDto,
   _createdPaymentIntentSchemaMatchesDto,
   _inboxItemSchemaMatchesDto,
   _inboxPageSchemaMatchesDto,
@@ -1192,6 +1200,25 @@ export function buildOpenApiDocument() {
 
   registry.registerPath({
     method: 'get',
+    path: '/api/v1/admin/payments',
+    tags: ['payments', 'admin'],
+    security: [{ bearerAuth: [] }],
+    description:
+      'The OXXO and SPEI vouchers still waiting to be paid, across every reservation, soonest voucher ' +
+      'expiry first (vouchers without one last), paginated by an opaque keyset cursor. Card intents are never ' +
+      'listed. Staff cannot confirm any of them: a payment exists only when Stripe says so by webhook. ' +
+      'Requires payment.view.',
+    request: { query: listStaffPaymentsQuerySchema },
+    responses: {
+      200: { description: 'One page of pending vouchers', ...json(staffPaymentPageSchema) },
+      401: problem('Missing or invalid access token'),
+      403: problem('PERMISSION_DENIED -- requires payment.view'),
+      422: problem('VALIDATION_FAILED -- bad query string or cursor'),
+    },
+  });
+
+  registry.registerPath({
+    method: 'get',
     path: '/api/v1/admin/reservations/{reservationId}/payments',
     tags: ['reservations', 'payments', 'admin'],
     security: [{ bearerAuth: [] }],
@@ -1722,6 +1749,18 @@ export function buildOpenApiDocument() {
       204: { description: 'Marked read' },
       401: problem('Missing or invalid access token'),
       404: problem('DELIVERY_NOT_OWNED -- no such delivery, or it is not the caller\'s'),
+    },
+  });
+
+  registry.registerPath({
+    method: 'post',
+    path: '/api/v1/notifications/read-all',
+    tags: ['notifications'],
+    security: [{ bearerAuth: [] }],
+    description: 'Marks every unread INBOX delivery of the authenticated user as read. Only their own rows are touched.',
+    responses: {
+      204: { description: 'Marked read' },
+      401: problem('Missing or invalid access token'),
     },
   });
 

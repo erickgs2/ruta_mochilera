@@ -28,6 +28,7 @@ export type ListInboxQuery = z.infer<typeof listInboxQuerySchema>;
 export const inboxItemSchema = z.object({
   id: uuidSchema,
   eventType: z.string(),
+  reservationId: uuidSchema.nullable(),
   title: z.string(),
   body: z.string(),
   status: notificationStatusSchema,

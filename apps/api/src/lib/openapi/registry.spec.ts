@@ -20,6 +20,7 @@ const EVERY_ROUTE_FILE_PATH = [
   '/api/v1/auth/oauth/apple',
   '/api/v1/auth/invitation/accept',
   '/api/v1/admin/customers',
+  '/api/v1/admin/payments',
   '/api/v1/admin/backfill/reservations',
   '/api/v1/admin/imports',
   '/api/v1/admin/settings/organization',
@@ -70,6 +71,7 @@ const EVERY_ROUTE_FILE_PATH = [
   '/api/v1/payments',
   '/api/v1/notifications',
   '/api/v1/notifications/{deliveryId}/read',
+  '/api/v1/notifications/read-all',
 ];
 
 /**
@@ -121,6 +123,7 @@ const NO_PERMISSION_CHECK_PATHS = [
   '/api/v1/payments/{paymentId}/receipt',
   '/api/v1/notifications',
   '/api/v1/notifications/{deliveryId}/read',
+  '/api/v1/notifications/read-all',
 ];
 
 describe('buildOpenApiDocument', () => {
