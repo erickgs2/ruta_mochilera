@@ -1,5 +1,5 @@
 import { BreakpointObserver } from '@angular/cdk/layout';
-import { Component, effect, inject } from '@angular/core';
+import { Component, computed, effect, inject, untracked } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
@@ -57,16 +57,22 @@ export class ShellComponent {
     { initialValue: false }
   );
 
+  /** The signed-in user's stored locale. A `computed`, so it only changes when the *value* does. */
+  private readonly userLocale = computed(() => this.auth.user()?.locale);
+
   constructor() {
-    // Follow the signed-in user's stored language preference (set on login
-    // and on every token refresh) rather than only the browser default or
-    // whatever was last picked on this device. A manual pick via the
-    // language menu still updates `LanguageService` immediately; this just
-    // keeps the two in sync whenever the session's user record changes.
+    // Follow the signed-in user's stored language preference (set on login)
+    // rather than only the browser default or whatever was last picked on this
+    // device. It reacts to the stored locale *value*, not to the user object:
+    // a token refresh hands back a fresh user object with the same locale, and
+    // that must not undo a language the person picked from the menu. Nor may
+    // the current language be tracked here, or picking one re-runs this and
+    // forces the stored locale straight back. There is no endpoint yet to save
+    // a staff user's own locale, so a pick lasts for the session.
     effect(() => {
-      const user = this.auth.user();
-      if (user && user.locale !== this.language.current()) {
-        this.language.use(user.locale);
+      const locale = this.userLocale();
+      if (locale && locale !== untracked(() => this.language.current())) {
+        this.language.use(locale);
       }
     });
   }

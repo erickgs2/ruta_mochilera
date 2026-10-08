@@ -110,6 +110,54 @@ describe('ShellComponent', () => {
     });
   });
 
+  describe('choosing a language from the menu', () => {
+    async function pickEnglish(fixture: ReturnType<typeof TestBed.createComponent<ShellComponent>>) {
+      const trigger = (fixture.nativeElement as HTMLElement).querySelector('button[aria-label="Change language"]') as HTMLButtonElement;
+      trigger.click();
+      fixture.detectChanges();
+      await fixture.whenStable();
+      (document.body.querySelector('.shell-language-en') as HTMLButtonElement).click();
+      fixture.detectChanges();
+      await fixture.whenStable();
+    }
+
+    it("keeps the language the person picked even though their stored locale is different", async () => {
+      configure();
+      const auth = TestBed.inject(AuthService);
+      const language = TestBed.inject(LanguageService);
+      language.use('es');
+      auth.setSessionForTesting('access-1', userWith('es'));
+      const fixture = TestBed.createComponent(ShellComponent);
+      fixture.detectChanges();
+      await fixture.whenStable();
+
+      await pickEnglish(fixture);
+
+      expect(language.current()).toBe('en');
+      expect(document.documentElement.lang).toBe('en');
+      expect(localStorage.getItem('rm.locale')).toBe('en');
+    });
+
+    it('keeps the picked language through a token refresh that still carries the old stored locale', async () => {
+      configure();
+      const auth = TestBed.inject(AuthService);
+      const language = TestBed.inject(LanguageService);
+      language.use('es');
+      auth.setSessionForTesting('access-1', userWith('es'));
+      const fixture = TestBed.createComponent(ShellComponent);
+      fixture.detectChanges();
+      await fixture.whenStable();
+      await pickEnglish(fixture);
+
+      // The refresh response carries a fresh user object, but the same stored locale.
+      auth.applyRefreshedSession('access-2', userWith('es'));
+      fixture.detectChanges();
+      await fixture.whenStable();
+
+      expect(language.current()).toBe('en');
+    });
+  });
+
   describe('signing out', () => {
     it('clears the session and navigates to /login when the sign-out button is clicked', async () => {
       configure();
