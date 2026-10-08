@@ -97,12 +97,22 @@ function next(): number {
 }
 
 async function seedAdmin(client: Db): Promise<string> {
-  // `notifyAdmins` routes to every live STAFF user holding `reservation.cancel`.
-  const permission = await client.permission.create({
+  // `notifyAdmins` routes by permission: `reservation.cancel` for the cancellation
+  // request, `payment.view` / `payment.credit.apply` for the money alerts. This one
+  // agent holds the first two, so every alert the webhook raises reaches them.
+  const cancel = await client.permission.create({
     data: { key: 'reservation.cancel', category: 'reservations', description: 'Cancel reservations' },
   });
+  const viewPayments = await client.permission.create({
+    data: { key: 'payment.view', category: 'payments', description: 'View payments and receipts' },
+  });
   const role = await client.role.create({ data: { name: 'Agent', description: 'Front desk' } });
-  await client.rolePermission.create({ data: { roleId: role.id, permissionId: permission.id } });
+  await client.rolePermission.createMany({
+    data: [
+      { roleId: role.id, permissionId: cancel.id },
+      { roleId: role.id, permissionId: viewPayments.id },
+    ],
+  });
   const user = await client.user.create({
     data: {
       email: 'agent@agency.test',

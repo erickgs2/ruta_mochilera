@@ -30,7 +30,7 @@ export interface NotifyCustomerInput {
 }
 
 export interface NotifyAdminsInput {
-  eventType: DeliveryEventType;
+  eventType: AdminAlertEventType;
   params: Record<string, string>;
   reservationId?: string;
 }
@@ -61,14 +61,25 @@ export interface ListInboxOptions {
 }
 
 /**
- * Every Phase 2A alert routed to staff instead of a customer goes to whoever
- * holds this one permission: the cancellation request (business rule 5.6),
- * the orphan OXXO payment (5.3) and the nightly `paid_cents` drift alert.
- * Not a parameter of `notifyAdmins` because nothing in this phase needs a
- * different audience -- all three are "something a person who can act on a
- * reservation needs to see".
+ * Who each staff alert reaches: every active staff user whose roles grant **at
+ * least one** of the event's permissions. The audience follows what the person
+ * can act on, not a blanket "admins" list:
+ * - a cancellation request goes to whoever can cancel (business rule 5.6);
+ * - the money alerts (an orphan payment, a `paid_cents` drift) go to whoever
+ *   can see payments or apply credit.
+ *
+ * Alerts about collection risk (overdue and at-risk reservations) are meant for
+ * holders of `reservation.risk.view`; they join this table when the event that
+ * raises them exists. Declaring an event here is what makes it sendable:
+ * `notifyAdmins` only accepts the keys of this table.
  */
-const ADMIN_ALERT_PERMISSION: PermissionKey = 'reservation.cancel';
+const ADMIN_ALERT_AUDIENCE = {
+  CANCELLATION_REQUESTED: ['reservation.cancel'],
+  ORPHAN_PAYMENT: ['payment.view', 'payment.credit.apply'],
+  PAID_CENTS_MISMATCH: ['payment.view', 'payment.credit.apply'],
+} as const satisfies Partial<Record<DeliveryEventType, readonly PermissionKey[]>>;
+
+export type AdminAlertEventType = keyof typeof ADMIN_ALERT_AUDIENCE;
 
 const DEFAULT_PAGE_SIZE = 20;
 const MAX_PAGE_SIZE = 100;
@@ -192,21 +203,24 @@ export async function notifyCustomer(
 }
 
 /**
- * Writes the same notice to every live staff user holding
- * `reservation.cancel` -- the three Phase 2A alerts that have no customer to
- * go to (see `ADMIN_ALERT_PERMISSION`). Writes nothing, and never throws,
- * when no staff user currently holds that permission.
+ * Writes the same notice to every live staff user whose roles grant any of the
+ * permissions in `ADMIN_ALERT_AUDIENCE` for this event -- the alerts that have
+ * no customer to go to. Recipients are resolved here, at send time, from the
+ * roles as they are now; a user matching through several permissions or roles
+ * still gets one notice, and a disabled user none. Writes nothing, and never
+ * throws, when nobody currently holds a matching permission.
  */
 export async function notifyAdmins(
   tx: DbTransactionClient,
   queue: NotificationQueue,
   input: NotifyAdminsInput
 ): Promise<void> {
+  const permissionKeys = [...ADMIN_ALERT_AUDIENCE[input.eventType]];
   const recipients = await tx.user.findMany({
     where: {
       type: 'STAFF',
       status: 'ACTIVE',
-      roles: { some: { role: { permissions: { some: { permission: { key: ADMIN_ALERT_PERMISSION } } } } } },
+      roles: { some: { role: { permissions: { some: { permission: { key: { in: permissionKeys } } } } } } },
     },
     select: { id: true, locale: true },
   });
