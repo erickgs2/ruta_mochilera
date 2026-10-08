@@ -226,3 +226,14 @@ describe('ReservationDetailComponent', () => {
     });
   });
 });
+
+describe('ReservationDetailComponent calendar days (America/Mexico_City)', () => {
+  afterEach(() => TestBed.inject(HttpTestingController).verify());
+
+  it('shows the payment deadline as the stored day, not the day before', async () => {
+    const { harness } = await open(reservation({ paymentDeadline: '2028-02-01T00:00:00.000Z' }));
+
+    expect(element(harness).textContent).toContain('1 feb 2028');
+    expect(element(harness).textContent).not.toContain('31 ene 2028');
+  });
+});

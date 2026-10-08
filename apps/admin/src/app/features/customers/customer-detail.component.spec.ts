@@ -48,3 +48,32 @@ describe('CustomerDetailComponent', () => {
     expect(fixture.nativeElement.querySelector('.customer-invite')).toBeNull();
   });
 });
+
+describe('CustomerDetailComponent calendar days (America/Mexico_City)', () => {
+  afterEach(() => localStorage.clear());
+
+  it('shows the birth date and each reservation departure as the stored day, not the day before', () => {
+    localStorage.setItem('rm.locale', 'es');
+    const { fixture } = configure(['customer.view'], {
+      birthDate: '1990-05-17T00:00:00.000Z',
+      reservations: [
+        {
+          id: 'res-1',
+          code: 'RM-AAAA-BBBB',
+          status: 'ACTIVE',
+          tripName: 'Oaxaca',
+          departureDate: '2027-03-01T00:00:00.000Z',
+          totalPriceCents: 500_000,
+          paidCents: 100_000,
+          createdAt: '2026-10-01T10:00:00.000Z',
+        },
+      ],
+    });
+
+    const text = fixture.nativeElement.textContent as string;
+    expect(text).toContain('17 may 1990');
+    expect(text).not.toContain('16 may 1990');
+    expect(fixture.nativeElement.querySelector('.customer-reservation')?.textContent).toContain('1 mar 2027');
+    expect(text).not.toContain('28 feb 2027');
+  });
+});

@@ -7,6 +7,8 @@ import { LanguageService } from './language.service';
 // before `formatDate` can use it.
 registerLocaleData(localeEs);
 
+const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
+
 /**
  * Renders a calendar date -- a `@db.Date` column such as a trip's departure
  * or return date -- as that same day, whatever the viewer's time zone.
@@ -16,6 +18,12 @@ registerLocaleData(localeEs);
  * west of UTC (America/Mexico_City is UTC-6) would see the day before.
  * Formatting in UTC shows the stored day. Use `DatePipe` for real instants
  * (`timestamptz`), which should follow the viewer's zone.
+ *
+ * A date-only string ("2026-11-20") is read as that day in UTC as well:
+ * `formatDate` would otherwise build it at *local* midnight, which is the
+ * previous day in UTC for a viewer east of it. Pass the API's string, not a
+ * `Date` -- a `Date` is an instant, and a picker's local-midnight `Date`
+ * would land on the wrong day in some zone.
  *
  * Written in the interface's language ("20 nov 2026" / "Nov 20, 2026"), read
  * from `LanguageService` like `rmMoney` -- not from `LOCALE_ID`, which nothing
@@ -28,6 +36,7 @@ export class CalendarDatePipe implements PipeTransform {
 
   transform(value: string | Date | null | undefined, format = 'mediumDate'): string {
     if (value === null || value === undefined || value === '') return '';
-    return formatDate(value, format, this.language.current(), 'UTC');
+    const instant = typeof value === 'string' && DATE_ONLY.test(value) ? `${value}T00:00:00Z` : value;
+    return formatDate(instant, format, this.language.current(), 'UTC');
   }
 }

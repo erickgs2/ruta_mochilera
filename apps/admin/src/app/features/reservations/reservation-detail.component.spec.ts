@@ -357,3 +357,22 @@ describe('ReservationDetailComponent', () => {
   });
 });
 
+
+describe('ReservationDetailComponent calendar days (America/Mexico_City)', () => {
+  afterEach(() => localStorage.clear());
+
+  it('shows the trip departure and the payment deadline as the stored days, not the day before', () => {
+    localStorage.setItem('rm.locale', 'es');
+    const { fixture, httpMock } = configure(['reservation.view']);
+    httpMock
+      .expectOne(URL)
+      .flush(detail({ tripDepartureDate: '2027-12-01T00:00:00.000Z', paymentDeadline: '2027-11-01T00:00:00.000Z' }));
+    fixture.detectChanges();
+
+    const text = fixture.nativeElement.textContent as string;
+    expect(text).toContain('1 dic 2027');
+    expect(text).toContain('1 nov 2027');
+    expect(text).not.toContain('30 nov 2027');
+    expect(text).not.toContain('31 oct 2027');
+  });
+});
