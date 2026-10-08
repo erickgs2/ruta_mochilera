@@ -84,7 +84,7 @@ Ver `docs/decisiones-fase-2b.md`, «Pendientes». Se documentan tal como son hoy
 |---|---|
 | `REQUIRED` | Falta un valor obligatorio |
 | `INVALID_EMAIL` | No es un correo |
-| `INVALID_DATE` | No es una fecha `YYYY-MM-DD` real, o es futura |
+| `INVALID_DATE` | No es una fecha `YYYY-MM-DD` real, o es futura; en `birth_date`, además, anterior a 1900-01-01 |
 | `INVALID_AMOUNT` | No es un monto en pesos mayor a cero |
 | `INVALID_PHONE` | Menos de 7 dígitos |
 | `INVALID_LOCALE` | No es `es` ni `en` |
@@ -118,9 +118,12 @@ Crea clientes `origin = IMPORT`, **correo verificado** y **sin contraseña**
 cliente no se duplica: la fila es `EXISTS` con el id de ese cliente.
 
 Valida lo mismo que el mostrador en lo que importa: la fecha de nacimiento debe
-ser real y **no futura** (`INVALID_DATE`, en la zona de la organización). El
-mostrador aplica la misma regla (`VALIDATION_FAILED` con `field: birthDate`; ver
-`customers.md`). El teléfono pide al menos 7 **dígitos** y el nombre sólo que
+ser real, **no futura y no anterior a 1900-01-01** (`INVALID_DATE`, en la zona
+de la organización; una fila con esa fecha queda `INVALID` en la vista previa y
+no aborta el lote). El mostrador y el autorregistro aplican la misma regla
+(`VALIDATION_FAILED` con `field: birthDate`; ver `customers.md`). La fecha de
+pago (`paid_at`) sólo exige que sea real y no futura. El teléfono pide al
+menos 7 **dígitos** y el nombre sólo que
 no esté vacío.
 
 **Una invitación que no se pudo enviar no hace fallar la fila.** Con

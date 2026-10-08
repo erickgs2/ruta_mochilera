@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { calendarDay, endOfCalendarDay, isCalendarDateNotAfter, isPastDate, monthStartsBetween, noonOrNow, resolveBackfillMoments } from './calendar';
+import { calendarDay, endOfCalendarDay, isCalendarDateNotAfter, isPastDate, isValidBirthDate, monthStartsBetween, noonOrNow, resolveBackfillMoments } from './calendar';
 
 const TZ = 'America/Mexico_City';
 const at = (iso: string) => new Date(iso);
@@ -89,6 +89,25 @@ describe('isCalendarDateNotAfter', () => {
     expect(isCalendarDateNotAfter('2020-02-31', '2026-10-07')).toBe(false);
     expect(isCalendarDateNotAfter('17/05/1990', '2026-10-07')).toBe(false);
     expect(isCalendarDateNotAfter('', '2026-10-07')).toBe(false);
+  });
+});
+
+describe('isValidBirthDate', () => {
+  it('accepts a real date from 1900-01-01 up to today', () => {
+    expect(isValidBirthDate('1900-01-01', '2026-10-07')).toBe(true);
+    expect(isValidBirthDate('1990-05-17', '2026-10-07')).toBe(true);
+    expect(isValidBirthDate('2026-10-07', '2026-10-07')).toBe(true);
+  });
+
+  it('rejects a date before 1900-01-01', () => {
+    expect(isValidBirthDate('1899-12-31', '2026-10-07')).toBe(false);
+    expect(isValidBirthDate('0001-01-01', '2026-10-07')).toBe(false);
+  });
+
+  it('rejects a date after today and text that is not a real calendar date', () => {
+    expect(isValidBirthDate('2026-10-08', '2026-10-07')).toBe(false);
+    expect(isValidBirthDate('2020-02-31', '2026-10-07')).toBe(false);
+    expect(isValidBirthDate('', '2026-10-07')).toBe(false);
   });
 });
 

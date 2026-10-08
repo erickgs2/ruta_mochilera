@@ -96,6 +96,23 @@ describe('validateImport', () => {
     expect(await db.user.count({ where: { type: 'CUSTOMER' } })).toBe(1);
   });
 
+  it('flags a birth date before 1900-01-01 as an INVALID_DATE row without aborting the batch', async () => {
+    const content = [
+      'full_name,email,phone,birth_date,locale',
+      'María Peña,maria@example.com,352 100 80 79,1990-05-17,es',
+      'Muy Antigua,antigua@example.com,352 100 80 79,1899-12-31,',
+      'Justo Antes,justo@example.com,352 100 80 79,1900-01-01,',
+    ].join('\n');
+
+    const batch = await validateImport(db, { type: 'CUSTOMERS', fileName: 'clientes.csv', content, sendEmails: false, actorId: staffId });
+
+    expect(batch.ok).toBe(true);
+    if (!batch.ok) return;
+    expect(batch.value).toMatchObject({ status: 'VALIDATED', rowsTotal: 3, rowsOk: 2, rowsFailed: 1 });
+    expect(batch.value.report.rows.map((row) => row.status)).toEqual(['VALID', 'INVALID', 'VALID']);
+    expect(batch.value.report.rows[1]?.errors).toEqual([{ column: 'birth_date', code: 'INVALID_DATE' }]);
+  });
+
   it('stores an unusable file as FAILED with its file errors', async () => {
     const batch = await validateImport(db, { type: 'PAYMENTS', fileName: 'x.csv', content: 'nombre,correo\na,b', sendEmails: false, actorId: staffId });
 

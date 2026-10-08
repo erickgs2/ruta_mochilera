@@ -95,6 +95,18 @@ export function isCalendarDateNotAfter(value: string, today: string): boolean {
   return DateTime.fromISO(value, { zone: 'utc' }).isValid && value <= today;
 }
 
+/** Earliest birth date any signup path accepts. */
+export const EARLIEST_BIRTH_DATE = '1900-01-01';
+
+/**
+ * The one birth-date rule behind self-signup, the counter and the CSV import:
+ * a real `YYYY-MM-DD` date, not after `today` (evaluated in the organization's
+ * time zone by the caller) and not before `EARLIEST_BIRTH_DATE`.
+ */
+export function isValidBirthDate(value: string, today: string): boolean {
+  return isCalendarDateNotAfter(value, today) && value >= EARLIEST_BIRTH_DATE;
+}
+
 /**
  * The instant a historical record dated `date` (`YYYY-MM-DD`) is stamped at:
  * noon of that calendar day in `timeZone` -- never the day before or after --

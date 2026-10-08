@@ -2,7 +2,7 @@ import { DateTime } from 'luxon';
 import { uniqueViolationIndex, type Db, type DbTransactionClient } from '@rm/db';
 import { organizationTimeZone } from '@rm/domain-settings';
 import type { EmailProvider } from '@rm/email';
-import { fail, isCalendarDateNotAfter, ok, type Result } from '@rm/shared-utils';
+import { fail, isValidBirthDate, ok, type Result } from '@rm/shared-utils';
 import { generateOtpCode, hashOtpCode, loadOtpSettings } from './otp';
 import { hashPassword } from './password';
 import { isRateLimited, recordFailedAttempt } from './rate-limiter';
@@ -15,9 +15,6 @@ export interface RegisterCustomerInput {
   birthDate: Date;
   acceptTerms: boolean;
 }
-
-/** Earliest birth date accepted at self-signup; the client form applies the same floor. */
-const EARLIEST_BIRTH_DATE = '1900-01-01';
 
 function normalizeEmail(email: string): string {
   return email.trim().toLowerCase();
@@ -115,15 +112,12 @@ export async function registerCustomer(
 
   if (!input.acceptTerms) return fail('VALIDATION_FAILED', { field: 'acceptTerms' });
 
-  // The same rule as the counter signup and the CSV import: a real date, not
-  // after today in the organization's time zone -- plus the 1900 floor. It
-  // does not depend on the email, so rejecting here reveals nothing about it.
+  // The same rule as the counter signup and the CSV import (`isValidBirthDate`).
+  // It does not depend on the email, so rejecting here reveals nothing about it.
   if (Number.isNaN(input.birthDate.getTime())) return fail('VALIDATION_FAILED', { field: 'birthDate' });
   const birthDate = input.birthDate.toISOString().slice(0, 10);
   const today = DateTime.now().setZone(await organizationTimeZone(db)).toISODate() as string;
-  if (birthDate < EARLIEST_BIRTH_DATE || !isCalendarDateNotAfter(birthDate, today)) {
-    return fail('VALIDATION_FAILED', { field: 'birthDate' });
-  }
+  if (!isValidBirthDate(birthDate, today)) return fail('VALIDATION_FAILED', { field: 'birthDate' });
 
   // Paid unconditionally -- see the doc comment above.
   const passwordHash = await hashPassword(input.password);
