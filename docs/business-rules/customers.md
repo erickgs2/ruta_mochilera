@@ -61,6 +61,27 @@ e idioma opcional.
   proveedor falla, el cliente queda dado de alta y la respuesta dice
   `invitationSent: false` para que el trabajador la reenvíe.
 
+## Fecha de nacimiento: la misma regla en las tres altas
+
+Un cliente nace por tres caminos —el autorregistro (`POST /auth/register`,
+`registerCustomer` en `libs/domain/identity`), el mostrador y la importación
+CSV— y los tres validan la fecha de nacimiento **en el servidor**, con el mismo
+ayudante (`isCalendarDateNotAfter`, `@rm/shared-utils`) y con «hoy» tomado de la
+zona `SystemSetting.organization.timezone`, nunca de UTC ni del dispositivo:
+
+- Debe ser una fecha real `YYYY-MM-DD` y **no posterior a hoy**. En el
+  autorregistro y en el mostrador, si no lo es, el error es
+  `VALIDATION_FAILED` con `field: birthDate`; en la importación, la fila lleva
+  `INVALID_DATE` (`imports.md`).
+- **El autorregistro además rechaza una fecha anterior a 1900-01-01**, con el
+  mismo `VALIDATION_FAILED` (`field: birthDate`). El mostrador y la
+  importación hoy **no** aplican ese piso. La app de clientes
+  (`auth-validators.ts`) lo comprueba también, pero eso es comodidad: la
+  regla vive en el servidor.
+- En el autorregistro la fecha se rechaza **antes** de buscar el correo, así
+  que el error no revela si el correo ya tenía cuenta, y no escribe nada ni
+  envía correo.
+
 ## Invitación
 
 - Liga de un solo uso a `/app/invitation?token=…`. Reutiliza
