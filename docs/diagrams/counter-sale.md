@@ -11,7 +11,9 @@ flowchart TD
     A["El trabajador busca por nombre,<br/>correo o teléfono"] --> B{"¿Aparece?"}
     B -- Sí --> C["Abre al cliente"]
     B -- No --> D["Alta: nombre, correo,<br/>teléfono, nacimiento"]
-    D --> E{"¿El correo ya existe?"}
+    D --> V{"¿Nacimiento real, no futuro<br/>y no anterior a 1900-01-01?"}
+    V -- No --> W["422 VALIDATION_FAILED<br/>field: birthDate"]
+    V -- Sí --> E{"¿El correo ya existe?"}
     E -- "Sí, de un cliente" --> F["409 CUSTOMER_ALREADY_EXISTS<br/>con su id: el panel lo abre"]
     F --> C
     E -- "Sí, de un trabajador" --> X["409 EMAIL_ALREADY_REGISTERED"]
@@ -27,7 +29,10 @@ flowchart TD
     M --> C
 ```
 
-La comprobación del correo ocurre antes del `BEGIN`. Si dos altas del mismo
+La fecha de nacimiento se valida primero, con «hoy» en la zona de la
+organización, y es la misma regla del autorregistro y la importación
+(`customers.md`, «Fecha de nacimiento»). La comprobación del correo ocurre
+antes del `BEGIN`. Si dos altas del mismo
 correo llegan a la vez, ambas la pasan y la segunda choca con el índice único
 (`users_email_key`): responde también `CUSTOMER_ALREADY_EXISTS`, con el id de
 la primera.
