@@ -6,7 +6,7 @@
     @if (activatedEmail(); as email) {
       <p class="auth-notice invitation-success">{{ 'auth.invitation.success' | translate: { email: email } }}</p>
       <p class="auth-switch">
-        <a routerLink="/login" [queryParams]="{ email: email }">{{ 'auth.signIn' | translate }}</a>
+        <a routerLink="/login" [queryParams]="{ email: email, returnUrl: returnUrl }">{{ 'auth.signIn' | translate }}</a>
       </p>
     } @else if (linkInvalid()) {
       <p class="auth-error invitation-invalid-link">{{ 'auth.invitation.linkInvalid' | translate }}</p>

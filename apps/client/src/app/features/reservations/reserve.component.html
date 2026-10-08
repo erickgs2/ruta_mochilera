@@ -28,7 +28,7 @@
     } @else if (showVerifyInvite()) {
       <div class="reserve-verify-invite">
         <p>{{ 'reserve.verifyInvite' | translate }}</p>
-        <a routerLink="/verify-email" [queryParams]="{ email: user()?.email }">{{ 'reserve.verifyAction' | translate }}</a>
+        <a routerLink="/verify-email" [queryParams]="{ email: user()?.email, returnUrl: returnUrl }">{{ 'reserve.verifyAction' | translate }}</a>
       </div>
     } @else {
       @if (error()) {

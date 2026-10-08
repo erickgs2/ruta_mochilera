@@ -6,7 +6,11 @@
     @if (verified()) {
       <p class="auth-notice">{{ 'auth.verify.success' | translate }}</p>
       <p class="auth-switch">
-        <a routerLink="/login">{{ 'auth.signIn' | translate }}</a>
+        @if (signedIn() && returnTree) {
+          <a class="verify-continue" [routerLink]="returnTree">{{ 'auth.verify.continue' | translate }}</a>
+        } @else {
+          <a routerLink="/login" [queryParams]="{ returnUrl: returnUrl }">{{ 'auth.signIn' | translate }}</a>
+        }
       </p>
     } @else {
       <p class="auth-intro">{{ 'auth.verify.intro' | translate }}</p>

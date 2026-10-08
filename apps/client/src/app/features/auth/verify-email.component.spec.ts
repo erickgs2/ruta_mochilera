@@ -1,7 +1,7 @@
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
-import { provideRouter } from '@angular/router';
+import { provideRouter, Router } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
 import { provideTranslateService, TranslateService } from '@ngx-translate/core';
 import { API_BASE_URL } from '@rm/api-client';
@@ -9,7 +9,10 @@ import { AuthService } from '@rm/auth-web';
 import { keyedTranslations, shown } from '../../testing/keyed-translations';
 import { RESEND_COOLDOWN_SECONDS, VerifyEmailComponent } from './verify-email.component';
 
-async function open(url = '/verify-email?email=ana%40example.com') {
+const CODE_SENT = { codeSent: true };
+
+/** `state` is what `/register` passes along when it has just sent a code. */
+async function open(url = '/verify-email?email=ana%40example.com', state?: Record<string, unknown>) {
   localStorage.clear();
   TestBed.configureTestingModule({
     providers: [
@@ -31,7 +34,13 @@ async function open(url = '/verify-email?email=ana%40example.com') {
     ])
   );
   const harness = await RouterTestingHarness.create();
-  const component = await harness.navigateByUrl(url, VerifyEmailComponent);
+  let component: VerifyEmailComponent;
+  if (state) {
+    await TestBed.inject(Router).navigateByUrl(url, { state });
+    component = harness.routeDebugElement!.componentInstance as VerifyEmailComponent;
+  } else {
+    component = await harness.navigateByUrl(url, VerifyEmailComponent);
+  }
   harness.detectChanges();
   return { harness, component, http: TestBed.inject(HttpTestingController) };
 }
@@ -146,7 +155,7 @@ describe('VerifyEmailComponent', () => {
 
   it('keeps the resend button disabled during the cooldown and re-enables it on its own', async () => {
     jest.useFakeTimers();
-    const { harness } = await open();
+    const { harness } = await open(undefined, CODE_SENT);
 
     // The registration that brought the visitor here just sent a code.
     expect(resendButton(harness).disabled).toBe(true);
@@ -160,9 +169,60 @@ describe('VerifyEmailComponent', () => {
     expect(resendButton(harness).disabled).toBe(false);
   });
 
+  it('lets the visitor resend at once when no code was just sent (arriving from the reserve invitation)', async () => {
+    jest.useFakeTimers();
+    const { harness, component, http } = await open('/verify-email?email=ana%40example.com&returnUrl=%2Ftrips%2Fx%2Freserve');
+
+    expect(resendButton(harness).disabled).toBe(false);
+    expect(component.cooldownLeft()).toBe(0);
+
+    const resent = component.resend();
+    http.expectOne('/api/v1/auth/resend-code').flush(null);
+    await resent;
+    harness.detectChanges();
+
+    // Sending a code is what starts the cooldown.
+    expect(resendButton(harness).disabled).toBe(true);
+  });
+
+  it('sends a signed-in customer back to the returnUrl once the email is verified', async () => {
+    const { harness, component, http } = await open('/verify-email?email=ana%40example.com&returnUrl=%2Ftrips%2Fx%2Freserve%3Fa%3D1');
+    TestBed.inject(AuthService).setSessionForTesting('access-1', {
+      id: 'c1',
+      email: 'ana@example.com',
+      type: 'CUSTOMER',
+      locale: 'es',
+      fullName: 'Ana',
+      permissions: [],
+      emailVerified: false,
+    });
+
+    await submitCode(component, http, '123456', null);
+    http.expectOne('/api/v1/me').flush({ ...TestBed.inject(AuthService).user(), emailVerified: true });
+    harness.detectChanges();
+
+    const link = harness.routeNativeElement!.querySelector('.verify-continue') as HTMLAnchorElement;
+    expect(link.getAttribute('href')).toBe('/trips/x/reserve?a=1');
+  });
+
+  it('keeps the returnUrl on the sign-in link for a visitor who is not signed in', async () => {
+    const { harness, component, http } = await open('/verify-email?email=ana%40example.com&returnUrl=%2Ftrips%2Fx%2Freserve');
+    await submitCode(component, http, '123456', null);
+    harness.detectChanges();
+    const link = harness.routeNativeElement!.querySelector('a[href^="/login"]') as HTMLAnchorElement;
+    expect(link.getAttribute('href')).toBe('/login?returnUrl=%2Ftrips%2Fx%2Freserve');
+  });
+
+  it('ignores an external returnUrl', async () => {
+    const { component } = await open('/verify-email?email=ana%40example.com&returnUrl=https%3A%2F%2Fevil.example%2F');
+
+    expect(component.returnUrl).toBeNull();
+    expect(component.returnTree).toBeNull();
+  });
+
   it('resending a code starts the cooldown again', async () => {
     jest.useFakeTimers();
-    const { harness, component, http } = await open();
+    const { harness, component, http } = await open(undefined, CODE_SENT);
     jest.advanceTimersByTime(RESEND_COOLDOWN_SECONDS * 1000);
     harness.detectChanges();
 

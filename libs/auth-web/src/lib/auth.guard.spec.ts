@@ -36,6 +36,19 @@ describe('authGuard', () => {
     expect(result).toBe(true);
   });
 
+  it('carries the attempted URL to /login as returnUrl', () => {
+    const result = TestBed.runInInjectionContext(() =>
+      authGuard({} as never, { url: '/trips/ruta-oaxaca/reserve?x=1' } as never)
+    );
+    expect((result as UrlTree).toString().startsWith('/login?returnUrl=')).toBe(true);
+    expect((result as UrlTree).queryParams).toEqual({ returnUrl: '/trips/ruta-oaxaca/reserve?x=1' });
+  });
+
+  it('does not carry an external attempted URL', () => {
+    const result = TestBed.runInInjectionContext(() => authGuard({} as never, { url: '//evil.example' } as never));
+    expect((result as UrlTree).toString()).toBe('/login');
+  });
+
   it('redirects to /login when there is no session', () => {
     const result = TestBed.runInInjectionContext(() => authGuard({} as never, {} as never));
     expect(result).toBeInstanceOf(UrlTree);

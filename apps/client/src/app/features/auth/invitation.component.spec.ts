@@ -53,6 +53,25 @@ describe('InvitationComponent', () => {
     expect(link.getAttribute('href')).toBe('/login?email=maria@example.com');
   });
 
+  it('passes a same-app returnUrl on to the sign-in link, and drops an external one', async () => {
+    for (const [returnUrl, href] of [
+      ['/trips/ruta-oaxaca/reserve', '/login?email=maria@example.com&returnUrl=%2Ftrips%2Fruta-oaxaca%2Freserve'],
+      ['https://evil.example/', '/login?email=maria@example.com'],
+    ]) {
+      TestBed.resetTestingModule();
+      const { harness, component, http } = await open(`/invitation?token=tok-123&returnUrl=${encodeURIComponent(returnUrl)}`);
+      component.form.setValue({ password: PASSWORD, confirmPassword: PASSWORD, acceptTerms: true });
+
+      const submitted = component.submit();
+      http.expectOne('/api/v1/auth/invitation/accept').flush({ email: 'maria@example.com' });
+      await submitted;
+      harness.detectChanges();
+
+      const link = harness.routeNativeElement!.querySelector('a[href^="/login"]') as HTMLAnchorElement;
+      expect(link.getAttribute('href')).toBe(href);
+    }
+  });
+
   it('shows the translated invalid-link message when the token no longer works', async () => {
     const { harness, component, http } = await open('/invitation?token=used');
     component.form.setValue({ password: PASSWORD, confirmPassword: PASSWORD, acceptTerms: true });

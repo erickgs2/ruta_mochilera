@@ -1,7 +1,7 @@
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
-import { provideRouter, Router } from '@angular/router';
+import { ActivatedRoute, convertToParamMap, provideRouter, Router } from '@angular/router';
 import { provideTranslateService, TranslateService } from '@ngx-translate/core';
 import { API_BASE_URL } from '@rm/api-client';
 import { keyedTranslations, shown } from '../../testing/keyed-translations';
@@ -16,7 +16,7 @@ const valid = {
   acceptTerms: true,
 };
 
-function setup() {
+function setup(query: Record<string, string> = {}) {
   TestBed.configureTestingModule({
     imports: [RegisterComponent],
     providers: [
@@ -25,6 +25,7 @@ function setup() {
       provideRouter([]),
       provideTranslateService({ lang: 'es', fallbackLang: 'es' }),
       { provide: API_BASE_URL, useValue: '' },
+      { provide: ActivatedRoute, useValue: { snapshot: { queryParamMap: convertToParamMap(query) } } },
     ],
   });
   TestBed.inject(TranslateService).setTranslation(
@@ -101,7 +102,31 @@ describe('RegisterComponent', () => {
     request.flush(null);
     await submitted;
 
-    expect(navigate).toHaveBeenCalledWith(['/verify-email'], { queryParams: { email: valid.email } });
+    expect(navigate).toHaveBeenCalledWith(['/verify-email'], {
+      queryParams: { email: valid.email, returnUrl: null },
+      state: { codeSent: true },
+    });
+  });
+
+  it('hands a valid returnUrl on to the verification screen, and drops an external one', async () => {
+    for (const [returnUrl, expected] of [
+      ['/trips/ruta-oaxaca/reserve', '/trips/ruta-oaxaca/reserve'],
+      ['https://evil.example/', null],
+    ] as const) {
+      TestBed.resetTestingModule();
+      const { component, http } = setup({ returnUrl });
+      const navigate = jest.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true);
+      component.form.setValue(valid);
+
+      const submitted = component.submit();
+      http.expectOne('/api/v1/auth/register').flush(null);
+      await submitted;
+
+      expect(navigate).toHaveBeenCalledWith(['/verify-email'], {
+        queryParams: { email: valid.email, returnUrl: expected },
+        state: { codeSent: true },
+      });
+    }
   });
 
   it('shows the translated message for a known error code', async () => {

@@ -62,7 +62,7 @@
     </form>
 
     <p class="auth-switch">
-      <a routerLink="/login">{{ 'auth.haveAccount' | translate }}</a>
+      <a routerLink="/login" [queryParams]="{ returnUrl: returnUrl }">{{ 'auth.haveAccount' | translate }}</a>
     </p>
   </div>
 </div>

@@ -1,9 +1,10 @@
 import { Component, computed, DestroyRef, inject, signal } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
-import { ActivatedRoute, RouterLink } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
 import { TranslatePipe } from '@ngx-translate/core';
 import { AuthApi } from '@rm/api-client';
+import { AuthService, parseReturnUrl, RETURN_URL_PARAM } from '@rm/auth-web';
 import { SessionUserRefresher } from '../../core/session-user';
 import { ErrorCodePipe } from '../../shared/error-code.pipe';
 import { emailAddress } from './auth-validators';
@@ -20,8 +21,10 @@ export const RESEND_COOLDOWN_SECONDS = 60;
 /**
  * `/verify-email?email=…`, where `/register` sends the visitor. Takes the
  * six-digit code from the email and lets the visitor ask for another one
- * once the cooldown has passed. The cooldown starts as soon as the screen
- * opens, because the registration that led here has just sent a code.
+ * once the cooldown has passed. The cooldown starts on open only when the
+ * navigation says a code was just sent (`/register` passes `state.codeSent`);
+ * the reserve screen's "verify your email" invitation sends none, so resend
+ * is available at once there. `?returnUrl=` is where the visitor goes next.
  */
 @Component({
   selector: 'rm-verify-email',
@@ -33,6 +36,16 @@ export class VerifyEmailComponent {
   private readonly api = inject(AuthApi);
   private readonly formBuilder = inject(FormBuilder);
   private readonly sessionUser = inject(SessionUserRefresher);
+  private readonly route = inject(ActivatedRoute);
+  private readonly router = inject(Router);
+  private readonly codeJustSent = this.router.currentNavigation()?.extras.state?.['codeSent'] === true;
+
+  /** Validated `?returnUrl=`, or `null`. */
+  readonly returnUrl = parseReturnUrl(this.route.snapshot.queryParamMap.get(RETURN_URL_PARAM));
+  /** `returnUrl` as a tree, because a `routerLink` string would encode its `?query`. */
+  readonly returnTree = this.returnUrl === null ? null : this.router.parseUrl(this.returnUrl);
+  /** A customer already signed in (verifying from the reserve invitation) has nothing left to sign in to. */
+  readonly signedIn = inject(AuthService).isAuthenticated;
 
   readonly loading = signal(false);
   readonly verified = signal(false);
@@ -43,7 +56,7 @@ export class VerifyEmailComponent {
   readonly canResend = computed(() => this.cooldownLeft() === 0 && !this.resending());
 
   readonly form = this.formBuilder.nonNullable.group({
-    email: [inject(ActivatedRoute).snapshot.queryParamMap.get('email') ?? '', [Validators.required, emailAddress]],
+    email: [this.route.snapshot.queryParamMap.get('email') ?? '', [Validators.required, emailAddress]],
     code: ['', [Validators.required, Validators.pattern(/^\d{6}$/)]],
   });
 
@@ -51,7 +64,7 @@ export class VerifyEmailComponent {
 
   constructor() {
     inject(DestroyRef).onDestroy(() => this.stopTimer());
-    this.startCooldown();
+    if (this.codeJustSent) this.startCooldown();
   }
 
   async submit(): Promise<void> {

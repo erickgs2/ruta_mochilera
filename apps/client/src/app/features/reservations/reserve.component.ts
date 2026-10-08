@@ -42,6 +42,8 @@ export class ReserveComponent {
 
   readonly user = inject(AuthService).user;
   readonly slug = inject(ActivatedRoute).snapshot.paramMap.get('slug') ?? '';
+  /** Where verifying the email brings the customer back to. */
+  readonly returnUrl = `/trips/${encodeURIComponent(this.slug)}/reserve`;
   readonly trip = signal<PublicTripDetail | null>(null);
   readonly tripError = signal<unknown>(null);
   readonly reservation = signal<ReservationDetail | null>(null);
