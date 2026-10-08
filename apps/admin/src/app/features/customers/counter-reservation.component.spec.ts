@@ -74,3 +74,22 @@ describe('CounterReservationComponent', () => {
     httpMock.expectNone('/api/v1/public/trips/oaxaca-2027');
   });
 });
+
+describe('CounterReservationComponent calendar days (America/Mexico_City)', () => {
+  afterEach(() => {
+    localStorage.clear();
+    document.querySelectorAll('.cdk-overlay-container').forEach((overlay) => (overlay.innerHTML = ''));
+  });
+
+  it('lists each trip with its departure as the stored day, not the day before', () => {
+    localStorage.setItem('rm.locale', 'es');
+    const { fixture } = configure(['reservation.create']);
+
+    (fixture.nativeElement.querySelector('.mat-mdc-select-trigger') as HTMLElement).click();
+    fixture.detectChanges();
+
+    const option = document.querySelector('mat-option')?.textContent;
+    expect(option).toContain('1 mar 2027');
+    expect(option).not.toContain('28 feb 2027');
+  });
+});

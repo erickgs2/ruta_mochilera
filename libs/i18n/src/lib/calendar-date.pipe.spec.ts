@@ -28,6 +28,16 @@ describe('CalendarDatePipe', () => {
     expect(pipe.transform('2026-11-20T00:00:00.000Z')).toBe('20 nov 2026');
   });
 
+  it.each(['America/Mexico_City', 'Europe/Madrid', 'Asia/Tokyo', 'Pacific/Auckland'])(
+    'renders a date-only string as that same day for a viewer in %s',
+    (timeZone) => {
+      process.env['TZ'] = timeZone;
+
+      expect(pipe.transform('2026-11-20')).toBe('20 nov 2026');
+      expect(pipe.transform('2026-11-20T00:00:00.000Z')).toBe('20 nov 2026');
+    }
+  );
+
   it('writes the date in the language the interface is in, and follows a switch', () => {
     expect(pipe.transform('2027-01-23T00:00:00.000Z')).toBe('23 ene 2027');
 

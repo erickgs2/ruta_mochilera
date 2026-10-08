@@ -123,3 +123,15 @@ describe('PaymentHistoryComponent', () => {
     expect(createObjectURL).toHaveBeenCalled();
   });
 });
+
+describe('PaymentHistoryComponent calendar days (America/Mexico_City)', () => {
+  afterEach(() => TestBed.inject(HttpTestingController).verify());
+
+  it('shows the payment deadline as the stored day, not the day before', async () => {
+    const { element } = await open(reservation({ paymentDeadline: '2028-02-01T00:00:00.000Z' }), [payment()]);
+
+    const deadline = element.querySelector('.history-deadline')?.textContent;
+    expect(deadline).toContain('1 feb 2028');
+    expect(deadline).not.toContain('31 ene 2028');
+  });
+});

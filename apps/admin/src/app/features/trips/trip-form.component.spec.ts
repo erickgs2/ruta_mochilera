@@ -8,6 +8,7 @@ import { provideTranslateService } from '@ngx-translate/core';
 import { BehaviorSubject } from 'rxjs';
 import { API_BASE_URL } from '@rm/api-client';
 import { AuthService, type SessionUser } from '@rm/auth-web';
+import { provideLocaleDateAdapter } from '../../shared/locale-date-adapter';
 import { TripFormComponent } from './trip-form.component';
 
 function tripFixture(overrides: Partial<Record<string, unknown>> = {}) {
@@ -234,6 +235,72 @@ describe('TripFormComponent', () => {
       TestBed.inject(HttpTestingController).expectOne('/api/v1/trips/trip-1').flush(tripFixture({ status: 'COMPLETED' }));
 
       expect(fixture.componentInstance.availableTransitions()).toEqual([]);
+    });
+  });
+
+  describe('calendar dates (America/Mexico_City)', () => {
+    function openSavedTrip() {
+      localStorage.setItem('rm.locale', 'es');
+      configure({ tripId: 'trip-1' });
+      // The panel's own adapter, added after `configure`'s native one so it wins.
+      TestBed.configureTestingModule({ providers: provideLocaleDateAdapter() });
+      const fixture = TestBed.createComponent(TripFormComponent);
+      fixture.detectChanges();
+      const http = TestBed.inject(HttpTestingController);
+      http.expectOne('/api/v1/trips/trip-1').flush(tripFixture());
+      fixture.detectChanges();
+      return { fixture, http };
+    }
+
+    afterEach(() => localStorage.clear());
+
+    it('shows the stored days as dd/MM/yyyy, not the day before', async () => {
+      const { fixture } = openSavedTrip();
+      await fixture.whenStable();
+
+      const input = (name: string) =>
+        (fixture.nativeElement.querySelector(`input[formControlName="${name}"]`) as HTMLInputElement).value;
+      expect(input('departureDate')).toBe('01/11/2026');
+      expect(input('returnDate')).toBe('08/11/2026');
+      expect(input('paymentDeadline')).toBe('25/10/2026');
+    });
+
+    it('saves an untouched trip with the same calendar days it loaded', () => {
+      const { fixture, http } = openSavedTrip();
+
+      fixture.componentInstance.save();
+
+      const request = http.expectOne('/api/v1/trips/trip-1');
+      expect(request.request.method).toBe('PUT');
+      expect(request.request.body).toMatchObject({
+        departureDate: '2026-11-01T00:00:00.000Z',
+        returnDate: '2026-11-08T00:00:00.000Z',
+        paymentDeadline: '2026-10-25T00:00:00.000Z',
+      });
+    });
+
+    it('saves a typed 22/01/2027 as January 22nd, midnight UTC', () => {
+      const { fixture, http } = openSavedTrip();
+      const { departureDate, returnDate, paymentDeadline } = fixture.componentInstance.form.controls;
+      for (const [control, text] of [
+        [departureDate, '22/01/2027'],
+        [returnDate, '29/01/2027'],
+        [paymentDeadline, '10/01/2027'],
+      ] as const) {
+        const input = fixture.nativeElement.querySelectorAll('input[matInput]')[
+          [departureDate, returnDate, paymentDeadline].indexOf(control)
+        ] as HTMLInputElement;
+        input.value = text;
+        input.dispatchEvent(new Event('input'));
+      }
+
+      fixture.componentInstance.save();
+
+      expect(http.expectOne('/api/v1/trips/trip-1').request.body).toMatchObject({
+        departureDate: '2027-01-22T00:00:00.000Z',
+        returnDate: '2027-01-29T00:00:00.000Z',
+        paymentDeadline: '2027-01-10T00:00:00.000Z',
+      });
     });
   });
 

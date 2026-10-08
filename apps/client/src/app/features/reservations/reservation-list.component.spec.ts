@@ -107,3 +107,15 @@ describe('ReservationListComponent', () => {
     expect(element.textContent).not.toContain('SOMETHING_ODD');
   });
 });
+
+describe('ReservationListComponent calendar days (America/Mexico_City)', () => {
+  afterEach(() => TestBed.inject(HttpTestingController).verify());
+
+  it('shows the trip departure as the stored day, not the day before', () => {
+    const element = setup([summary({ tripDepartureDate: '2028-03-01T00:00:00.000Z' })]);
+
+    const date = element.querySelector('.reservation-row-date')?.textContent;
+    expect(date).toContain('1 mar 2028');
+    expect(date).not.toContain('29 feb 2028');
+  });
+});

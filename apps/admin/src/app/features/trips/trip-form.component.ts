@@ -28,6 +28,7 @@ import type { components } from '@rm/api-client';
 import { HasPermissionDirective } from '@rm/auth-web';
 import { ConfirmDialogComponent, ErrorCodePipe, MoneyInputComponent, PageHeaderComponent } from '@rm/ui';
 import { map } from 'rxjs';
+import { toApiDate, toPickerDate } from '../../shared/calendar-date';
 
 type Trip = components['schemas']['Trip'];
 type TripStatus = Trip['status'];
@@ -251,9 +252,9 @@ export class TripFormComponent {
         const english = found.translations.find((translation) => translation.locale === 'en');
 
         this.form.patchValue({
-          departureDate: new Date(found.departureDate),
-          returnDate: new Date(found.returnDate),
-          paymentDeadline: new Date(found.paymentDeadline),
+          departureDate: toPickerDate(found.departureDate),
+          returnDate: toPickerDate(found.returnDate),
+          paymentDeadline: toPickerDate(found.paymentDeadline),
           totalCapacity: found.totalCapacity,
           minimumDepositCents: found.minimumDepositCents,
           holdTtlHours: found.holdTtlHours,
@@ -380,9 +381,9 @@ export class TripFormComponent {
   private buildCreateBody() {
     const value = this.form.getRawValue();
     return {
-      departureDate: (value.departureDate as Date).toISOString(),
-      returnDate: (value.returnDate as Date).toISOString(),
-      paymentDeadline: (value.paymentDeadline as Date).toISOString(),
+      departureDate: toApiDate(value.departureDate as Date),
+      returnDate: toApiDate(value.returnDate as Date),
+      paymentDeadline: toApiDate(value.paymentDeadline as Date),
       totalCapacity: value.totalCapacity,
       preSoldSeats: value.isBackfilled ? value.preSoldSeats : 0,
       holdTtlHours: value.holdTtlHours,
@@ -400,9 +401,9 @@ export class TripFormComponent {
   private buildUpdateBody() {
     const value = this.form.getRawValue();
     return {
-      departureDate: (value.departureDate as Date).toISOString(),
-      returnDate: (value.returnDate as Date).toISOString(),
-      paymentDeadline: (value.paymentDeadline as Date).toISOString(),
+      departureDate: toApiDate(value.departureDate as Date),
+      returnDate: toApiDate(value.returnDate as Date),
+      paymentDeadline: toApiDate(value.paymentDeadline as Date),
       totalCapacity: value.totalCapacity,
       preSoldSeats: value.preSoldSeats,
       holdTtlHours: value.holdTtlHours,
