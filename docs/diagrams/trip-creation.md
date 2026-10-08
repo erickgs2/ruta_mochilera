@@ -6,7 +6,7 @@ flowchart TD
     B --> C[Captura traducciones]
     C --> D{¿Existe traducción<br/>en español?}
     D -- No --> E[MISSING_REQUIRED_TRANSLATION]
-    D -- Sí --> F{¿Cupo válido y<br/>fechas coherentes?}
+    D -- Sí --> F{¿Cupo válido y fechas coherentes<br/>(comparadas como días calendario)?}
     F -- No --> G[INVALID_CAPACITY<br/>o VALIDATION_FAILED]
     F -- Sí --> H{"¿is_backfilled=true, fecha pasada (según<br/>timezone de la organización), cupo<br/>pre-vendido, o estado inicial ≠ DRAFT?"}
     H -- Sí --> I{¿Tiene permiso<br/>data.backfill?}

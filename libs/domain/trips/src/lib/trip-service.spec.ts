@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   closeTestDb,
   prepareTestDb,
@@ -636,5 +636,69 @@ describe('trip service', () => {
     // The assertion that matters: the count is flat in the number of trips.
     // A per-trip lookup would make this 1 + 5 against 1 + 1.
     expect(forFive).toBe(forOne);
+  });
+  describe.each(['UTC', 'Asia/Tokyo'])('trip dates are calendar days, whatever the server zone (%s)', (zone) => {
+    const originalTimeZone = process.env['TZ'];
+    beforeEach(() => {
+      process.env['TZ'] = zone;
+    });
+    afterEach(() => {
+      if (originalTimeZone === undefined) delete process.env['TZ'];
+      else process.env['TZ'] = originalTimeZone;
+    });
+
+    it('accepts a payment deadline later in the day than the departure of the same day', async () => {
+      const result = await createTrip(db, actorWith(['trip.create']), {
+        ...baseInput,
+        departureDate: new Date('2026-12-01T00:00:00Z'),
+        returnDate: new Date('2026-12-07T00:00:00Z'),
+        paymentDeadline: new Date('2026-12-01T18:00:00Z'),
+      });
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      const stored = await db.trip.findUniqueOrThrow({ where: { id: result.value.id } });
+      expect(stored.departureDate.toISOString()).toBe('2026-12-01T00:00:00.000Z');
+      expect(stored.paymentDeadline.toISOString()).toBe('2026-12-01T00:00:00.000Z');
+    });
+
+    it('accepts a return date earlier in the day than the departure of the same day', async () => {
+      const result = await createTrip(db, actorWith(['trip.create']), {
+        ...baseInput,
+        departureDate: new Date('2026-12-01T18:00:00Z'),
+        returnDate: new Date('2026-12-01T00:00:00Z'),
+      });
+
+      expect(result.ok).toBe(true);
+    });
+
+    it('still rejects a payment deadline on the day after departure, and a return on the day before', async () => {
+      const lateDeadline = await createTrip(db, actorWith(['trip.create']), {
+        ...baseInput,
+        paymentDeadline: new Date('2026-12-02T00:00:00Z'),
+      });
+      const earlyReturn = await createTrip(db, actorWith(['trip.create']), {
+        ...baseInput,
+        returnDate: new Date('2026-11-30T23:59:00Z'),
+      });
+
+      expect(lateDeadline.ok).toBe(false);
+      if (!lateDeadline.ok) expect(lateDeadline.error).toMatchObject({ code: 'VALIDATION_FAILED', details: { field: 'paymentDeadline' } });
+      expect(earlyReturn.ok).toBe(false);
+      if (!earlyReturn.ok) expect(earlyReturn.error).toMatchObject({ code: 'VALIDATION_FAILED', details: { field: 'returnDate' } });
+    });
+
+    it('applies the same day-based comparison when editing', async () => {
+      const created = await createTrip(db, actorWith(['trip.create']), baseInput);
+      if (!created.ok) throw new Error('setup failed');
+
+      const updated = await updateTrip(db, actorWith(['trip.update']), created.value.id, {
+        ...baseInput,
+        departureDate: new Date('2026-12-01T00:00:00Z'),
+        paymentDeadline: new Date('2026-12-01T18:00:00Z'),
+      });
+
+      expect(updated.ok).toBe(true);
+    });
   });
 });
