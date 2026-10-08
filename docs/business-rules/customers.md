@@ -34,7 +34,7 @@ no es UUID, que no existe o que es de un trabajador responde `NOT_FOUND`.
 
 `createBranchCustomer` (`POST /admin/customers`, permiso `customer.manage`):
 nombre completo, correo, teléfono, fecha de nacimiento (una fecha real, no
-futura en la zona de la organización y no anterior a 1900-01-01; si no, 
+futura en la zona de la organización y no anterior a 1900-01-01; si no,
 `VALIDATION_FAILED` con `field: birthDate`; ver «Fecha de nacimiento» más abajo)
 e idioma opcional.
 
