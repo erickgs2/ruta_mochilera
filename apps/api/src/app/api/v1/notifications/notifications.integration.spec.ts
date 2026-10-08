@@ -76,6 +76,64 @@ describe('notifications endpoints', () => {
     });
   });
 
+  describe('GET /api/v1/notifications?unreadOnly', () => {
+    type Page = { items: { id: string }[]; nextCursor: string | null; unreadCount: number };
+    const list = async (url: string, token: string) => (await (await listInboxRoute(request(url, token))).json()) as Page;
+
+    it("returns only the caller's unread INBOX rows, never read ones, EMAIL ones or a stranger's", async () => {
+      const { token, userId } = await loginAsCustomer(db, 'unread-owner@agency.test');
+      const other = await loginAsCustomer(db, 'unread-stranger@agency.test');
+      const unread = await seedDelivery(userId, { createdAt: new Date('2027-01-03T00:00:00Z') });
+      const read = await seedDelivery(userId, { createdAt: new Date('2027-01-02T00:00:00Z') });
+      await db.notificationDelivery.update({ where: { id: read.id }, data: { status: 'READ', readAt: new Date() } });
+      await seedDelivery(userId, { channel: 'EMAIL' });
+      await seedDelivery(other.userId);
+
+      const filtered = await list('/api/v1/notifications?unreadOnly=true', token);
+      expect(filtered.items.map((item) => item.id)).toEqual([unread.id]);
+      expect(filtered.unreadCount).toBe(1);
+
+      const everything = await list('/api/v1/notifications?unreadOnly=false', token);
+      expect(everything.items.map((item) => item.id)).toEqual([unread.id, read.id]);
+      const omitted = await list('/api/v1/notifications', token);
+      expect(omitted.items.map((item) => item.id)).toEqual([unread.id, read.id]);
+    });
+
+    it('pages with the filter on without skipping or repeating a row, even with equal timestamps', async () => {
+      const { token, userId } = await loginAsCustomer(db, 'unread-pages@agency.test');
+      const sameInstant = new Date('2027-02-01T00:00:00Z');
+      const expected: string[] = [];
+      for (let index = 0; index < 5; index += 1) {
+        const unread = await seedDelivery(userId, { createdAt: sameInstant });
+        expected.push(unread.id);
+        const read = await seedDelivery(userId, { createdAt: sameInstant });
+        await db.notificationDelivery.update({ where: { id: read.id }, data: { status: 'READ', readAt: new Date() } });
+      }
+
+      const seen: string[] = [];
+      let cursor: string | null = null;
+      do {
+        const query: string = `/api/v1/notifications?unreadOnly=true&limit=2${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`;
+        const page: Page = await list(query, token);
+        seen.push(...page.items.map((item) => item.id));
+        expect(page.unreadCount).toBe(5);
+        cursor = page.nextCursor;
+      } while (cursor);
+
+      expect(seen).toHaveLength(5);
+      expect([...seen].sort()).toEqual([...expected].sort());
+    });
+
+    it.each(['1', 'TRUE', 'yes', ''])('answers 422 VALIDATION_FAILED for unreadOnly=%j', async (value) => {
+      const { token } = await loginAsCustomer(db, `unread-bad-${value || 'empty'}@agency.test`);
+
+      const response = await listInboxRoute(request(`/api/v1/notifications?unreadOnly=${value}`, token));
+
+      expect(response.status).toBe(422);
+      expect((await response.json()).code).toBe('VALIDATION_FAILED');
+    });
+  });
+
   describe('POST /api/v1/notifications/{deliveryId}/read', () => {
     it("returns 404 for another customer's delivery", async () => {
       const owner = await loginAsCustomer(db, 'read-owner@agency.test');

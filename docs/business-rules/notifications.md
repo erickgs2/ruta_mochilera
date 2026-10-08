@@ -274,6 +274,17 @@ cliente y mentiría en cuanto hubiera más de una página. Las filas `EMAIL` y
 las de otros clientes nunca cuentan. `markRead` lo baja en uno en la
 siguiente lectura.
 
+**Filtro `unreadOnly` (`GET /api/v1/notifications?unreadOnly=true`):** limita
+la lista a las filas `INBOX` propias con `read_at` nulo. Es estricto: sólo el
+literal `true` o `false`; cualquier otro valor (`1`, `TRUE`, vacío) es
+`422 VALIDATION_FAILED`. Omitido equivale a `false`. El filtro se aplica en la
+misma consulta que el cursor `(created_at, id)`, así que la paginación no
+salta ni repite filas con el filtro encendido. `unreadCount` no cambia: sigue
+contando todas las filas no leídas del usuario, con o sin filtro, para que el
+contador no dependa de lo que se esté mirando. Si se marca algo como leído
+entre dos páginas, esa fila simplemente deja de aparecer; el cursor sigue
+siendo válido porque se apoya en `(created_at, id)`, no en la posición.
+
 ## La bandeja del personal: enlace a la reserva y «marcar todo»
 
 La bandeja es la misma para clientes y personal: `listInbox` filtra por

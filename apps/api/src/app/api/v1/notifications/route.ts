@@ -30,12 +30,14 @@ export const GET = route({
     const parsed = listInboxQuerySchema.safeParse({
       cursor: params.get('cursor') ?? undefined,
       limit: params.get('limit') ?? undefined,
+      unreadOnly: params.get('unreadOnly') ?? undefined,
     });
     if (!parsed.success) {
       return fail('VALIDATION_FAILED', {
         issues: parsed.error.issues.map((issue) => ({ path: issue.path, code: issue.code })),
       });
     }
-    return listInbox(db(), actor.userId, parsed.data);
+    const { unreadOnly, ...rest } = parsed.data;
+    return listInbox(db(), actor.userId, { ...rest, unreadOnly: unreadOnly === 'true' });
   },
 });

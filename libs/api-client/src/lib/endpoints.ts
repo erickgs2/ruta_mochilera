@@ -271,9 +271,16 @@ export class PaymentsApi {
 export class NotificationsApi {
   private readonly api = inject(ApiClient);
 
-  /** Newest first; pass the previous page's `nextCursor` to continue. */
-  list(cursor?: string): Observable<Ok<'/api/v1/notifications', 'get'>> {
-    return this.api.get('/api/v1/notifications', { cursor });
+  /**
+   * Newest first; pass the previous page's `nextCursor` to continue. With
+   * `unreadOnly`, only unread items -- keep it the same across pages of one
+   * listing so the cursor stays consistent.
+   */
+  list(cursor?: string, unreadOnly?: boolean): Observable<Ok<'/api/v1/notifications', 'get'>> {
+    return this.api.get('/api/v1/notifications', {
+      cursor,
+      unreadOnly: unreadOnly === undefined ? undefined : String(unreadOnly),
+    });
   }
 
   markRead(deliveryId: string): Observable<Ok<'/api/v1/notifications/{deliveryId}/read', 'post'>> {
