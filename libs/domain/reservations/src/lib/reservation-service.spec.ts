@@ -922,6 +922,26 @@ describe('reservation service', () => {
       expect(storedTrip.preSoldSeats).toBe(0);
     });
 
+    it('clears the hold expiry of a HELD reservation, in the staff and the customer views', async () => {
+      const { customerId, reservation } = await heldReservation();
+      expect(reservation.holdExpiresAt).not.toBeNull();
+
+      const cancelled = await cancelReservation(db, queue, {
+        reservationId: reservation.id,
+        actorId: staffId,
+        reason: 'Solicitud del cliente',
+      });
+
+      expect(cancelled.ok).toBe(true);
+      if (!cancelled.ok) return;
+      expect(cancelled.value.holdExpiresAt).toBeNull();
+      expect((await db.reservation.findUniqueOrThrow({ where: { id: reservation.id } })).holdExpiresAt).toBeNull();
+      const staffView = await getReservationForStaff(db, reservation.id);
+      expect(staffView.ok && staffView.value.holdExpiresAt).toBeNull();
+      const customerView = await getReservationForCustomer(db, reservation.id, customerId);
+      expect(customerView.ok && customerView.value.holdExpiresAt).toBeNull();
+    });
+
     it('also cancels an ACTIVE reservation and releases its seat', async () => {
       const { trip, reservation } = await heldReservation({ totalCapacity: 1 });
       await db.reservation.update({

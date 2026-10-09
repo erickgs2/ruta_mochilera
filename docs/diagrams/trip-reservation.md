@@ -76,7 +76,9 @@ La rama «HELD vencido» depende de que todo `HELD` **tenga** fecha de
 vencimiento: con `hold_expires_at` nulo la comparación no es cierta y la fila
 caería en «no ocupa» estando viva. El `CHECK`
 `reservations_held_requires_hold_expiry` impide esa fila, así que el diagrama
-no tiene un cuarto caso (ver `docs/business-rules/reservations.md`).
+no tiene un cuarto caso (ver `docs/business-rules/reservations.md`). Una
+reserva `CANCELLED` sale de `HELD` con `hold_expires_at` en `NULL`, igual que
+una `EXPIRED`: sólo `HELD` conserva fecha de vencimiento.
 
 ## Del botón «Reservar» a `HELD`
 

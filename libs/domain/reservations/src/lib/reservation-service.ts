@@ -906,7 +906,7 @@ export async function cancelReservation(
 
     const cancelled = await tx.reservation.updateMany({
       where: { id: input.reservationId, status: { in: [...LIVE_STATUSES] } },
-      data: { status: 'CANCELLED', cancelledAt: new Date(), cancelledById: input.actorId },
+      data: { status: 'CANCELLED', cancelledAt: new Date(), cancelledById: input.actorId, holdExpiresAt: null },
     });
 
     if (cancelled.count === 0) {
