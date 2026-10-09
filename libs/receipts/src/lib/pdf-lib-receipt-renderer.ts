@@ -29,6 +29,8 @@ interface Labels {
   tripDates: string;
   method: string;
   amount: string;
+  /** The line under the amount when part of the payment became credit; takes the formatted money. */
+  credited: (money: string) => string;
   balanceHeading: string;
   total: string;
   paid: string;
@@ -48,6 +50,7 @@ const LABELS: Record<ReceiptLocale, Labels> = {
     tripDates: 'Fechas del viaje',
     method: 'Forma de pago',
     amount: 'Monto recibido',
+    credited: (money) => `De este pago, ${money} quedó como saldo a favor`,
     balanceHeading: 'Estado de cuenta al momento de este pago',
     total: 'Precio total',
     paid: 'Pagado a la fecha (incluye este pago)',
@@ -72,6 +75,7 @@ const LABELS: Record<ReceiptLocale, Labels> = {
     tripDates: 'Trip dates',
     method: 'Payment method',
     amount: 'Amount received',
+    credited: (money) => `${money} of this payment became account credit`,
     balanceHeading: 'Account status at the time of this payment',
     total: 'Total price',
     paid: 'Paid to date (including this payment)',
@@ -239,7 +243,7 @@ export class PdfLibReceiptRenderer implements ReceiptRenderer {
     }
 
     // The amount, on a cream panel.
-    const panelHeight = 74;
+    const panelHeight = data.creditedCents > 0 ? 98 : 74;
     y -= 6;
     page.drawRectangle({ x: MARGIN, y: y - panelHeight, width: CONTENT_WIDTH, height: panelHeight, color: CREAM });
     page.drawText(labels.amount, { x: MARGIN + 20, y: y - 26, size: 10, font: fonts.regular, color: INK_SOFT });
@@ -250,6 +254,15 @@ export class PdfLibReceiptRenderer implements ReceiptRenderer {
       font: fonts.semibold,
       color: INK,
     });
+    if (data.creditedCents > 0) {
+      page.drawText(labels.credited(formatMoney(data.creditedCents, data.locale)), {
+        x: MARGIN + 20,
+        y: y - 80,
+        size: 10,
+        font: fonts.regular,
+        color: INK_SOFT,
+      });
+    }
     y -= panelHeight + 30;
 
     // The balance as it stood right after this payment.

@@ -995,6 +995,15 @@ saldo a favor e históricos.
   fechas, el folio de la reserva, el monto y la forma de pago, y el estado de
   cuenta **de ese momento** (total, pagado y saldo pendiente tras este pago).
   En el idioma del cliente. Aclara que no es un comprobante fiscal (CFDI).
+- **Lo que quedó como saldo a favor** (abono libre, §7.2). Cuando un pago
+  superó lo que la reserva aún debía, el excedente se acreditó como entrada
+  `OVERPAYMENT` ligada al pago (ver «Sobrepago confirmado»). Entonces el recibo
+  añade, bajo el monto, una línea: «De este pago, $300.00 MXN quedó como saldo a
+  favor» (en inglés: «$300.00 MXN of this payment became account credit»).
+  `loadReceipt` lee ese monto como `creditedCents` (0 cuando el pago cupo
+  entero, y entonces la línea no sale). El «Monto recibido» sigue siendo el pago
+  completo, y el estado de cuenta no incluye el excedente. Un PDF generado antes
+  de este cambio no se regenera (`ensureReceiptPdf` no cambia).
 - **Los datos de la agencia se editan en el panel** (`GET`/`PUT
   /admin/settings/organization`, permiso `settings.manage`; sembrados con los
   de los carteles). Sólo los recibos que se generen después los usan: un PDF

@@ -81,6 +81,48 @@ describe('loadReceipt', () => {
     expect(loaded.ok && loaded.value.data).toMatchObject({ totalCents: 500_000, paidCents: 200_000, balanceCents: 300_000 });
   });
 
+  it('carries the part of the payment that became credit (spec §7.2)', async () => {
+    const reservation = await seedReservation(db, staffId, { status: 'ACTIVE', paidCents: 450_000, totalPriceCents: 500_000 });
+    const payment = await db.payment.create({
+      data: {
+        reservationId: reservation.id,
+        method: 'CARD',
+        status: 'SUCCEEDED',
+        provider: 'STRIPE',
+        amountCents: 80_000,
+        paidAt: new Date('2027-01-01T18:00:00Z'),
+        receiptNumber: 'RM-2027-000010',
+      },
+    });
+    await db.customerCreditEntry.create({
+      data: { customerId: reservation.customerId, amountCents: 30_000, kind: 'OVERPAYMENT', reservationId: reservation.id, paymentId: payment.id },
+    });
+
+    const loaded = await loadReceipt(db, payment.id);
+
+    expect(loaded.ok && loaded.value.data.creditedCents).toBe(30_000);
+    expect(loaded.ok && loaded.value.data.amountCents).toBe(80_000);
+  });
+
+  it('says 0 for a payment that fit', async () => {
+    const reservation = await seedReservation(db, staffId, { status: 'ACTIVE', paidCents: 100_000 });
+    const plain = await db.payment.create({
+      data: {
+        reservationId: reservation.id,
+        method: 'CARD',
+        status: 'SUCCEEDED',
+        provider: 'STRIPE',
+        amountCents: 100_000,
+        paidAt: new Date('2027-01-01T18:00:00Z'),
+        receiptNumber: 'RM-2027-000011',
+      },
+    });
+
+    const loaded = await loadReceipt(db, plain.id);
+
+    expect(loaded.ok && loaded.value.data.creditedCents).toBe(0);
+  });
+
   it('writes the email in the customer language with the PDF attached', async () => {
     const reservation = await seedReservation(db, staffId);
     await db.user.update({ where: { id: reservation.customerId }, data: { locale: 'en' } });
