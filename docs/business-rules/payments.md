@@ -658,6 +658,31 @@ resta los `OVERPAYMENT` de esa reserva. Ningún otro tipo de movimiento toca
 paid_cents = Σ pagos SUCCEEDED − Σ PRICE_DECREASE − Σ OVERPAYMENT   (de esa reserva)
 ```
 
+## Configuración de pagos
+
+Las reglas ajustables del abono libre viven en `SystemSetting` y se leen **en
+cada uso** con `readPaymentSettings` (`@rm/domain-payments`): no hay caché, así
+que el personal las cambia sin desplegar. Los valores por omisión son las
+decisiones del dueño (§15 del spec del abono libre) y sirven también de
+respaldo cuando la base corrió migraciones pero nunca el seed.
+
+| Clave | Significado | Por omisión |
+|---|---|---|
+| `payments.min_installment_cents` | Monto mínimo de un abono (D1), en centavos | 30 000 ($300.00 MXN) |
+| `payments.oxxo_active_voucher_days` | Días naturales de vigencia de una ficha OXXO sobre una reserva `ACTIVE` (D3) | 3 |
+| `payments.spei_active_lifetime_hours` | Horas de vigencia de una transferencia SPEI sobre una reserva `ACTIVE` (D5) | 72 |
+| `payments.spei_enabled` | SPEI encendido o apagado (D6) | `false` (apagado) |
+| `payments.card_intent_stale_hours` | Horas tras las que se cancela un intento de tarjeta abandonado (D9) | 24 |
+
+**Un valor mal escrito nunca rompe nada.** Una fila ausente o malformada (un
+texto, una fracción, cero o un negativo donde se espera un entero positivo; algo
+que no sea booleano en `spei_enabled`) conserva su valor por omisión: un error
+al teclear en el panel no puede convertirse en un mínimo de cero ni en una ficha
+que vence hoy. `pnpm db:seed` crea las cinco filas con esos valores y no
+sobrescribe las que el personal ya cambió.
+
+Esta sección no añade un flujo, así que `payment-flow.md` no cambia.
+
 ## Mensualidad sugerida
 
 No existe mensualidad obligatoria. El único monto exigible es el anticipo

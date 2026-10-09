@@ -18,6 +18,13 @@ const DEFAULT_SETTINGS: Record<string, Prisma.InputJsonValue> = {
   'reminder.hour_local': 10,
   'organization.timezone': 'America/Mexico_City',
   'receipt.prefix': 'RM',
+  // Abono libre (spec 2026-10-07, §15): D1, D3, D5, D6, D9. Mirror of
+  // DEFAULT_PAYMENT_SETTINGS in @rm/domain-payments.
+  'payments.min_installment_cents': 30_000,
+  'payments.oxxo_active_voucher_days': 3,
+  'payments.spei_active_lifetime_hours': 72,
+  'payments.spei_enabled': false,
+  'payments.card_intent_stale_hours': 24,
   // Task 11 (customer registration / email verification): exact values from
   // the brief. See `otp.ts`'s `DEFAULT_OTP_SETTINGS` for the same numbers
   // used as a fallback when a database has run migrations but never this
