@@ -13,6 +13,7 @@ import { organizationTimeZone } from '@rm/domain-settings';
 import { endOfCalendarDay, fail, monthStartsBetween, ok, type Result } from '@rm/shared-utils';
 import { creditFromCancellation, creditFromOverpayment } from './credit-ledger';
 import { suggestedMonthly } from './instalment';
+import { readPaymentSettings } from './payment-settings';
 import { assignReceiptNumber } from './receipt-number';
 import { lockReservationForMoney } from './reservation-lock';
 
@@ -647,7 +648,8 @@ export async function listPaymentsForReservation(
  *
  * Recomputed on every read and never stored -- there is no column for it, and
  * a stored copy would be stale the moment a payment landed. See
- * `suggestedMonthly` for the arithmetic and why it rounds up.
+ * `suggestedMonthly` for the arithmetic, why it rounds up and why it respects
+ * the minimum instalment.
  */
 export async function suggestedMonthlyForReservation(
   db: Db,
@@ -662,5 +664,8 @@ export async function suggestedMonthlyForReservation(
     endOfCalendarDay(reservation.paymentDeadline, timeZone),
     timeZone
   );
-  return ok(suggestedMonthly(balanceOf(reservation), months));
+  // The suggestion never goes below the minimum instalment the API accepts;
+  // `suggestedMonthly` caps it at the balance when that is smaller.
+  const { minInstallmentCents } = await readPaymentSettings(db);
+  return ok(suggestedMonthly(balanceOf(reservation), months, minInstallmentCents));
 }

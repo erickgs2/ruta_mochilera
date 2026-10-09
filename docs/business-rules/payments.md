@@ -694,8 +694,9 @@ months_remaining = días 01 de mes entre hoy (exclusivo) y payment_deadline
                    SystemSetting['organization.timezone']
 
 suggested_monthly_cents = min(balance_cents,
-                              redondeo_hacia_arriba(balance_cents /
-                                                    max(months_remaining, 1)))
+                              max(redondeo_hacia_arriba(balance_cents /
+                                                        max(months_remaining, 1)),
+                                  payments.min_installment_cents))
 ```
 
 La zona horaria se lee con `organizationTimeZone` (`@rm/domain-settings`) —
@@ -705,7 +706,7 @@ antes copiada aquí, en `trips` y en `reservations`; sin cambio de regla.
 ella, y una prueba lo comprueba contra `information_schema`: una copia
 guardada quedaría obsoleta en cuanto entrara un abono.
 
-Tres decisiones dentro de esa fórmula:
+Cuatro decisiones dentro de esa fórmula:
 
 - **Redondea hacia arriba, nunca hacia abajo.** 100.00 entre tres meses son
   33.333…; sugerir 33.00 deja al cliente corto un peso cada mes y la suma de
@@ -716,6 +717,12 @@ Tres decisiones dentro de esa fórmula:
   `recordPayment` rechazaría ese monto con `PAYMENT_EXCEEDS_BALANCE`. Sugerir
   una cantidad que la propia API rechaza es peor que sugerir una rara. El tope
   es además lo que hace que el último abono liquide exacto.
+- **Nunca baja del mínimo de abono.** La API rechaza un abono menor que
+  `payments.min_installment_cents` (`PAYMENT_BELOW_MINIMUM`, ver «Configuración
+  de pagos»), así que sugerir menos mostraría un monto que ella misma rechaza.
+  Ejemplo: $3,000.00 de saldo a 12 meses darían $250.00, pero se sugiere el
+  mínimo, $300.00. Si el saldo completo es menor que el mínimo, gana el saldo
+  (el tope de arriba): el último abono puede ser menor que el mínimo.
 - **`months_remaining = 0` significa "todo".** Pasado el último día 01 no
   queda mes sobre el que repartir; la fecha límite es la fecha límite.
 
@@ -729,8 +736,10 @@ en sí es `endOfCalendarDay`, que vivía en este módulo y ahora está junto a
 `isPastDate` y `monthStartsBetween` en `@rm/shared-utils/calendar.ts`; sin
 cambio de regla.
 
-El sistema jamás rechaza un abono por ser menor que la mensualidad sugerida.
-Es motivacional: se muestra en la app y se usa en los recordatorios.
+El sistema jamás rechaza un abono por ser menor que la mensualidad sugerida:
+la sugerencia se muestra en la app y se usa en los recordatorios. Lo que sí
+exige es el mínimo de abono, y la sugerencia ya nunca queda por debajo de él.
+`payment-flow.md` no cambia: no hay un flujo nuevo.
 
 ## Cobro en efectivo (Fase 2B, Tarea 7, §5.3)
 
