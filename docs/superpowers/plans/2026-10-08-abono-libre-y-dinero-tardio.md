@@ -23,7 +23,8 @@ worker) · pg-boss (`apps/worker`) · Luxon.
 - `LatePaymentCase`: `.impeccable/review/admin-api-gaps.md` §2c y la decisión del dueño del
   2026-10-08 (transmitida por Alpha), que este plan transcribe en «Decisiones que el plan fija».
 
-**Base:** `main` 4aebac6. Ya están en `main` y **no** se rehacen aquí: el reparto del sobrepago
+**Base:** `main` 9ca2f56 (incluye `feat/alerts-by-permission`; el plan se escribió sobre 4aebac6).
+Ya están en `main` y **no** se rehacen aquí: el reparto del sobrepago
 (`settleConfirmedPayment`, `OVERPAYMENT`, `PAYMENT_EXCESS_CREDITED`), el orden único de candados
 (`lockReservationForMoney`), «un aviso por pago liquidado» (`settledNow`) y la resta de `OVERPAYMENT`
 en `reconcilePaidCents` (rama `fix/payments-overpayment-and-lock-order`, merge 99904b4).
@@ -61,7 +62,7 @@ Cada tarea las cumple aunque no las repita.
   tarea. Las suites completas las corre Charlie. Proyectos de prueba siempre con `--parallel=1`.
 - Trabajo en una rama propia y en su worktree (`.worktrees/<rama>`), con `.env` copiado.
 
-## Decisiones que el plan fija (a confirmar por Alpha al revisar)
+## Decisiones que el plan fija (aceptadas por Alpha el 2026-10-08)
 
 | # | Decisión | Por qué |
 |---|---|---|
@@ -69,15 +70,29 @@ Cada tarea las cumple aunque no las repita.
 | P2 | «Dejar como saldo a favor» escribe un movimiento **`EXPIRATION`** con `payment_id` por la parte que cupo; «devuelto» escribe ese mismo movimiento y enseguida un **`REFUND`** por el mismo monto, en la misma transacción. | Es exactamente lo que `payments.md` («Caso límite») pide hacer a mano hoy (`ADJUSTMENT` + `REFUND`), pero atómico y con un tipo que `reclaimCreditForRevival` ya sabe recuperar: si después se revive, el saldo vuelve a la reserva sin código nuevo; si ya se devolvió, la reactivación responde `CREDIT_INSUFFICIENT`, que es lo correcto. |
 | P3 | La reactivación (`reviveForPayment`) cierra con `REVIVED`, en su transacción, todo caso `AFTER_EXPIRY` abierto de esa reserva. `REVIVED` no se acepta desde la API. | «Revival closes it automatically» (dueño). |
 | P4 | Casos que **sólo piden acuse** (`ACKNOWLEDGED`): `AFTER_CANCELLATION` y `AFTER_EXPIRY` sin parte pendiente (todo fue `OVERPAYMENT`). | «CANCELLED only asks for an ack» (dueño); un pago tardío que ya es saldo a favor completo está en el mismo caso. |
-| P5 | `WRITTEN_OFF` y `UNMATCHED` (dinero que Stripe cobró y que **no** está en nuestros libros) se cierran con `REFUNDED` (devuelto en el panel de Stripe) o `ACKNOWLEDGED`, los dos **con nota obligatoria**; ninguno mueve saldo. | Aceptar ese dinero en los libros «deshace una decisión tomada en otro lado» (spec §14). Si el dueño quiere una acción «aceptar», es una tarea nueva (pregunta Q1). |
-| P6 | El webhook deja de emitir `ORPHAN_PAYMENT`; en su lugar, **una sola vez por caso** (sólo cuando la inserción del caso ganó), avisa al personal con `LATE_PAYMENT_OPENED`, audiencia `payment.view` + `payment.credit.apply`. El tipo `ORPHAN_PAYMENT` queda en el catálogo por las filas históricas. | «Replaces ORPHAN_PAYMENT» y la decisión del 2026-10-08 de alertas de dinero por permiso. Si Alpha prefiere sólo la cola sin aviso, se borra el paso 4 de L2 (pregunta Q2). |
-| P7 | Sin backfill: los `ORPHAN_PAYMENT` anteriores no abren casos. | No hay un registro durable del que reconstruirlos (§2c); el personal ya recibió esas alertas (pregunta Q3). |
+| P5 | `WRITTEN_OFF` y `UNMATCHED` (dinero que Stripe cobró y que **no** está en nuestros libros) se cierran con `REFUNDED` (devuelto en el panel de Stripe) o `ACKNOWLEDGED`, los dos **con nota obligatoria**; ninguno mueve saldo. | Aceptar ese dinero en los libros «deshace una decisión tomada en otro lado» (spec §14). El dueño confirmó que no habrá acción «aceptar» (Q1). |
+| P6 | El webhook deja de emitir `ORPHAN_PAYMENT`; en su lugar, **una sola vez por caso** (sólo cuando la inserción del caso ganó), avisa al personal con `LATE_PAYMENT_OPENED`, audiencia `payment.view` + `payment.credit.apply`. El tipo `ORPHAN_PAYMENT` queda en el catálogo por las filas históricas. | «Replaces ORPHAN_PAYMENT» y la decisión del 2026-10-08 de alertas de dinero por permiso. Alpha confirmó el aviso y además la cola (Q2). |
+| P7 | Sin backfill: los `ORPHAN_PAYMENT` anteriores no abren casos. | No hay un registro durable del que reconstruirlos (§2c); y todavía no hay producción (Q3). |
 
-**Preguntas abiertas** (no bloquean empezar; bloquean sólo la tarea indicada):
-- **Q1** (dueño): ¿acción «aceptar el dinero» para `WRITTEN_OFF` (pasar el pago a `SUCCEEDED` y
-  liquidarlo)? Si sí, tarea L3b después de L3.
-- **Q2** (Alpha): ¿aviso `LATE_PAYMENT_OPENED` o sólo la cola? Bloquea L2 paso 4.
-- **Q3** (dueño): ¿backfill de casos anteriores? Si sí, tarea L6.
+## Decisiones confirmadas (2026-10-08)
+
+Plan aprobado por Alpha con P1–P7 tal como están escritas. Respuestas a las preguntas que quedaban
+abiertas:
+
+| # | Pregunta | Respuesta | Quién | Consecuencia en el plan |
+|---|---|---|---|---|
+| Q1 | ¿Acción «aceptar el dinero» para `WRITTEN_OFF`? | **No.** `WRITTEN_OFF` y `UNMATCHED` se cierran sólo con `REFUNDED` o `ACKNOWLEDGED`, con nota | Dueño | P5 queda como está; no hay tarea L3b |
+| Q2 | ¿Aviso `LATE_PAYMENT_OPENED` o sólo la cola? | **Las dos cosas**: el aviso, exactamente uno por caso (idempotente por la unicidad del propio caso), para `payment.view` y `payment.credit.apply`, y además la cola | Alpha | L2 paso 4 va completo |
+| Q3 | ¿Backfill de casos anteriores? | **No.** Todavía no hay producción, así que no existen `ORPHAN_PAYMENT` reales que reconstruir | Dueño | P7 queda como está; no hay tarea L6 |
+
+**Dependencia resuelta:** `feat/alerts-by-permission` está en `main` (9ca2f56); L2 no espera a nadie.
+
+**Reparto confirmado por Alpha:**
+- **Bravo**, en una sola rama `feat/abono-libre-basics`, antes de su catálogo: A1, A2, A3, A6, A7.
+  Después, L4 y L5.
+- **Echo**: A4 en `feat/abono-libre-port`; L1 → L2 → L3 en `feat/late-payment-cases`; A5 cuando
+  A1–A3 estén listos, en `feat/abono-libre` (que integra `basics` + `port`); luego A8 y A9.
+- Ramas desde `main` 9ca2f56.
 
 ## Foco de revisión
 
@@ -136,8 +151,9 @@ su prueba en la tarea que posee el código.
 ## Reparto, dependencias y olas
 
 Una tarea **simple** va a Bravo; una **compleja** (dinero bajo candado, concurrencia, varios
-módulos), a Echo. Ramas: `feat/abono-libre` para A*, `feat/late-payment-cases` para L*, cada una desde
-`main` 4aebac6; `feat/abono-libre-spei` para B*, desde `feat/abono-libre` integrada.
+módulos), a Echo. Ramas: `feat/abono-libre-basics` (Bravo: A1, A2, A3, A6, A7), `feat/abono-libre-port`
+(Echo: A4), `feat/abono-libre` (integra las dos, para A5, A8, A9) y `feat/late-payment-cases` para
+L*, cada una desde `main` 9ca2f56; `feat/abono-libre-spei` para B*, desde `feat/abono-libre` integrada.
 
 | Tarea | Quién | Depende de | Toca (para evitar choques) |
 |---|---|---|---|
@@ -151,13 +167,13 @@ módulos), a Echo. Ramas: `feat/abono-libre` para A*, `feat/late-payment-cases` 
 | A8 Un intento de tarjeta abierto | Echo (compleja) | A5 | `payment-intent-cancellation.ts`, `payment-intent-service.ts` |
 | A9 Job de intentos vencidos (tarjeta) | Echo (compleja) | A2 | `apps/worker/**`, `libs/jobs/**` |
 | L1 Modelo `LatePaymentCase` | Echo (compleja) | — | `schema.prisma`, migración |
-| L2 El webhook abre casos | Echo (compleja) | L1; aviso: **rama de Delta `feat/alerts-by-permission`** en `main` | `webhook-handler.ts`, `late-payment-case.ts`, `templates.ts`, `delivery-service.ts` |
+| L2 El webhook abre casos | Echo (compleja) | L1 (`feat/alerts-by-permission` ya en `main`) | `webhook-handler.ts`, `late-payment-case.ts`, `templates.ts`, `delivery-service.ts` |
 | L3 Resolver y cerrar por reactivación | Echo (compleja) | L2 | `late-payment-case.ts`, `credit-service.ts`, `credit-ledger.ts` |
 | L4 API de casos | Bravo (simple) | L3 | `contracts/late-payments.ts`, `apps/api/.../late-payments/**`, `registry.ts`, `api-client` |
 | L5 Quinto conteo de la cola | Bravo (simple) | L1; **rama de Bravo `feat/admin-work-queue-api`** en `main` | `work-queue-summary.ts`, `work-queue.ts` (contrato) |
 | B1 Adaptador SPEI con Customer | Echo (compleja) | A4 integrada; claves de prueba de Stripe para la lista de §11 | `libs/payments-stripe/**`, migración `stripe_customer_id` |
 | B2 SPEI en el dominio y en el job | Echo (compleja) | A5, A9, B1 | `payment-intent-service.ts`, `expire-stale-payment-intents.ts`, `templates.ts` |
-| B3 Eventos SPEI del webhook | Echo (compleja) | B2; rama de Delta en `main` | `webhook-handler.ts`, `templates.ts`, `delivery-service.ts` |
+| B3 Eventos SPEI del webhook | Echo (compleja) | B2 | `webhook-handler.ts`, `templates.ts`, `delivery-service.ts` |
 
 **Olas** (lo que puede ir en paralelo sin chocar en archivos):
 
@@ -1360,8 +1376,8 @@ sigue funcionando.
 - Modificar: `libs/domain/payments/src/lib/webhook-handler.ts` (+ `webhook-handler.spec.ts`)
 - Modificar: `libs/domain/notifications/src/lib/templates.ts` (`LATE_PAYMENT_OPENED`, es y en) +
   `templates.spec.ts`
-- Modificar: `libs/domain/notifications/src/lib/delivery-service.ts` (`ADMIN_ALERT_AUDIENCE`, de la
-  rama de Delta)
+- Modificar: `libs/domain/notifications/src/lib/delivery-service.ts` (`ADMIN_ALERT_AUDIENCE`, ya en
+  `main`)
 - Docs: `payments.md` — «Dinero tardío: el caso de seguimiento» (cuándo se abre, por cuál de los
   cuatro caminos, unicidad), «Caso límite: pago confirmado de una reserva ya expirada» y «Sobrepago
   confirmado» (sustituir las menciones de `ORPHAN_PAYMENT`), «El webhook de Stripe». `payment-flow.md`
@@ -1369,8 +1385,7 @@ sigue funcionando.
   `pendingCents` → aviso). `notifications.md` — `LATE_PAYMENT_OPENED`, y que `ORPHAN_PAYMENT` ya no se
   emite.
 
-**Dependencia:** `feat/alerts-by-permission` (Delta) integrada en `main` para el paso 4. Sin ella,
-L2 se hace hasta el paso 3 y el paso 4 espera.
+**Dependencia:** `feat/alerts-by-permission` (Delta), ya en `main` (9ca2f56).
 
 **Interfaces:**
 - Consume: el modelo de L1.
