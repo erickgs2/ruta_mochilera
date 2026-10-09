@@ -111,7 +111,7 @@ describe('reconcilePaidCents', () => {
   });
 
   it('produces no alert when paid_cents matches the sum of SUCCEEDED payments', async () => {
-    const admin = await seedStaffWithPermission(db, 'reservation.cancel');
+    const admin = await seedStaffWithPermission(db, 'payment.view');
     const reservation = await seedReservation(db, { paidCents: 150_000 });
     await seedSucceededPayment(db, reservation.id, 100_000);
     await seedSucceededPayment(db, reservation.id, 50_000);
@@ -124,7 +124,7 @@ describe('reconcilePaidCents', () => {
   });
 
   it('alerts the admin with both numbers when paid_cents has drifted from the SUCCEEDED total', async () => {
-    const admin = await seedStaffWithPermission(db, 'reservation.cancel');
+    const admin = await seedStaffWithPermission(db, 'payment.view');
     const reservation = await seedReservation(db, { paidCents: 150_000 });
     await seedSucceededPayment(db, reservation.id, 100_000); // only 100,000 actually succeeded -- paid_cents over-reports by 50,000
     const boss = await withTestQueue();
@@ -140,7 +140,7 @@ describe('reconcilePaidCents', () => {
   });
 
   it('subtracts what a price decrease moved to the customer credit (Phase 2B)', async () => {
-    const admin = await seedStaffWithPermission(db, 'reservation.cancel');
+    const admin = await seedStaffWithPermission(db, 'payment.view');
     // Paid 150,000; a price decrease moved 50,000 of it to the customer's
     // credit, so the reservation now holds 100,000.
     const reservation = await seedReservation(db, { paidCents: 100_000 });
@@ -187,7 +187,7 @@ describe('reconcilePaidCents', () => {
   });
 
   it('treats a reservation with no payments at all and paid_cents = 0 as matching', async () => {
-    const admin = await seedStaffWithPermission(db, 'reservation.cancel');
+    const admin = await seedStaffWithPermission(db, 'payment.view');
     await seedReservation(db, { paidCents: 0 });
     const boss = await withTestQueue();
 
@@ -198,7 +198,7 @@ describe('reconcilePaidCents', () => {
   });
 
   it('ignores PENDING and FAILED payments when summing the real total', async () => {
-    const admin = await seedStaffWithPermission(db, 'reservation.cancel');
+    const admin = await seedStaffWithPermission(db, 'payment.view');
     const reservation = await seedReservation(db, { paidCents: 100_000 });
     await seedSucceededPayment(db, reservation.id, 100_000);
     await db.payment.create({

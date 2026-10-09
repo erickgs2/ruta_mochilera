@@ -98,6 +98,17 @@ ejecución y otorga el catálogo completo al rol `Super Admin`.
 | `import.manage` | operations | Upload and confirm CSV imports |
 | `settings.manage` | operations | Change system settings |
 
+### Permisos que además deciden a quién llega un aviso
+
+Algunos permisos no sólo protegen una ruta: `notifyAdmins`
+(`docs/business-rules/notifications.md`) los usa para elegir a los
+destinatarios de los avisos del personal, al enviar y a partir de los roles
+de ese momento. `reservation.cancel` recibe la solicitud de cancelación;
+`payment.view` y `payment.credit.apply` (cualquiera de los dos) reciben los
+avisos de dinero —pago huérfano y desviación de `paid_cents`—; y
+`reservation.risk.view` está reservado a las alertas de riesgo de cobro. Quien
+quite uno de estos permisos a un rol también lo saca de esa audiencia.
+
 ## Roles editables
 
 `libs/domain/rbac/src/lib/role-service.ts` expone `listRoles`, `createRole`,

@@ -86,6 +86,43 @@ async function seedStaffWithPermission(
   return user.id;
 }
 
+/**
+ * A STAFF user holding several permissions. By default one role grants all of
+ * them; with `oneRoleEach` the user has one role per permission, so a single
+ * alert matches them through more than one role.
+ */
+async function seedStaffWithPermissions(
+  client: Db,
+  permissionKeys: string[],
+  overrides: { status?: 'ACTIVE' | 'DISABLED'; oneRoleEach?: boolean } = {}
+): Promise<string> {
+  const index = next();
+  const user = await client.user.create({
+    data: {
+      email: `staff-${index}@agency.test`,
+      type: 'STAFF',
+      status: overrides.status ?? 'ACTIVE',
+      staffProfile: { create: { fullName: `Staff ${index}` } },
+    },
+  });
+  const groups = overrides.oneRoleEach ? permissionKeys.map((key) => [key]) : [permissionKeys];
+  for (const [position, keys] of groups.entries()) {
+    const role = await client.role.create({
+      data: { name: `Role ${index}-${position}`, description: 'test role' },
+    });
+    for (const key of keys) {
+      const permission = await client.permission.upsert({
+        where: { key },
+        create: { key, category: 'payments', description: key },
+        update: {},
+      });
+      await client.rolePermission.create({ data: { roleId: role.id, permissionId: permission.id } });
+    }
+    await client.userRole.create({ data: { userId: user.id, roleId: role.id } });
+  }
+  return user.id;
+}
+
 describe('notification delivery service', () => {
   beforeAll(async () => {
     await prepareTestDb();
@@ -297,6 +334,92 @@ describe('notification delivery service', () => {
 
       const rows = await db.notificationDelivery.findMany({});
       expect(rows).toHaveLength(0);
+    });
+
+    describe('recipients by permission', () => {
+      const MONEY_PARAMS = { amount: '$500.00', provider: 'OXXO', intentId: 'pi_123' };
+      const CANCEL_PARAMS = { reservationCode: 'RM-0001', customerName: 'Erick', reason: 'change of plans' };
+
+      async function send(eventType: 'ORPHAN_PAYMENT' | 'PAID_CENTS_MISMATCH' | 'CANCELLATION_REQUESTED') {
+        const boss = await withTestQueue();
+        await db.$transaction((tx) =>
+          notifyAdmins(tx, boss, { eventType, params: eventType === 'CANCELLATION_REQUESTED' ? CANCEL_PARAMS : MONEY_PARAMS })
+        );
+      }
+      const inboxOf = (userId: string) => db.notificationDelivery.findMany({ where: { userId, channel: 'INBOX' } });
+
+      it.each(['ORPHAN_PAYMENT', 'PAID_CENTS_MISMATCH'] as const)(
+        'sends %s to holders of payment.view or payment.credit.apply, and not to a role with only reservation.cancel',
+        async (eventType) => {
+          const cashier = await seedStaffWithPermission(db, 'payment.view');
+          const creditClerk = await seedStaffWithPermission(db, 'payment.credit.apply');
+          const canceller = await seedStaffWithPermission(db, 'reservation.cancel');
+
+          await send(eventType);
+
+          expect(await inboxOf(cashier)).toHaveLength(1);
+          expect(await inboxOf(creditClerk)).toHaveLength(1);
+          expect(await inboxOf(canceller)).toHaveLength(0);
+        }
+      );
+
+      it('keeps sending the cancellation request to reservation.cancel only, never to a cashier', async () => {
+        const canceller = await seedStaffWithPermission(db, 'reservation.cancel');
+        const cashier = await seedStaffWithPermission(db, 'payment.view');
+
+        await send('CANCELLATION_REQUESTED');
+
+        expect(await inboxOf(canceller)).toHaveLength(1);
+        expect(await inboxOf(cashier)).toHaveLength(0);
+      });
+
+      it('does not send any staff alert to someone holding only reservation.risk.view', async () => {
+        const riskWatcher = await seedStaffWithPermission(db, 'reservation.risk.view');
+
+        await send('ORPHAN_PAYMENT');
+        await send('PAID_CENTS_MISMATCH');
+        await send('CANCELLATION_REQUESTED');
+
+        expect(await inboxOf(riskWatcher)).toHaveLength(0);
+      });
+
+      it('keeps an admin holding every one of those permissions in the audience of each alert', async () => {
+        const admin = await seedStaffWithPermissions(db, [
+          'reservation.cancel',
+          'payment.view',
+          'payment.credit.apply',
+          'reservation.risk.view',
+        ]);
+
+        await send('ORPHAN_PAYMENT');
+        await send('CANCELLATION_REQUESTED');
+
+        expect(await inboxOf(admin)).toHaveLength(2);
+      });
+
+      it.each([
+        ['one role granting both permissions', false],
+        ['two roles, each granting one', true],
+      ])('writes one pair, not two, for a user matching through both permissions (%s)', async (_label, oneRoleEach) => {
+        const user = await seedStaffWithPermissions(db, ['payment.view', 'payment.credit.apply'], { oneRoleEach });
+
+        await send('ORPHAN_PAYMENT');
+
+        const rows = await db.notificationDelivery.findMany({ where: { userId: user } });
+        expect(rows.map((row) => row.channel).sort()).toEqual(['EMAIL', 'INBOX']);
+        const boss = await withTestQueue();
+        expect(await boss.findJobs(SEND_NOTIFICATION_EMAIL_JOB, {})).toHaveLength(1);
+      });
+
+      it('skips a disabled user holding payment.view, whichever permission matched', async () => {
+        const disabled = await seedStaffWithPermissions(db, ['payment.view', 'payment.credit.apply'], { status: 'DISABLED' });
+        const active = await seedStaffWithPermission(db, 'payment.view');
+
+        await send('PAID_CENTS_MISMATCH');
+
+        expect(await db.notificationDelivery.findMany({ where: { userId: disabled } })).toHaveLength(0);
+        expect(await inboxOf(active)).toHaveLength(1);
+      });
     });
   });
 
@@ -515,7 +638,8 @@ describe('notification delivery service', () => {
 
     it('carries the reservation an item is about so the panel can link to it, and null when there is none', async () => {
       const customerId = await seedCustomer(db);
-      const staffId = await seedStaffWithPermission(db, 'reservation.cancel');
+      // Holds both permissions the two alerts below are routed by.
+      const staffId = await seedStaffWithPermissions(db, ['reservation.cancel', 'payment.view']);
       const reservationId = await seedReservationFor(customerId);
       const boss = await withTestQueue();
       await db.$transaction(async (tx) => {

@@ -281,11 +281,33 @@ dueño decidió que el dinero tardío abrirá un caso de seguimiento
 (`LatePaymentCase`, siguiente trabajo), que reemplazará este aviso.
 
 `notifyAdmins` los envía a **todo usuario de personal vivo** (`status =
-ACTIVE`) que tenga el permiso `reservation.cancel` — el mismo permiso que
-protege cancelar una reservación, porque son exactamente las personas que
-pueden actuar sobre lo que el aviso describe. Si ningún usuario de personal
-tiene ese permiso en este momento, `notifyAdmins` no escribe nada y no
-lanza: ausencia de destinatarios no es un error.
+ACTIVE`) cuyos roles concedan **al menos uno** de los permisos del evento. La
+audiencia sigue a quien puede actuar sobre lo que el aviso describe, no a una
+lista fija de administradores (`ADMIN_ALERT_AUDIENCE`, en `delivery-service.ts`):
+
+| Aviso | Lo reciben quienes tengan… |
+|---|---|
+| `CANCELLATION_REQUESTED` | `reservation.cancel` |
+| `ORPHAN_PAYMENT` | `payment.view` **o** `payment.credit.apply` |
+| `PAID_CENTS_MISMATCH` | `payment.view` **o** `payment.credit.apply` |
+
+- **Se resuelve al enviar**, desde los roles tal como están en ese momento; no
+  hay una lista de destinatarios guardada que se desactualice.
+- **Una sola vez por persona.** Quien coincide por varios permisos, o por
+  varios roles, recibe un solo par de filas `INBOX`/`EMAIL`.
+- **El personal deshabilitado no recibe nada**, aunque su rol conceda el
+  permiso. Un administrador que tiene esos permisos sigue en la audiencia.
+- **Un rol con sólo `reservation.cancel` ya no recibe las alertas de dinero**
+  (antes sí: era el único permiso); un cajero con sólo `payment.view` recibe
+  las de dinero y no la solicitud de cancelación. `reservation.risk.view` no
+  abre ninguno de estos tres avisos.
+- Un aviso nuevo para el personal se declara en esa tabla: `notifyAdmins` sólo
+  acepta los eventos que figuran en ella. Las alertas de riesgo de cobro
+  (reservas vencidas o en riesgo) están pensadas para quien tenga
+  `reservation.risk.view` y entrarán en la tabla cuando exista el evento que
+  las lanza.
+- Si nadie tiene en este momento un permiso del evento, `notifyAdmins` no
+  escribe nada y no lanza: ausencia de destinatarios no es un error.
 
 ## La bandeja del cliente
 
@@ -329,9 +351,8 @@ cosas para el panel del personal:
   No tener nada sin leer no es un error, y repetirla tampoco. Después
   `unreadCount` es 0.
 
-**Quién recibe las alertas del personal no cambia aquí:** `notifyAdmins` sigue
-yendo a quien tiene `reservation.cancel` (ver arriba); ampliar los
-destinatarios es una decisión aparte.
+**Quién recibe cada alerta** lo decide `ADMIN_ALERT_AUDIENCE` (ver «`notifyAdmins`»,
+arriba): por permiso, no sólo a administradores.
 
 ## `markRead` y `DELIVERY_NOT_OWNED`
 
