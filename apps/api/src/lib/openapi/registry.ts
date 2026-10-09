@@ -35,7 +35,9 @@ import {
   createReservationRequestSchema as createReservationRequestSchemaImport,
   createStaffRequestSchema as createStaffRequestSchemaImport,
   createTripRequestSchema as createTripRequestSchemaImport,
+  bankTransferSchema as bankTransferSchemaImport,
   createdPaymentIntentSchema as createdPaymentIntentSchemaImport,
+  paymentOptionsSchema as paymentOptionsSchemaImport,
   forgotPasswordRequestSchema as forgotPasswordRequestSchemaImport,
   inboxItemSchema as inboxItemSchemaImport,
   listInboxQuerySchema,
@@ -166,6 +168,9 @@ const customerCreditSchema = customerCreditSchemaImport.meta({ id: 'CustomerCred
 const refundCreditRequestSchema = refundCreditRequestSchemaImport.meta({ id: 'RefundCreditRequest' });
 const adjustCreditRequestSchema = adjustCreditRequestSchemaImport.meta({ id: 'AdjustCreditRequest' });
 const applyCreditRequestSchema = applyCreditRequestSchemaImport.meta({ id: 'ApplyCreditRequest' });
+// Registered under their own ids so `ReservationDetail` and `CreatedPaymentIntent` reference them.
+paymentOptionsSchemaImport.meta({ id: 'PaymentOptions' });
+bankTransferSchemaImport.meta({ id: 'BankTransfer' });
 const createdPaymentIntentSchema = createdPaymentIntentSchemaImport.meta({ id: 'CreatedPaymentIntent' });
 const inboxPageSchema = inboxPageSchemaImport.meta({ id: 'InboxPage' });
 const publicTripSummarySchema = publicTripSummarySchemaImport.meta({ id: 'PublicTripSummary' });
@@ -379,8 +384,9 @@ type _tripCostingSchemaMatchesDto = Expect<Equals<z.infer<typeof tripCostingSche
  * the two drifting apart.
  */
 type _reservationSchemaMatchesDto = Expect<Equals<z.infer<typeof reservationSchema>, DateToString<ReservationDto>>>;
+// `paymentOptions` has no domain DTO yet (task A5 adds it and this pair with it).
 type _reservationDetailSchemaMatchesDto = Expect<
-  Equals<z.infer<typeof reservationDetailSchema>, DateToString<ReservationDetail>>
+  Equals<Omit<z.infer<typeof reservationDetailSchema>, 'paymentOptions'>, DateToString<ReservationDetail>>
 >;
 type _reservationSummarySchemaMatchesDto = Expect<
   Equals<z.infer<typeof reservationSummarySchema>, DateToString<ReservationSummaryDto>>
@@ -395,8 +401,9 @@ type _paymentSchemaMatchesDto = Expect<Equals<z.infer<typeof paymentSchema>, Dat
 type _staffPaymentPageSchemaMatchesDto = Expect<
   Equals<z.infer<typeof staffPaymentPageSchema>, DateToString<StaffPaymentPageDto>>
 >;
+// `bankTransfer` (SPEI, Part B) has no domain DTO field yet; task B2 adds it and this pair with it.
 type _createdPaymentIntentSchemaMatchesDto = Expect<
-  Equals<z.infer<typeof createdPaymentIntentSchema>, DateToString<CreatedPaymentIntentDto>>
+  Equals<Omit<z.infer<typeof createdPaymentIntentSchema>, 'bankTransfer'>, DateToString<CreatedPaymentIntentDto>>
 >;
 // `inboxItemSchemaImport` is checked rather than a locally re-tagged
 // version: it is only ever used nested inside `inboxPageSchemaImport`'s own

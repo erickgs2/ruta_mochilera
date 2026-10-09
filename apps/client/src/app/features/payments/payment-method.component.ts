@@ -11,7 +11,8 @@ import { VoucherComponent } from './voucher.component';
 
 type ReservationDetail = components['schemas']['ReservationDetail'];
 type CreatedPaymentIntent = components['schemas']['CreatedPaymentIntent'];
-type PaymentIntentKind = components['schemas']['CreatePaymentIntentRequest']['intent'];
+// The screen offers the whole balance or the deposit; the free amount (`AMOUNT`) comes with its own UI.
+type PaymentIntentKind = Exclude<components['schemas']['CreatePaymentIntentRequest']['intent'], 'AMOUNT'>;
 type PaymentMethod = 'CARD' | 'OXXO';
 
 /**

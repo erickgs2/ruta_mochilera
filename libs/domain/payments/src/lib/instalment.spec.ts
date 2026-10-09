@@ -51,4 +51,17 @@ describe('suggestedMonthly', () => {
   it('treats a negative balance as settled', () => {
     expect(suggestedMonthly(-1, 3)).toBe(0);
   });
+
+  it('never suggests less than the minimum the API accepts', () => {
+    // $3,000 over 12 months would be $250, below the $300 minimum.
+    expect(suggestedMonthly(300_000, 12, 30_000)).toBe(30_000);
+  });
+
+  it('suggests the whole balance when it is below the minimum', () => {
+    expect(suggestedMonthly(20_000, 12, 30_000)).toBe(20_000);
+  });
+
+  it('keeps the plain formula when it is already above the minimum', () => {
+    expect(suggestedMonthly(1_200_000, 4, 30_000)).toBe(300_000);
+  });
 });

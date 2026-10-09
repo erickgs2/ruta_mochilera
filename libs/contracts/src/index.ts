@@ -6,6 +6,7 @@ export * from './lib/credit';
 export * from './lib/customers';
 export * from './lib/imports';
 export * from './lib/notifications';
+export * from './lib/payment-options';
 export * from './lib/payments';
 export * from './lib/profile';
 export * from './lib/public-trips';

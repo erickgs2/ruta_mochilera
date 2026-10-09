@@ -25,6 +25,7 @@ const BASE: ReceiptData = {
   totalCents: 500_000,
   paidCents: 250_000,
   balanceCents: 250_000,
+  creditedCents: 0,
 };
 
 async function textOf(pdf: Uint8Array): Promise<string> {
@@ -50,6 +51,15 @@ describe('PdfLibReceiptRenderer', () => {
     expect(text).toContain('www.fb.com/larutamochilera');
     expect(text).toContain('RM-7K2Q9X');
     expect(text).toContain('Efectivo');
+  });
+
+  it('prints the credited line only when there is one, in the receipt language', async () => {
+    const withCredit = await textOf(await renderer.render({ ...BASE, locale: 'es', creditedCents: 30_000 }));
+    expect(withCredit).toContain('De este pago, $300.00 MXN quedó como saldo a favor');
+    const without = await textOf(await renderer.render({ ...BASE, locale: 'es', creditedCents: 0 }));
+    expect(without).not.toContain('saldo a favor');
+    const english = await textOf(await renderer.render({ ...BASE, locale: 'en', creditedCents: 30_000 }));
+    expect(english).toContain('$300.00 MXN of this payment became account credit');
   });
 
   it('draws accents and «ñ» with the embedded font', async () => {

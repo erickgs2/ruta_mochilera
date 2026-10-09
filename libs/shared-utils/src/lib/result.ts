@@ -40,6 +40,9 @@ export type DomainErrorCode =
   | 'PAYMENT_DEADLINE_PASSED'
   | 'HOLD_EXPIRED'
   | 'PAYMENT_EXCEEDS_BALANCE'
+  | 'PAYMENT_BELOW_MINIMUM'
+  | 'PAYMENT_METHOD_UNAVAILABLE'
+  | 'NOTHING_DUE'
   | 'DEPOSIT_BELOW_MINIMUM'
   // Staff declined a cancellation request that does not exist (Phase 2A).
   | 'NO_CANCELLATION_REQUEST'

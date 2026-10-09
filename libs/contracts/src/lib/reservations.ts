@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { uuidSchema } from './common';
+import { paymentOptionsSchema } from './payment-options';
 
 export const reservationStatusSchema = z.enum(['HELD', 'ACTIVE', 'CANCELLED', 'EXPIRED']);
 
@@ -59,6 +60,8 @@ export const reservationSchema = z.object({
  */
 export const reservationDetailSchema = reservationSchema.extend({
   suggestedMonthlyCents: z.number().int(),
+  /** Optional until the API fills it in (abono libre, task A5), which makes it required. */
+  paymentOptions: paymentOptionsSchema.optional(),
 });
 
 /** The list row: drops the detail-only fields `ReservationDto` carries (see `@rm/domain-reservations`). */

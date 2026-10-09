@@ -31,6 +31,12 @@ export interface ReceiptData {
   totalCents: number;
   paidCents: number;
   balanceCents: number;
+  /**
+   * How much of `amountCents` went to the customer's credit instead of the
+   * reservation, because it was above what the reservation still owed
+   * (abono libre spec §7.2). 0 when the whole payment fit.
+   */
+  creditedCents: number;
 }
 
 /**

@@ -215,9 +215,11 @@ export class ReservationsApi {
   }
 
   /**
-   * The body is an intent (`FULL` or `DEPOSIT`) and a method, never a number
-   * of cents: the API decides the amount from the reservation's own balance
-   * and echoes it back as `amountCents`.
+   * The body is an intent and a method. `FULL` and `DEPOSIT` carry no number
+   * of cents: the API decides the amount from the reservation's own balance.
+   * Only `AMOUNT` carries `amountCents` (a free-amount instalment), which the
+   * API validates against the balance and the minimums. Either way it echoes
+   * the amount it will charge back as `amountCents`.
    */
   createPaymentIntent(
     reservationId: string,

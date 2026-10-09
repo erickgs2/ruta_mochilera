@@ -6,7 +6,8 @@ import { roundUpToPeso, type Cents } from '@rm/shared-utils';
  *
  * ```
  * suggested_monthly_cents = min(balance_cents,
- *                               roundUpToPeso(balance_cents / max(months_remaining, 1)))
+ *                               max(roundUpToPeso(balance_cents / max(months_remaining, 1)),
+ *                                   minimum_cents))
  * ```
  *
  * `monthsRemaining` is the number of first-of-month days left before the
@@ -15,7 +16,7 @@ import { roundUpToPeso, type Cents } from '@rm/shared-utils';
  * `payment-service.ts` puts the two together; this function is the arithmetic
  * alone, so it can be read and tested without a database.
  *
- * Three properties the callers depend on:
+ * Four properties the callers depend on:
  *
  * - **It rounds up, never down.** Rounding down leaves the customer short by
  *   up to a peso every month, and the instalments then do not add up to the
@@ -30,17 +31,22 @@ import { roundUpToPeso, type Cents } from '@rm/shared-utils';
  *   there is no month left to spread the balance over; the deadline is the
  *   deadline.
  *
- * Purely motivational: the system never rejects a payment for being smaller
- * than this, and never stores the number. The only enforced amount is the
- * minimum deposit at reservation time.
+ * - **It never falls below the minimum instalment** (`minimumCents`, the
+ *   `payments.min_installment_cents` setting). The API now refuses an instalment
+ *   under that minimum (`PAYMENT_BELOW_MINIMUM`), so suggesting less would
+ *   print an amount the API turns down. When the whole balance is smaller than
+ *   the minimum, the balance wins: the last instalment may be below it.
+ *
+ * The system never rejects a payment for being smaller than this suggestion,
+ * and never stores the number. What it enforces is the minimum itself.
  *
  * The division is floating point, which is allowed here and only here: this
  * value is recomputed on every read and never reaches a stored column. A
  * quotient that is exactly a whole number of pesos is representable, so IEEE
  * returns it exactly and the rounding up cannot gain a spurious peso.
  */
-export function suggestedMonthly(balanceCents: Cents, monthsRemaining: number): Cents {
+export function suggestedMonthly(balanceCents: Cents, monthsRemaining: number, minimumCents: Cents = 0): Cents {
   if (balanceCents <= 0) return 0;
   const months = Math.max(monthsRemaining, 1);
-  return Math.min(balanceCents, roundUpToPeso(balanceCents / months));
+  return Math.min(balanceCents, Math.max(roundUpToPeso(balanceCents / months), minimumCents));
 }

@@ -86,6 +86,12 @@ export async function loadReceipt(db: Db | DbTransactionClient, paymentId: strin
     paidCents = sum._sum.amountCents ?? payment.amountCents;
   }
   const totalCents = payment.receiptTotalCents ?? reservation.totalPriceCents;
+  // The part above what the reservation still owed (decision D7) became an
+  // OVERPAYMENT credit entry tied to this payment; a payment that fit has none.
+  const overpayment = await db.customerCreditEntry.findFirst({
+    where: { paymentId: payment.id, kind: 'OVERPAYMENT' },
+    select: { amountCents: true },
+  });
 
   return ok({
     paymentId: payment.id,
@@ -108,6 +114,7 @@ export async function loadReceipt(db: Db | DbTransactionClient, paymentId: strin
       totalCents,
       paidCents,
       balanceCents: Math.max(0, totalCents - paidCents),
+      creditedCents: overpayment?.amountCents ?? 0,
     },
   });
 }

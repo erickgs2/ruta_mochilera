@@ -658,6 +658,31 @@ resta los `OVERPAYMENT` de esa reserva. Ningún otro tipo de movimiento toca
 paid_cents = Σ pagos SUCCEEDED − Σ PRICE_DECREASE − Σ OVERPAYMENT   (de esa reserva)
 ```
 
+## Configuración de pagos
+
+Las reglas ajustables del abono libre viven en `SystemSetting` y se leen **en
+cada uso** con `readPaymentSettings` (`@rm/domain-payments`): no hay caché, así
+que el personal las cambia sin desplegar. Los valores por omisión son las
+decisiones del dueño (§15 del spec del abono libre) y sirven también de
+respaldo cuando la base corrió migraciones pero nunca el seed.
+
+| Clave | Significado | Por omisión |
+|---|---|---|
+| `payments.min_installment_cents` | Monto mínimo de un abono (D1), en centavos | 30 000 ($300.00 MXN) |
+| `payments.oxxo_active_voucher_days` | Días naturales de vigencia de una ficha OXXO sobre una reserva `ACTIVE` (D3) | 3 |
+| `payments.spei_active_lifetime_hours` | Horas de vigencia de una transferencia SPEI sobre una reserva `ACTIVE` (D5) | 72 |
+| `payments.spei_enabled` | SPEI encendido o apagado (D6) | `false` (apagado) |
+| `payments.card_intent_stale_hours` | Horas tras las que se cancela un intento de tarjeta abandonado (D9) | 24 |
+
+**Un valor mal escrito nunca rompe nada.** Una fila ausente o malformada (un
+texto, una fracción, cero o un negativo donde se espera un entero positivo; algo
+que no sea booleano en `spei_enabled`) conserva su valor por omisión: un error
+al teclear en el panel no puede convertirse en un mínimo de cero ni en una ficha
+que vence hoy. `pnpm db:seed` crea las cinco filas con esos valores y no
+sobrescribe las que el personal ya cambió.
+
+Esta sección no añade un flujo, así que `payment-flow.md` no cambia.
+
 ## Mensualidad sugerida
 
 No existe mensualidad obligatoria. El único monto exigible es el anticipo
@@ -669,8 +694,9 @@ months_remaining = días 01 de mes entre hoy (exclusivo) y payment_deadline
                    SystemSetting['organization.timezone']
 
 suggested_monthly_cents = min(balance_cents,
-                              redondeo_hacia_arriba(balance_cents /
-                                                    max(months_remaining, 1)))
+                              max(redondeo_hacia_arriba(balance_cents /
+                                                        max(months_remaining, 1)),
+                                  payments.min_installment_cents))
 ```
 
 La zona horaria se lee con `organizationTimeZone` (`@rm/domain-settings`) —
@@ -680,7 +706,7 @@ antes copiada aquí, en `trips` y en `reservations`; sin cambio de regla.
 ella, y una prueba lo comprueba contra `information_schema`: una copia
 guardada quedaría obsoleta en cuanto entrara un abono.
 
-Tres decisiones dentro de esa fórmula:
+Cuatro decisiones dentro de esa fórmula:
 
 - **Redondea hacia arriba, nunca hacia abajo.** 100.00 entre tres meses son
   33.333…; sugerir 33.00 deja al cliente corto un peso cada mes y la suma de
@@ -691,6 +717,12 @@ Tres decisiones dentro de esa fórmula:
   `recordPayment` rechazaría ese monto con `PAYMENT_EXCEEDS_BALANCE`. Sugerir
   una cantidad que la propia API rechaza es peor que sugerir una rara. El tope
   es además lo que hace que el último abono liquide exacto.
+- **Nunca baja del mínimo de abono.** La API rechaza un abono menor que
+  `payments.min_installment_cents` (`PAYMENT_BELOW_MINIMUM`, ver «Configuración
+  de pagos»), así que sugerir menos mostraría un monto que ella misma rechaza.
+  Ejemplo: $3,000.00 de saldo a 12 meses darían $250.00, pero se sugiere el
+  mínimo, $300.00. Si el saldo completo es menor que el mínimo, gana el saldo
+  (el tope de arriba): el último abono puede ser menor que el mínimo.
 - **`months_remaining = 0` significa "todo".** Pasado el último día 01 no
   queda mes sobre el que repartir; la fecha límite es la fecha límite.
 
@@ -704,8 +736,10 @@ en sí es `endOfCalendarDay`, que vivía en este módulo y ahora está junto a
 `isPastDate` y `monthStartsBetween` en `@rm/shared-utils/calendar.ts`; sin
 cambio de regla.
 
-El sistema jamás rechaza un abono por ser menor que la mensualidad sugerida.
-Es motivacional: se muestra en la app y se usa en los recordatorios.
+El sistema jamás rechaza un abono por ser menor que la mensualidad sugerida:
+la sugerencia se muestra en la app y se usa en los recordatorios. Lo que sí
+exige es el mínimo de abono, y la sugerencia ya nunca queda por debajo de él.
+`payment-flow.md` no cambia: no hay un flujo nuevo.
 
 ## Cobro en efectivo (Fase 2B, Tarea 7, §5.3)
 
@@ -961,6 +995,15 @@ saldo a favor e históricos.
   fechas, el folio de la reserva, el monto y la forma de pago, y el estado de
   cuenta **de ese momento** (total, pagado y saldo pendiente tras este pago).
   En el idioma del cliente. Aclara que no es un comprobante fiscal (CFDI).
+- **Lo que quedó como saldo a favor** (abono libre, §7.2). Cuando un pago
+  superó lo que la reserva aún debía, el excedente se acreditó como entrada
+  `OVERPAYMENT` ligada al pago (ver «Sobrepago confirmado»). Entonces el recibo
+  añade, bajo el monto, una línea: «De este pago, $300.00 MXN quedó como saldo a
+  favor» (en inglés: «$300.00 MXN of this payment became account credit»).
+  `loadReceipt` lee ese monto como `creditedCents` (0 cuando el pago cupo
+  entero, y entonces la línea no sale). El «Monto recibido» sigue siendo el pago
+  completo, y el estado de cuenta no incluye el excedente. Un PDF generado antes
+  de este cambio no se regenera (`ensureReceiptPdf` no cambia).
 - **Los datos de la agencia se editan en el panel** (`GET`/`PUT
   /admin/settings/organization`, permiso `settings.manage`; sembrados con los
   de los carteles). Sólo los recibos que se generen después los usan: un PDF
