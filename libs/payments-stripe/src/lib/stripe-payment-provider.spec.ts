@@ -1,5 +1,6 @@
+import { DateTime } from 'luxon';
 import { describe, expect, it } from 'vitest';
-import { oxxoExpiresAfterDays, StripePaymentProvider } from './stripe-payment-provider';
+import { oxxoDeadlineAfterDays, oxxoExpiresAfterDays, STRIPE_LIMITS, StripePaymentProvider } from './stripe-payment-provider';
 
 /**
  * Deliberately narrow, unlike every other `.spec.ts` in this library:
@@ -85,5 +86,56 @@ describe('StripePaymentProvider.createIntent OXXO window refusal', () => {
       ok: false,
       error: { code: 'VALIDATION_FAILED', details: { field: 'voucherExpiresAt', reason: 'window_too_short_for_oxxo' } },
     });
+  });
+});
+
+describe('oxxoDeadlineAfterDays', () => {
+  const inMexicoCity = (iso: string) => DateTime.fromISO(iso, { zone: 'America/Mexico_City' }).toJSDate();
+
+  // An ACTIVE reservation has no hold to bound its voucher, so the domain asks
+  // for "N days" (owner decision D3) and stores the deadline this returns.
+  // Stripe must be asked for exactly that N back: a deadline that
+  // round-tripped to N - 1 would cut the traveler's three days to two.
+  it.each(['2026-10-08T00:01', '2026-10-08T12:00', '2026-10-08T23:58', '2026-12-31T23:59', '2026-03-31T23:30'])(
+    'round-trips 1 to 31 days from %s in Mexico City',
+    (iso) => {
+      const now = inMexicoCity(iso);
+      for (let days = 1; days <= 31; days += 1) {
+        expect(oxxoExpiresAfterDays(oxxoDeadlineAfterDays(days, now), now)).toBe(days);
+      }
+    }
+  );
+
+  it('is the end of the Nth calendar day in Mexico City, even when asked a minute before midnight', () => {
+    const deadline = DateTime.fromJSDate(oxxoDeadlineAfterDays(3, inMexicoCity('2026-10-08T23:58')), {
+      zone: 'America/Mexico_City',
+    });
+    expect(deadline.toFormat('yyyy-MM-dd HH:mm')).toBe('2026-10-11 23:59');
+  });
+});
+
+describe('StripePaymentProvider.limitsFor', () => {
+  const provider = new StripePaymentProvider('sk_test_unused', 'whsec_unused');
+
+  // Stripe's documented MXN limits, to verify against the real account
+  // (abono libre spec §5.4, §13): MXN 10.00 minimum everywhere, MXN 10,000.00
+  // per OXXO voucher.
+  it('states the documented limits per method', () => {
+    expect(provider.limitsFor('CARD')).toEqual({ minCents: 1_000, maxCents: null });
+    expect(provider.limitsFor('OXXO')).toEqual({ minCents: 1_000, maxCents: 1_000_000 });
+    expect(provider.limitsFor('SPEI')).toEqual({ minCents: 1_000, maxCents: null });
+    expect(provider.limitsFor('OXXO')).toBe(STRIPE_LIMITS.OXXO);
+  });
+
+  it('refuses an OXXO voucher above its limit before any network call', async () => {
+    await expect(
+      provider.createIntent({
+        reservationId: 'reservation-big-voucher',
+        amountCents: 1_000_001,
+        method: 'OXXO',
+        customerEmail: 'traveler@example.com',
+        voucherExpiresAt: oxxoDeadlineAfterDays(3),
+      })
+    ).resolves.toMatchObject({ ok: false, error: { code: 'VALIDATION_FAILED', details: { reason: 'outside_provider_limits' } } });
   });
 });

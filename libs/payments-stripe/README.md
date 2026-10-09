@@ -34,6 +34,23 @@ of Stripe's documented API shape, never exercised against a live account:
   Stripe account, and it is unit-tested directly in
   `stripe-payment-provider.spec.ts`, across the day-boundary cases --
   unlike the rest of this class, which remains typechecked only.
+- **OXXO on an `ACTIVE` reservation** (abono libre spec §5.4). An `ACTIVE`
+  reservation has no hold to bound its voucher, so the domain asks for its
+  own validity in days (owner decision D3: 3) and sends
+  `oxxoDeadlineAfterDays(days)` as `voucherExpiresAt`: the end of the Nth
+  Mexico City calendar day, which `oxxoExpiresAfterDays` turns back into
+  exactly N. The port's promise does not change -- never later than
+  `voucherExpiresAt` -- only who decides that instant (the hold for `HELD`,
+  the validity for `ACTIVE`). The round trip is unit-tested; Stripe's own
+  reading of `expires_after_days` is not.
+- **Per-method limits** (`STRIPE_LIMITS`, `limitsFor`). MXN 10.00 minimum
+  for every method and MXN 10,000.00 per OXXO voucher, as Stripe documents
+  them -- **to verify against the real account** (spec §13). The domain
+  checks them before asking for an intent and tells the traveler which
+  method is unavailable; `createIntent` still refuses an amount outside them
+  (`VALIDATION_FAILED`, `reason: outside_provider_limits`) as the caller's
+  bug. `FakePaymentProvider` uses the same table unless a test overrides a
+  method.
 - **Idempotent cancel.** Stripe itself returns an error when `cancelIntent`
   is called a second time against an already-`canceled` intent, unlike this
   port's contract, which requires a second cancel to be a no-op. The adapter

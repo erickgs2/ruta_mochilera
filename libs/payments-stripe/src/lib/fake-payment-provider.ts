@@ -3,15 +3,19 @@ import { fail, ok, type Result } from '@rm/shared-utils';
 import {
   isValidAmountCents,
   isValidCustomerEmail,
+  isWithinLimits,
   parseStripeEventBody,
   PROVIDER_CANCEL_REJECTED_TEST_RESERVATION_ID,
   PROVIDER_REJECTED_TEST_RESERVATION_ID,
   timingSafeEqualStrings,
+  type PaymentIntentMethod,
   type PaymentIntentRequest,
   type PaymentIntentResult,
   type PaymentProvider,
+  type ProviderLimits,
   type WebhookEvent,
 } from './payment-provider';
+import { STRIPE_LIMITS } from './stripe-payment-provider';
 
 type FakeIntentStatus = 'pending' | 'canceled';
 
@@ -38,12 +42,31 @@ interface FakeIntent {
  */
 export class FakePaymentProvider implements PaymentProvider {
   private readonly intents = new Map<string, FakeIntent>();
+  private readonly cancelled: string[] = [];
+  private readonly limits: Readonly<Record<PaymentIntentMethod, ProviderLimits>>;
 
-  constructor(private readonly webhookSecret: string = 'fake-webhook-secret') {}
+  /**
+   * `limits` overrides Stripe's documented limits (`STRIPE_LIMITS`) for the
+   * methods it names -- so a domain test can meet a small OXXO maximum
+   * without moving a million cents around.
+   */
+  constructor(
+    private readonly webhookSecret: string = 'fake-webhook-secret',
+    limits: Partial<Record<PaymentIntentMethod, ProviderLimits>> = {}
+  ) {
+    this.limits = { ...STRIPE_LIMITS, ...limits };
+  }
+
+  limitsFor(method: PaymentIntentMethod): ProviderLimits {
+    return this.limits[method];
+  }
 
   async createIntent(request: PaymentIntentRequest): Promise<Result<PaymentIntentResult>> {
     if (!isValidAmountCents(request.amountCents)) {
       return fail('VALIDATION_FAILED', { field: 'amountCents' });
+    }
+    if (!isWithinLimits(request.amountCents, this.limitsFor(request.method))) {
+      return fail('VALIDATION_FAILED', { field: 'amountCents', reason: 'outside_provider_limits' });
     }
     if (!isValidCustomerEmail(request.customerEmail)) {
       return fail('VALIDATION_FAILED', { field: 'customerEmail' });
@@ -87,6 +110,7 @@ export class FakePaymentProvider implements PaymentProvider {
 
     // Idempotent: cancelling an intent that is already `canceled` just
     // writes the same status again and still answers ok(null).
+    if (intent.status !== 'canceled') this.cancelled.push(providerIntentId);
     intent.status = 'canceled';
     return ok(null);
   }
@@ -122,5 +146,14 @@ export class FakePaymentProvider implements PaymentProvider {
   inspect(providerIntentId: string): { status: FakeIntentStatus } | undefined {
     const intent = this.intents.get(providerIntentId);
     return intent ? { status: intent.status } : undefined;
+  }
+
+  /**
+   * Test-support only, not part of the `PaymentProvider` port: the intents
+   * this instance cancelled, in the order they were first cancelled (a
+   * repeated cancel is not listed twice).
+   */
+  cancelledIntentIds(): string[] {
+    return [...this.cancelled];
   }
 }

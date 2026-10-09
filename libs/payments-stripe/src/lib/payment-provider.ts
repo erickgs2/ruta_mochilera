@@ -22,11 +22,13 @@ export interface PaymentIntentRequest {
   customerEmail: string;
   /**
    * Required when `method` is `'OXXO'`, ignored otherwise (checked by every
-   * implementation, not just documented here). The caller must pass the
-   * reservation's own `holdExpiresAt` -- the voucher must never outlive the
-   * hold it is paying for, or the system could end up confirming a payment
-   * for a seat it has already released back into inventory (business rule
-   * 5.3).
+   * implementation, not just documented here): **the instant the voucher must
+   * never outlive**. The domain decides it -- the reservation's own
+   * `holdExpiresAt` for a `HELD` reservation, so a voucher never pays for a
+   * seat the hold already released (business rule 5.3); its own validity
+   * (`oxxoDeadlineAfterDays`) for an `ACTIVE` one, which has no hold (abono
+   * libre spec §5.4). The port's promise is the same either way: never
+   * later than this.
    */
   voucherExpiresAt?: Date;
 }
@@ -109,7 +111,28 @@ export interface WebhookEvent {
   intent?: WebhookPaymentIntent;
 }
 
+/** What a provider charges per transaction for one method, in MXN cents. */
+export interface ProviderLimits {
+  /** The smallest amount the provider charges. */
+  minCents: number;
+  /** The largest, or `null` when the provider documents none. */
+  maxCents: number | null;
+}
+
+/** Whether `amountCents` is one the provider will charge with these limits. */
+export function isWithinLimits(amountCents: number, limits: ProviderLimits): boolean {
+  return amountCents >= limits.minCents && (limits.maxCents === null || amountCents <= limits.maxCents);
+}
+
 export interface PaymentProvider {
+  /**
+   * The provider's per-transaction limits for `method`. The domain checks a
+   * payment against them before asking for an intent (abono libre spec §5.1,
+   * step 5), so it can tell the traveler why a method is unavailable;
+   * `createIntent` refuses an amount outside them all the same, as the
+   * caller's bug.
+   */
+  limitsFor(method: PaymentIntentMethod): ProviderLimits;
   createIntent(request: PaymentIntentRequest): Promise<Result<PaymentIntentResult>>;
   cancelIntent(providerIntentId: string): Promise<Result<null>>;
   /**

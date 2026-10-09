@@ -225,6 +225,7 @@ describe('POST /api/v1/webhooks/stripe', () => {
 
   it('answers PAYMENT_PROVIDER_ERROR, never a stack trace, when the provider blows up verifying', async () => {
     const exploding: PaymentProvider = {
+      limitsFor: provider.limitsFor.bind(provider),
       createIntent: provider.createIntent.bind(provider),
       cancelIntent: provider.cancelIntent.bind(provider),
       verifyWebhook: () => {
