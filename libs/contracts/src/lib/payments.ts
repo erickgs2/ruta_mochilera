@@ -1,9 +1,9 @@
 import { z } from 'zod';
 import { uuidSchema } from './common';
+import { paymentIntentMethodSchema } from './payment-options';
 import { reservationStatusSchema } from './reservations';
 
-export const paymentIntentKindSchema = z.enum(['FULL', 'DEPOSIT']);
-export const paymentIntentMethodSchema = z.enum(['CARD', 'OXXO', 'SPEI']);
+export const paymentIntentKindSchema = z.enum(['FULL', 'DEPOSIT', 'AMOUNT']);
 export const paymentMethodSchema = z.enum(['CARD', 'OXXO', 'SPEI', 'CASH', 'LEGACY', 'CREDIT']);
 export const paymentStatusSchema = z.enum(['PENDING', 'SUCCEEDED', 'FAILED', 'EXPIRED', 'REFUNDED']);
 export const paymentProviderSchema = z.enum(['STRIPE', 'MANUAL']);
@@ -11,17 +11,21 @@ export const paymentProviderSchema = z.enum(['STRIPE', 'MANUAL']);
 /**
  * The body of `POST /reservations/{reservationId}/payment-intents`.
  *
- * **There is no amount field, on purpose.** `intent` says what the customer
- * is paying towards -- the full balance or the minimum deposit -- and the
- * backend computes the number of cents from the reservation itself
- * (`createPaymentIntentForReservation`, `@rm/domain-payments`). A schema
- * with an `amountCents` field here would be the one place a customer could
- * decide what they owe; there is deliberately nowhere for one to go.
+ * The client proposes, the server decides (abono libre spec §3): `FULL` and
+ * `DEPOSIT` carry no amount and keep their meaning; only `AMOUNT` carries one,
+ * which `@rm/domain-payments` validates against the reservation and the
+ * minimums before anything is charged. An amount sent with `FULL` or
+ * `DEPOSIT` is dropped, so there is exactly one way to say how much.
  */
-export const createPaymentIntentRequestSchema = z.object({
-  intent: paymentIntentKindSchema,
-  method: paymentIntentMethodSchema,
-});
+export const createPaymentIntentRequestSchema = z.discriminatedUnion('intent', [
+  z.object({ intent: z.literal('FULL'), method: paymentIntentMethodSchema }),
+  z.object({ intent: z.literal('DEPOSIT'), method: paymentIntentMethodSchema }),
+  z.object({
+    intent: z.literal('AMOUNT'),
+    method: paymentIntentMethodSchema,
+    amountCents: z.number().int().positive(),
+  }),
+]);
 
 /** The body of `POST /api/v1/admin/reservations/{reservationId}/payments`: cash at the counter (Phase 2B). */
 export const registerCashPaymentRequestSchema = z.object({
@@ -45,6 +49,16 @@ export const paymentSchema = z.object({
   receiptNumber: z.string().nullable(),
 });
 
+/** SPEI instructions (Part B). Absent for CARD and OXXO. */
+export const bankTransferSchema = z.object({
+  clabe: z.string(),
+  reference: z.string(),
+  bankName: z.string(),
+  amountRemainingCents: z.number().int(),
+  hostedInstructionsUrl: z.string(),
+  expiresAt: z.iso.datetime(),
+});
+
 /** Response shape for a freshly created Payment Intent, matching `CreatedPaymentIntentDto`. */
 export const createdPaymentIntentSchema = z.object({
   providerIntentId: z.string(),
@@ -53,6 +67,7 @@ export const createdPaymentIntentSchema = z.object({
   method: paymentIntentMethodSchema,
   voucherUrl: z.string().optional(),
   voucherExpiresAt: z.iso.datetime().optional(),
+  bankTransfer: bankTransferSchema.optional(),
 });
 
 export type CreatePaymentIntentRequest = z.infer<typeof createPaymentIntentRequestSchema>;

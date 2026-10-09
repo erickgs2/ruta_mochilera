@@ -5468,6 +5468,18 @@ export interface components {
             /** Format: date-time */
             createdAt: string;
             suggestedMonthlyCents: number;
+            paymentOptions?: {
+                minAmountCents: number;
+                maxAmountCents: number;
+                depositOwedCents: number;
+                methods: {
+                    /** @enum {string} */
+                    method: "CARD" | "OXXO" | "SPEI";
+                    available: boolean;
+                    /** @enum {string} */
+                    reason?: "NOT_CONFIGURED" | "WINDOW_TOO_SHORT" | "ABOVE_PROVIDER_LIMIT" | "DISABLED";
+                }[];
+            };
         };
         CreateReservationRequest: {
             /** Format: uuid */
@@ -5512,12 +5524,32 @@ export interface components {
             voucherUrl?: string;
             /** Format: date-time */
             voucherExpiresAt?: string;
+            bankTransfer?: {
+                clabe: string;
+                reference: string;
+                bankName: string;
+                amountRemainingCents: number;
+                hostedInstructionsUrl: string;
+                /** Format: date-time */
+                expiresAt: string;
+            };
         };
         CreatePaymentIntentRequest: {
             /** @enum {string} */
-            intent: "FULL" | "DEPOSIT";
+            intent: "FULL";
             /** @enum {string} */
             method: "CARD" | "OXXO" | "SPEI";
+        } | {
+            /** @enum {string} */
+            intent: "DEPOSIT";
+            /** @enum {string} */
+            method: "CARD" | "OXXO" | "SPEI";
+        } | {
+            /** @enum {string} */
+            intent: "AMOUNT";
+            /** @enum {string} */
+            method: "CARD" | "OXXO" | "SPEI";
+            amountCents: number;
         };
         StaffReservationSummary: {
             /** Format: uuid */

@@ -1,5 +1,6 @@
 import { createPaymentIntentRequestSchema, type CreatePaymentIntentRequest } from '@rm/contracts';
 import { createPaymentIntentForReservation } from '@rm/domain-payments';
+import { fail } from '@rm/shared-utils';
 import { db } from '../../../../../../lib/db';
 import { route } from '../../../../../../lib/http/route';
 import { paymentProvider } from '../../../../../../lib/payment-provider';
@@ -22,11 +23,15 @@ import { paymentProvider } from '../../../../../../lib/payment-provider';
 export const POST = route<CreatePaymentIntentRequest, unknown>({
   body: createPaymentIntentRequestSchema,
   successStatus: 201,
-  handler: async ({ actor, body, params }) =>
-    createPaymentIntentForReservation(db(), paymentProvider(), {
+  handler: async ({ actor, body, params }) => {
+    // `AMOUNT` is in the contract (abono libre, task A3) but the domain serves
+    // it from task A5; until then it is refused rather than charged as FULL.
+    if (body.intent === 'AMOUNT') return fail('VALIDATION_FAILED', { field: 'intent', reason: 'not_supported_yet' });
+    return createPaymentIntentForReservation(db(), paymentProvider(), {
       reservationId: params['reservationId'] as string,
       customerId: actor.userId,
       intent: body.intent,
       method: body.method,
-    }),
+    });
+  },
 });
