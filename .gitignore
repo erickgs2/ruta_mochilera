@@ -23,3 +23,7 @@ libs/db/src/generated/
 
 # Worktrees de ejecución de planes
 .worktrees/
+
+# Impeccable: local config and question logs stay on each machine
+.impeccable/config.local.json
+.impeccable/questions/
