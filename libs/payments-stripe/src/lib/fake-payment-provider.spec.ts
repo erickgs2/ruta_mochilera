@@ -183,3 +183,26 @@ describe('FakePaymentProvider', () => {
     ).resolves.toMatchObject({ ok: false, error: { code: 'VALIDATION_FAILED', details: { field: 'customerEmail' } } });
   });
 });
+
+describe('FakePaymentProvider test support', () => {
+  it('uses Stripe\'s documented limits unless a test overrides one method', () => {
+    const provider = new FakePaymentProvider(undefined, { OXXO: { minCents: 1_000, maxCents: 100_000 } });
+    expect(provider.limitsFor('OXXO')).toEqual({ minCents: 1_000, maxCents: 100_000 });
+    expect(provider.limitsFor('CARD')).toEqual({ minCents: 1_000, maxCents: null });
+  });
+
+  it('lists the intents cancelled through the port, in order', async () => {
+    const provider = new FakePaymentProvider();
+    const create = () =>
+      provider.createIntent({ reservationId: 'r', amountCents: 10_000, method: 'CARD', customerEmail: 'a@b.co' });
+    const first = await create();
+    const second = await create();
+    if (!first.ok || !second.ok) throw new Error('create failed');
+
+    await provider.cancelIntent(second.value.providerIntentId);
+    await provider.cancelIntent(first.value.providerIntentId);
+    await provider.cancelIntent(first.value.providerIntentId);
+
+    expect(provider.cancelledIntentIds()).toEqual([second.value.providerIntentId, first.value.providerIntentId]);
+  });
+});

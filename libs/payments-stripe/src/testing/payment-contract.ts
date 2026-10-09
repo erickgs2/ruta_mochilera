@@ -99,6 +99,32 @@ export function runPaymentContract(name: string, factory: () => Promise<PaymentP
       expect(result.ok).toBe(true);
     });
 
+    it('states positive limits for every method, a maximum never below the minimum', async () => {
+      const provider = await factory();
+      for (const method of ['CARD', 'OXXO', 'SPEI'] as const) {
+        const limits = provider.limitsFor(method);
+        expect(limits.minCents).toBeGreaterThan(0);
+        if (limits.maxCents !== null) expect(limits.maxCents).toBeGreaterThanOrEqual(limits.minCents);
+      }
+    });
+
+    // The domain checks the limits before it calls the provider (abono libre
+    // spec §5.1, step 5), so reaching here with an amount outside them is the
+    // caller's bug: VALIDATION_FAILED, never a charge Stripe would refuse.
+    it('returns a VALIDATION_FAILED Result for an amount outside the method limits', async () => {
+      const provider = await factory();
+      const { minCents } = provider.limitsFor('CARD');
+
+      await expect(
+        provider.createIntent({
+          reservationId: 'reservation-too-small',
+          amountCents: minCents - 1,
+          method: 'CARD',
+          customerEmail: 'traveler@example.com',
+        })
+      ).resolves.toMatchObject({ ok: false, error: { code: 'VALIDATION_FAILED', details: { reason: 'outside_provider_limits' } } });
+    });
+
     it('returns a VALIDATION_FAILED Result, never a thrown exception, for an OXXO request missing its voucher expiry', async () => {
       // This is the caller's bug (every real call site passes the
       // reservation's holdExpiresAt), not the provider's, so it is the 422

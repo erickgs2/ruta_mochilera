@@ -4,12 +4,14 @@ import { fail, ok, type Result } from '@rm/shared-utils';
 import {
   isValidAmountCents,
   isValidCustomerEmail,
+  isWithinLimits,
   parseStripeEventBody,
   timingSafeEqualStrings,
   type PaymentIntentMethod,
   type PaymentIntentRequest,
   type PaymentIntentResult,
   type PaymentProvider,
+  type ProviderLimits,
   type WebhookEvent,
 } from './payment-provider';
 
@@ -89,6 +91,33 @@ export function oxxoExpiresAfterDays(
   return Math.min(MAX_OXXO_EXPIRES_AFTER_DAYS, days);
 }
 
+/**
+ * The inverse of `oxxoExpiresAfterDays`: the last instant a voucher created
+ * at `now` with `expires_after_days = days` can be paid -- the end of the
+ * `days`-th calendar day after `now` in Mexico City (Stripe's definition).
+ *
+ * An `ACTIVE` reservation has no hold to bound its voucher, so the domain asks
+ * for its own validity in days (owner decision D3) and sends this as
+ * `voucherExpiresAt`; `oxxoExpiresAfterDays` turns it back into exactly
+ * `days`. The end of the day is 23:59:59.999, not 23:59:00, because that is
+ * the instant `oxxoExpiresAfterDays` recognises as "this whole day".
+ */
+export function oxxoDeadlineAfterDays(days: number, now: Date = new Date()): Date {
+  return DateTime.fromJSDate(now, { zone: STRIPE_OXXO_TIME_ZONE }).plus({ days }).endOf('day').toJSDate();
+}
+
+/**
+ * Stripe's per-transaction limits for MXN as documented: MXN 10.00 minimum
+ * for every method, and MXN 10,000.00 per OXXO voucher. **Unverified against
+ * a live account** (abono libre spec §5.4, §13) -- see the library README.
+ * `FakePaymentProvider` uses the same table, so tests meet the same limits.
+ */
+export const STRIPE_LIMITS: Readonly<Record<PaymentIntentMethod, ProviderLimits>> = {
+  CARD: { minCents: 1_000, maxCents: null },
+  OXXO: { minCents: 1_000, maxCents: 1_000_000 },
+  SPEI: { minCents: 1_000, maxCents: null },
+};
+
 interface StripeOxxoDisplayDetails {
   hosted_voucher_url?: string;
   expires_after?: number;
@@ -154,9 +183,18 @@ export class StripePaymentProvider implements PaymentProvider {
     private readonly webhookSecret: string
   ) {}
 
+  limitsFor(method: PaymentIntentMethod): ProviderLimits {
+    return STRIPE_LIMITS[method];
+  }
+
   async createIntent(request: PaymentIntentRequest): Promise<Result<PaymentIntentResult>> {
     if (!isValidAmountCents(request.amountCents)) {
       return fail('VALIDATION_FAILED', { field: 'amountCents' });
+    }
+    // The domain already refused this with a translatable code; reaching
+    // here is the caller's bug, and Stripe would refuse it anyway.
+    if (!isWithinLimits(request.amountCents, this.limitsFor(request.method))) {
+      return fail('VALIDATION_FAILED', { field: 'amountCents', reason: 'outside_provider_limits' });
     }
     if (!isValidCustomerEmail(request.customerEmail)) {
       return fail('VALIDATION_FAILED', { field: 'customerEmail' });
