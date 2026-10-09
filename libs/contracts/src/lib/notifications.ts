@@ -20,6 +20,12 @@ export const notificationStatusSchema = z.enum(['PENDING', 'SENT', 'FAILED', 'RE
 export const listInboxQuerySchema = z.object({
   cursor: z.string().optional(),
   limit: z.coerce.number().int().positive().optional(),
+  /**
+   * Only the caller's unread items. Strict on purpose: the literal `true` or
+   * `false` and nothing else (`1`, `TRUE`, an empty value are all refused), so
+   * a typo cannot silently turn the filter off.
+   */
+  unreadOnly: z.enum(['true', 'false']).optional(),
 });
 
 export type ListInboxQuery = z.infer<typeof listInboxQuerySchema>;

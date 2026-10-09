@@ -1735,6 +1735,7 @@ export function buildOpenApiDocument() {
     responses: {
       200: { description: 'One page of the inbox', ...json(inboxPageSchema) },
       401: problem('Missing or invalid access token'),
+      422: problem('VALIDATION_FAILED -- a non-numeric limit, or an unreadOnly other than the literal true or false'),
     },
   });
 

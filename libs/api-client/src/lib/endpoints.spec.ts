@@ -143,6 +143,14 @@ describe('endpoints', () => {
     req.flush({ items: [], nextCursor: null, unreadCount: 0 });
   });
 
+  it('NotificationsApi.list sends unreadOnly as the literal true or false, and omits it when not given', () => {
+    const api = TestBed.inject(NotificationsApi);
+    api.list('cursor-1', true).subscribe();
+    httpMock.expectOne('https://api.test/api/v1/notifications?cursor=cursor-1&unreadOnly=true').flush({ items: [], nextCursor: null, unreadCount: 0 });
+    api.list(undefined, false).subscribe();
+    httpMock.expectOne('https://api.test/api/v1/notifications?unreadOnly=false').flush({ items: [], nextCursor: null, unreadCount: 0 });
+  });
+
   it('NotificationsApi.markRead posts to the delivery read endpoint', () => {
     TestBed.inject(NotificationsApi).markRead('d-1').subscribe();
     const req = httpMock.expectOne('https://api.test/api/v1/notifications/d-1/read');

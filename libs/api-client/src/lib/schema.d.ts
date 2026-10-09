@@ -4874,6 +4874,7 @@ export interface paths {
                 query?: {
                     cursor?: string;
                     limit?: number;
+                    unreadOnly?: "true" | "false";
                 };
                 header?: never;
                 path?: never;
@@ -4892,6 +4893,15 @@ export interface paths {
                 };
                 /** @description Missing or invalid access token */
                 401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description VALIDATION_FAILED -- a non-numeric limit, or an unreadOnly other than the literal true or false */
+                422: {
                     headers: {
                         [name: string]: unknown;
                     };

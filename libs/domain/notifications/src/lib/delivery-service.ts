@@ -58,6 +58,8 @@ export interface InboxPageDto {
 export interface ListInboxOptions {
   limit?: number;
   cursor?: string;
+  /** Only rows with `read_at` null. The cursor and `unreadCount` are unaffected by it. */
+  unreadOnly?: boolean;
 }
 
 /**
@@ -330,6 +332,7 @@ export async function listInbox(
     where: {
       userId: customerId,
       channel: 'INBOX',
+      ...(options.unreadOnly ? { readAt: null } : {}),
       ...(cursor
         ? {
             OR: [
