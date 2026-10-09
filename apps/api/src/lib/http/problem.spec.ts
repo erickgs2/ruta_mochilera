@@ -22,6 +22,14 @@ describe('statusForCode', () => {
   });
 });
 
+describe('statusForCode, free-amount payments', () => {
+  it('refuses a payment below the minimum or by an unavailable method with 422, and a settled reservation with 409', () => {
+    expect(statusForCode('PAYMENT_BELOW_MINIMUM')).toBe(422);
+    expect(statusForCode('PAYMENT_METHOD_UNAVAILABLE')).toBe(422);
+    expect(statusForCode('NOTHING_DUE')).toBe(409);
+  });
+});
+
 describe('problemResponse', () => {
   it('emits application/problem+json carrying the stable code', async () => {
     const response = problemResponse({ code: 'PERMISSION_DENIED', details: { permission: 'trip.create' } });
