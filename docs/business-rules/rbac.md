@@ -173,6 +173,30 @@ La columna sigue siendo `UUID` (como cualquier `User.id`), así que un actor
 de sistema sin usuario real (por ejemplo, un job programado) debe omitir
 `actorUserId` en vez de inventar un valor no válido.
 
+## Autoservicio: el idioma propio
+
+`PATCH /api/v1/me` guarda `User.locale` de quien llama, sea personal (`STAFF`)
+o cliente (`CUSTOMER`). Es la única escritura de autoservicio de la cuenta.
+
+- **Sin permiso.** Exige sólo un token válido (sin token: `401`). No hay clave
+  en el catálogo porque cualquier persona autenticada puede cambiar su propio
+  idioma.
+- **Sólo a uno mismo, por construcción.** La ruta no recibe ningún id: actúa
+  siempre sobre `actor.userId`, así que no existe forma de tocar a otro
+  usuario. El cuerpo es `{ locale }` y es estricto (`.strict()`): cualquier
+  otro campo, incluido un `userId` o `email`, se rechaza con
+  `422 VALIDATION_FAILED` sin guardar nada.
+- **Valores.** Sólo `es` o `en`; otro valor, o ninguno, es `422 VALIDATION_FAILED`.
+- **Qué cambia.** El idioma de los correos, recibos y avisos se lee de esta
+  fila cuando se escriben, así que aplica desde el siguiente envío. El access
+  token vigente sigue llevando el `locale` anterior hasta el siguiente
+  refresh; el servidor no usa esa claim para elegir idioma.
+- **Respuesta.** El usuario tal como lo describe una sesión, con el nuevo
+  `locale`.
+- **Panel de administración.** El menú de idioma del shell cambia la interfaz
+  de inmediato (optimista) y guarda en segundo plano; si el guardado falla,
+  vuelve al idioma anterior y muestra un aviso.
+
 ## Cómo añadir un permiso
 
 1. Agregar la entrada a `libs/domain/rbac/src/lib/permissions.ts`.

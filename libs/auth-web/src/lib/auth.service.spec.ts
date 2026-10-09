@@ -62,6 +62,36 @@ describe('AuthService', () => {
     expect(service.accessToken()).toBe('access-1');
   });
 
+  describe('saving the language', () => {
+    it('saves the locale on the server and mirrors it in the stored session', async () => {
+      const login = service.login('a@b.test', 'secret');
+      http.expectOne('/api/v1/auth/login').flush(session);
+      await login;
+
+      const saving = service.saveLocale('en');
+      const request = http.expectOne('/api/v1/me');
+      expect(request.request.method).toBe('PATCH');
+      expect(request.request.body).toEqual({ locale: 'en' });
+      request.flush({ ...session.user, locale: 'en' });
+      await saving;
+
+      expect(service.user()?.locale).toBe('en');
+      expect(JSON.parse(localStorage.getItem('rm.session') ?? '{}').user.locale).toBe('en');
+    });
+
+    it('rejects and leaves the stored locale alone when the server refuses', async () => {
+      const login = service.login('a@b.test', 'secret');
+      http.expectOne('/api/v1/auth/login').flush(session);
+      await login;
+
+      const saving = service.saveLocale('en');
+      http.expectOne('/api/v1/me').flush({ code: 'INTERNAL' }, { status: 500, statusText: 'Server Error' });
+
+      await expect(saving).rejects.toBeDefined();
+      expect(service.user()?.locale).toBe('es');
+    });
+  });
+
   it('restores a persisted session on start-up', async () => {
     const promise = service.login('a@b.test', 'secret');
     http.expectOne('/api/v1/auth/login').flush(session);

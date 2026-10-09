@@ -306,6 +306,9 @@
       }
     }
   },
+  "shell": {
+    "languageSaveFailed": "Couldn't save your language. The previous one was restored."
+  },
   "nav": {
     "trips": "Trips",
     "reservations": "Reservations",

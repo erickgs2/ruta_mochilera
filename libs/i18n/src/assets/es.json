@@ -306,6 +306,9 @@
       }
     }
   },
+  "shell": {
+    "languageSaveFailed": "No se pudo guardar tu idioma. Se restauró el anterior."
+  },
   "nav": {
     "trips": "Viajes",
     "reservations": "Reservas",

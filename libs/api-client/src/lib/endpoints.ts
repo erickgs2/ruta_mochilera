@@ -104,6 +104,11 @@ export class AuthApi {
   me(): Observable<Ok<'/api/v1/me', 'get'>> {
     return this.api.get('/api/v1/me');
   }
+
+  /** Saves the caller's own language (staff and customers). Responds with the user as a session describes them. */
+  updateMe(body: Body<'/api/v1/me', 'patch'>): Observable<Ok<'/api/v1/me', 'patch'>> {
+    return this.api.patch('/api/v1/me', body);
+  }
 }
 
 /** RBAC: the permission catalog and role CRUD. */

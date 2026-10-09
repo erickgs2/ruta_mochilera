@@ -4,6 +4,7 @@ import {
   authenticatedUserSchema as authenticatedUserSchemaImport,
   customerProfileSchema as customerProfileSchemaImport,
   updateCustomerProfileRequestSchema,
+  updateMeRequestSchema,
   budgetItemRequestSchema as budgetItemRequestSchemaImport,
   cancelReservationRequestSchema as cancelReservationRequestSchemaImport,
   declineCancellationRequestSchema as declineCancellationRequestSchemaImport,
@@ -644,6 +645,22 @@ export function buildOpenApiDocument() {
     responses: {
       200: { description: 'The authenticated caller', ...json(authenticatedUserSchema) },
       401: problem('Missing or invalid access token'),
+    },
+  });
+
+  registry.registerPath({
+    method: 'patch',
+    path: '/api/v1/me',
+    tags: ['auth'],
+    security: [{ bearerAuth: [] }],
+    description:
+      "Saves the caller's own language (User.locale), for staff and customers. No id and no permission: " +
+      'it always acts on the caller. The language also drives the text of emails, receipts and notifications.',
+    request: { body: requestBody(updateMeRequestSchema) },
+    responses: {
+      200: { description: 'The caller, with the new locale', ...json(authenticatedUserSchema) },
+      401: problem('Missing or invalid access token'),
+      422: problem('VALIDATION_FAILED -- an unknown locale, or any field other than locale'),
     },
   });
 

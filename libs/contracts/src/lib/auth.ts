@@ -7,6 +7,13 @@ export const loginRequestSchema = z.object({
   deviceId: z.string().max(128).optional(),
 });
 
+/**
+ * The body of `PATCH /api/v1/me`: the caller's own language, nothing else. It
+ * is `.strict()` so no field can ever name another user or reach another
+ * column of the account.
+ */
+export const updateMeRequestSchema = z.object({ locale: localeSchema }).strict();
+
 export const authenticatedUserSchema = z.object({
   id: uuidSchema,
   email: z.string().email(),
@@ -49,6 +56,7 @@ export const sessionResponseSchema = z.object({
 });
 
 export type LoginRequest = z.infer<typeof loginRequestSchema>;
+export type UpdateMeRequest = z.infer<typeof updateMeRequestSchema>;
 export type AuthenticatedUserDto = z.infer<typeof authenticatedUserSchema>;
 export type SessionResponse = z.infer<typeof sessionResponseSchema>;
 
